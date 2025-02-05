@@ -1,7 +1,9 @@
 #!/bin/bash
 build_root_dir=${FESPP_BUILD_ROOT_DIR:-"/work/ttl"}
 cd $build_root_dir
-git clone https://github.com/F2I-Consulting/fesapi.git
+wget https://github.com/F2I-Consulting/fesapi/archive/refs/tags/v2.12.2.0.tar.gz
+mkdir fesapi
+tar -xzpf v2.12.2.0.tar.gz -C fesapi --strip-components=1
 mkdir build-fesapi
 cd ${build_root_dir}/build-fesapi
 cmake \
