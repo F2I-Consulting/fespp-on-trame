@@ -1,7 +1,7 @@
 trame:
   cmd:
     - /opt/paraview/bin/pvpython
-    - /deploy/wish_wells_viewer
+    - /deploy/fespp_on_trame
     - --host
     - ${host}
     - --port

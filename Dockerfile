@@ -3,7 +3,7 @@ FROM paraview_builder:0.0.0 AS builder
 ARG GRID_EXTRACTOR_PLUGIN_PATH=gep/gridextractorplugin
 
 # paraview build options
-ENV PARALLEL_NB=6
+ENV PARALLEL_NB=4
 ENV PVSB_GIT_TAG="v5.13.2"
 ENV RENDERING_BACKEND="OSMESA"
 ENV ENABLE="-DENABLE_hdf5=ON"
@@ -51,7 +51,7 @@ ENV TRAME_PARAVIEW=/opt/paraview
 
 COPY --chown=trame-user:trame-user ./setup /deploy/setup
 COPY --chown=trame-user:trame-user ./public /deploy/public
-COPY --chown=trame-user:trame-user ./wish_wells_viewer /deploy/wish_wells_viewer
+COPY --chown=trame-user:trame-user ./fespp_on_trame /deploy/fespp_on_trame
 COPY --chown=trame-user:trame-user ./setup.cfg /deploy/setup.cfg
 COPY --chown=trame-user:trame-user ./setup.py /deploy/setup.py
 

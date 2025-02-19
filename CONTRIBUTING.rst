@@ -1,5 +1,5 @@
 ===================================
-Contributing to Wish - Wells Viewer
+Contributing to FESPP on TRAME
 ===================================
 
 #. Clone the repository using ``git clone``

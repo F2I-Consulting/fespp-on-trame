@@ -1,5 +1,5 @@
 ===================
-Wish - Wells Viewer
+FESPP on TRAME
 ===================
 
 Trame application to visualize wells.
@@ -13,7 +13,7 @@ Create a python virtual environment
 
 .. code-block:: console
 
-    python3.X -m venv ./wish_venv
+    python3.X -m venv ./fespp_on_trame_venv
     
 with python3.X the same version of python used in Paraview 
 
@@ -29,7 +29,7 @@ Install the application
 Update paths
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-In wish_wells_viewer/constants.py update paths to:
+In fespp_on_trame/constants.py update paths to:
     * FESPP_PLUGIN_PATH: path to fespp paraview plugin .so (path/to/Fespp.so)
     * LOCAL_EPC_FILE_PATH: Path to epc file to display
 
@@ -39,16 +39,16 @@ Run the application
 
 .. code-block:: console
 
-    cd wish-wells-viewer
-    path/to/pvpython wish_wells_viewer --server --venv ../wish_venv/
+    cd fespp-on-trame
+    path/to/pvpython fespp_on_trame --server --venv ../fespp_on_trame_venv/
 
 Build & run Docker Image
 ^^^^^^^^^^^^^^^^^^
 
 .. code-block:: console
 
-    docker build . -f Dockerfile -t ttl_wish:latest
-    docker run -it --rm -p 8080:80 ttl_wish:latest
+    docker build . -f Dockerfile -t ttl_fespp_on_trame:latest
+    docker run -it --rm -p 8080:80 ttl_fespp_on_trame:latest
 
 
 https://raw.githubusercontent.com/naucoin/VTKData/refs/heads/master/Data/cow.vtp
