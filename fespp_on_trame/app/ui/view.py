@@ -1,6 +1,6 @@
 from paraview import simple  # type: ignore
 from trame.ui.vuetify3 import SinglePageWithDrawerLayout
-from trame.widgets import vuetify3 as vuetify, paraview, html
+from trame.widgets import vuetify3 as vuetify3, paraview, html
 from trame_server import Server
 from typing import Literal
 
@@ -10,6 +10,7 @@ from fespp_on_trame.app.utils.data_treeview import add_data_hierarchy_to_drawer
 
 from trame.assets.local import LocalFileManager
 
+vuetify3.enable_lab()
 
 class SlicerControls(html.Div):
     def __init__(self, index: Literal["i", "j", "k"]):
@@ -20,7 +21,7 @@ class SlicerControls(html.Div):
         slices_range_var = f"slices_range_{index}"
 
         with self:
-            vuetify.VRangeSlider(
+            vuetify3.VRangeSlider(
                 v_if=(f"{mode_var} === 'range'"),
                 label=index.upper(),
                 strict=True,
@@ -32,7 +33,7 @@ class SlicerControls(html.Div):
                 update_modelValue="console.log($event)",
             )
 
-            vuetify.VSlider(
+            vuetify3.VSlider(
                 v_else="",
                 label=index.upper(),
                 min=(f"{range_var}[0]",),
@@ -43,7 +44,7 @@ class SlicerControls(html.Div):
                 update_modelValue=f"{slices_range_var} = [$event, $event]",
             )
 
-            vuetify.VSwitch(
+            vuetify3.VSwitch(
                 v_model=(
                     mode_var,
                     "range",
@@ -55,7 +56,6 @@ class SlicerControls(html.Div):
                 update_modelValue=f"{slices_range_var} = [{slices_range_var}[0], {slices_range_var}[0]]",
             )
 
-
 def ui(server: Server, **kwargs) -> None:
     # Get TotalEnergies logo from public folder
     localFileManager = LocalFileManager(PUBLIC_PATH)
@@ -65,21 +65,21 @@ def ui(server: Server, **kwargs) -> None:
         layout.title.set_text(TRAME_APP_TITLE)
 
         with layout.icon:
-            vuetify.VImg(src=localFileManager["logo"], height="35", width="35")
+            vuetify3.VImg(src=localFileManager["logo"], height="35", width="35")
 
         with layout.toolbar:
             pass
 
-        with layout.drawer, vuetify.VCard(style="box-shodow: None;"):
-            with vuetify.VTabs(v_model=("tab", None)):
-                with vuetify.VTab(value="data"):
+        with layout.drawer, vuetify3.VCard(style="box-shodow: None;"):
+            with vuetify3.VTabs(v_model=("tab", None)):
+                with vuetify3.VTab(value="data"):
                     html.Div("Data")
-                with vuetify.VTab(value="representation"):
+                with vuetify3.VTab(value="representation"):
                     html.Div("Representation")
-                with vuetify.VTab(value="ijk_slicing"):
+                with vuetify3.VTab(value="ijk_slicing"):
                     html.Div("IJK Slicing")
-            with vuetify.VCardText(), vuetify.VWindow(v_model=("tab",)):
-                with vuetify.VWindowItem(value="data"):
+            with vuetify3.VCardText(), vuetify3.VWindow(v_model=("tab",)):
+                with vuetify3.VWindowItem(value="data"):
                     add_data_hierarchy_to_drawer(
                         server,
                         (
@@ -98,14 +98,14 @@ def ui(server: Server, **kwargs) -> None:
                         ),
                         "Wells",
                     )
-                with vuetify.VWindowItem(value="representation"):
-                    vuetify.VSelect(
+                with vuetify3.VWindowItem(value="representation"):
+                    vuetify3.VSelect(
                         label="Color by",
                         v_model=("selected_coloring_array",),
                         items=("coloring_list",),
                     )
-                with vuetify.VWindowItem(value="ijk_slicing"):
-                    with vuetify.VCard(flat=True, elevation=0), vuetify.VCardText(
+                with vuetify3.VWindowItem(value="ijk_slicing"):
+                    with vuetify3.VCard(flat=True, elevation=0), vuetify3.VCardText(
                         style="padding-top: 3rem;"
                     ):
                         SlicerControls("i")
@@ -113,7 +113,7 @@ def ui(server: Server, **kwargs) -> None:
                         SlicerControls("k")
 
         with layout.content:
-            with vuetify.VContainer(
+            with vuetify3.VContainer(
                 fluid=True, classes="pa-0 fill-height", v_if="file_loaded"
             ):
                 view = paraview.VtkRemoteView(

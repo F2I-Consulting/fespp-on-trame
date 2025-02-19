@@ -58,4 +58,4 @@ COPY --chown=trame-user:trame-user ./setup.py /deploy/setup.py
 # bring some data into the image
 COPY ./data /deploy/data
 
-RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install .
+RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && mkdir /deploy/server/www/__trame_vuetify_lab && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
