@@ -56,8 +56,36 @@ class SlicerControls(html.Div):
                 update_modelValue=f"{slices_range_var} = [{slices_range_var}[0], {slices_range_var}[0]]",
             )
 
+# -----------------------------------------------------------------------------
+# default Card
+# -----------------------------------------------------------------------------
+def create_card(title, icon, height=None):
+    card_props = {"classes": "pa-0",
+                  "elevation": 10,
+                  "flat": True, 
+                  "outlined": False, 
+                  "tile": True,
+                  "style": "border: solid; border-color: #d0d3d4;"}
+    if height:  
+        card_props["height"] = height
+
+    with vuetify3.VCard(**card_props):
+        vuetify3.VDivider()
+        card_title_props = {"classes": "d-flex align-center py-1", "style": "background-color: #b3b6b7;"}
+        with vuetify3.VCardTitle(**card_title_props):
+            vuetify3.VIcon(icon)
+            html.Div(title)
+        vuetify3.VDivider()
+        if height:
+            height_value = int(height[:-2])
+            max_height_value = height_value - 5
+            max_height = f"{max_height_value}vh"
+            return vuetify3.VCardText(style=f"overflow-y: auto; max-height: {max_height};")
+        else:
+            return vuetify3.VCardText(style="overflow-y: auto;")
+
 def ui(server: Server, **kwargs) -> None:
-    # Get TotalEnergies logo from public folder
+    # Get logo from public folder
     localFileManager = LocalFileManager(PUBLIC_PATH)
     localFileManager.url("logo", "logo.png")
 
@@ -80,24 +108,38 @@ def ui(server: Server, **kwargs) -> None:
                     html.Div("IJK Slicing")
             with vuetify3.VCardText(), vuetify3.VWindow(v_model=("tab",)):
                 with vuetify3.VWindowItem(value="data"):
-                    add_data_hierarchy_to_drawer(
-                        server,
-                        (
-                            DataInformation.from_dict(server.state.data_hierarchy_grids)
-                            if server.state.data_hierarchy_grids
-                            else None
-                        ),
-                        "Grids",
-                    )
-                    add_data_hierarchy_to_drawer(
-                        server,
-                        (
-                            DataInformation.from_dict(server.state.data_hierarchy_wells)
-                            if server.state.data_hierarchy_wells
-                            else None
-                        ),
-                        "Wells",
-                    )
+                    # Treeview CARD
+                    with create_card(
+                        "Project treeview",
+                        "mdi-file-tree",
+                        "60vh"
+                    ):
+                        add_data_hierarchy_to_drawer(
+                            server,
+                            (
+                                DataInformation.from_dict(server.state.data_hierarchy_grids)
+                                if server.state.data_hierarchy_grids
+                                else None
+                            ),
+                            "Grids",
+                        )
+                        add_data_hierarchy_to_drawer(
+                            server,
+                            (
+                                DataInformation.from_dict(server.state.data_hierarchy_wells)
+                                if server.state.data_hierarchy_wells
+                                else None
+                            ),
+                            "Wells",
+                        )
+                    # Attribut Node CARD
+                    with create_card(
+                        "Node Attribut",
+                        "mdi-information",
+                        "30vh"
+                    ):
+                        pass
+                
                 with vuetify3.VWindowItem(value="representation"):
                     vuetify3.VSelect(
                         label="Color by",
