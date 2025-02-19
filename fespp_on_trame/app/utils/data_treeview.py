@@ -84,14 +84,4 @@ def add_data_hierarchy_to_drawer(server: Server, data_hierarchy: Optional[DataIn
         return
 
     with vuetify.VList(density="compact"):
-        with vuetify.VListGroup(
-                style="--prepend-width: 8px;"
-            ):
-            with vuetify.Template(v_slot_activator="{ props }"):
-                vuetify.VListItem(
-                    v_bind="props",
-                    density="compact",
-                    title=data_type,
-                )
-            
-            add_item_to_treeview(server, data_hierarchy)
+        add_item_to_treeview(server, data_hierarchy)

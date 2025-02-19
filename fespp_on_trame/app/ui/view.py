@@ -100,14 +100,18 @@ def ui(server: Server, **kwargs) -> None:
 
         with layout.drawer, vuetify3.VCard(style="box-shodow: None;"):
             with vuetify3.VTabs(v_model=("tab", None)):
-                with vuetify3.VTab(value="data"):
-                    html.Div("Data")
+                with vuetify3.VTab(value="reservoir"):
+                    html.Div("Reservoir")
+                with vuetify3.VTab(value="surface"):
+                    html.Div("Surface")
+                with vuetify3.VTab(value="well"):
+                    html.Div("Well")
                 with vuetify3.VTab(value="representation"):
                     html.Div("Representation")
                 with vuetify3.VTab(value="ijk_slicing"):
                     html.Div("IJK Slicing")
             with vuetify3.VCardText(), vuetify3.VWindow(v_model=("tab",)):
-                with vuetify3.VWindowItem(value="data"):
+                with vuetify3.VWindowItem(value="reservoir"):
                     # Treeview CARD
                     with create_card(
                         "Project treeview",
@@ -123,6 +127,37 @@ def ui(server: Server, **kwargs) -> None:
                             ),
                             "Grids",
                         )
+                    # Attribut Node CARD
+                    with create_card(
+                        "Node Attribut",
+                        "mdi-information",
+                        "30vh"
+                    ):
+                        pass
+                    
+                with vuetify3.VWindowItem(value="surface"):
+                    # Treeview CARD
+                    with create_card(
+                        "Project treeview",
+                        "mdi-file-tree",
+                        "60vh"
+                    ):
+                        pass
+                    # Attribut Node CARD
+                    with create_card(
+                        "Node Attribut",
+                        "mdi-information",
+                        "30vh"
+                    ):
+                        pass
+                
+                with vuetify3.VWindowItem(value="well"):
+                    # Treeview CARD
+                    with create_card(
+                        "Project treeview",
+                        "mdi-file-tree",
+                        "60vh"
+                    ):
                         add_data_hierarchy_to_drawer(
                             server,
                             (
@@ -139,20 +174,6 @@ def ui(server: Server, **kwargs) -> None:
                         "30vh"
                     ):
                         pass
-                
-                with vuetify3.VWindowItem(value="representation"):
-                    vuetify3.VSelect(
-                        label="Color by",
-                        v_model=("selected_coloring_array",),
-                        items=("coloring_list",),
-                    )
-                with vuetify3.VWindowItem(value="ijk_slicing"):
-                    with vuetify3.VCard(flat=True, elevation=0), vuetify3.VCardText(
-                        style="padding-top: 3rem;"
-                    ):
-                        SlicerControls("i")
-                        SlicerControls("j")
-                        SlicerControls("k")
 
         with layout.content:
             with vuetify3.VContainer(
