@@ -8,8 +8,6 @@ from collections import deque
 from trame_server import Server
 from pathlib import Path
 
-DEFAULT_COLOR = "Solid Color"
-
 EPC_COLLECTOR_GUI_NAME = "EPCCollector"
 
 def get_epc_collector() -> Any:
@@ -19,7 +17,7 @@ def get_render_view() -> Any:
     return pvsimple.GetActiveViewOrCreate("RenderView")
 
 def initialize_mesh_engine(
-    server: Server, *, fespp_plugin_path: Path, slicing_plugin_path: Path
+    server: Server, *, fespp_plugin_path: Path
 ) -> None:
     state = server.state
     controller = server.controller

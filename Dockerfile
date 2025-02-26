@@ -29,15 +29,6 @@ RUN bash /root/build-fesapi.sh
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
 RUN bash /root/build-fespp.sh
 
-RUN mkdir /work/ttl/gep
-ENV GEP_BUILD_ROOT_DIR=/work/ttl/gep
-
-# build grid extractor plugin
-COPY $GRID_EXTRACTOR_PLUGIN_PATH /work/ttl/gep/gridextractorplugin
-COPY ./gep/build_scripts/build.sh /root/build-gep.sh
-
-RUN bash /root/build-gep.sh
-
 FROM --platform=linux/amd64 kitware/trame:py3.10-1.2-glvnd-runtime-ubuntu22.04 AS runtime
 
 RUN apt update && apt install -y libhdf5-103

@@ -37,7 +37,6 @@ class App:
         server=None,
         *,
         fespp_plugin_path: Path,
-        slicing_plugin_path: Path,
         local_epc_file_path: Path,
         remote_h5_file_location: str | None,
         remote_epc_file_location: str | None,
@@ -64,7 +63,6 @@ class App:
         initialize_mesh_engine(
             server,
             fespp_plugin_path=fespp_plugin_path,
-            slicing_plugin_path=slicing_plugin_path,
         )
 
 
@@ -98,21 +96,12 @@ if __name__ == "__main__":
         help="path to fespp paraview plugin .so",
         type=Path,
     )
-    app_server.cli.add_argument(
-        "--slicing-plugin-path",
-        dest="slicing_plugin_path",
-        required=True,
-        help="path to slicing paraview plugin .so",
-        type=Path,
-    )
-
     if isinstance(app_server, Server):
         args, _ = app_server.cli.parse_known_args()
         app_server.controller.on_server_ready.add(server_ready)
         app = App(
             app_server,
             fespp_plugin_path=args.fespp_plugin_path,
-            slicing_plugin_path=args.slicing_plugin_path,
             local_epc_file_path=args.local_epc_file_path,
             remote_h5_file_location=args.remote_h5_file_location if args.remote_h5_file_location != r"${remote_h5_file_location}" else None,
             remote_epc_file_location=args.remote_epc_file_location if args.remote_epc_file_location != r"${remote_epc_file_location}" else None,
