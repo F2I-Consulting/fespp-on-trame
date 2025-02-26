@@ -1,3 +1,4 @@
+from trame.app import get_server
 from paraview import simple  # type: ignore
 from trame.ui.vuetify3 import SinglePageWithDrawerLayout
 from trame.widgets import vuetify3 as vuetify3, paraview, html
@@ -5,56 +6,45 @@ from trame_server import Server
 from typing import Literal
 
 from fespp_on_trame.constants import TRAME_APP_TITLE, PUBLIC_PATH
-from fespp_on_trame.app.utils.data import DataInformation
-from fespp_on_trame.app.utils.data_treeview import add_data_hierarchy_to_drawer
 
 from trame.assets.local import LocalFileManager
 
+server = get_server()
+state = server.state
+
 vuetify3.enable_lab()
 
-class SlicerControls(html.Div):
-    def __init__(self, index: Literal["i", "j", "k"]):
-        super().__init__(style="display: flex; align-items: center;")
+# init
+state.setdefault("ui_select_node_reservoir", [])
+state.setdefault("ui_select_node_surface", [])
+state.setdefault("ui_select_node_well", [])
 
-        mode_var = f"slices_range_{index}_mode"
-        range_var = f"range_{index}"
-        slices_range_var = f"slices_range_{index}"
+# -----------------------------------------------------------------------------
+# common def
+# -----------------------------------------------------------------------------
+def find_parent_id(tree, node_id) -> None:
+    for item in tree:
+        if item.get("id") == node_id:
+            return item["parent_id"]
+        elif item.get("children"):
+            return find_parent_id(item["children"], node_id)
+    return None
 
-        with self:
-            vuetify3.VRangeSlider(
-                v_if=(f"{mode_var} === 'range'"),
-                label=index.upper(),
-                strict=True,
-                min=(f"{range_var}[0]",),
-                max=(f"{range_var}[1]",),
-                step=1,
-                v_model=(slices_range_var,),
-                thumb_label="always",
-                update_modelValue="console.log($event)",
-            )
+def find_item_node_id(tree, node_id) -> None:
+    for item in tree:
+        if item.get("id") == node_id:
+            return item
+    return None
 
-            vuetify3.VSlider(
-                v_else="",
-                label=index.upper(),
-                min=(f"{range_var}[0]",),
-                max=(f"{range_var}[1]",),
-                step=1,
-                thumb_label="always",
-                model_value=(f"{slices_range_var}[0]",),
-                update_modelValue=f"{slices_range_var} = [$event, $event]",
-            )
-
-            vuetify3.VSwitch(
-                v_model=(
-                    mode_var,
-                    "range",
-                ),
-                style="margin-left: 1.5rem;",
-                label=(mode_var,),
-                false_value="range",
-                true_value="slice",
-                update_modelValue=f"{slices_range_var} = [{slices_range_var}[0], {slices_range_var}[0]]",
-            )
+def node_id_to_path(tree, node_id) -> str:
+    for node in tree:
+        if node.get("id") == node_id:
+            return node.get("path")
+        elif node.get("children"):
+            path = node_id_to_path(node["children"], node_id)
+            if path:
+                return path
+    return None
 
 # -----------------------------------------------------------------------------
 # default Card
@@ -84,6 +74,139 @@ def create_card(title, icon, height=None):
         else:
             return vuetify3.VCardText(style="overflow-y: auto;")
 
+# -----------------------------------------------------------------------------
+# Attribut Node Card
+# -----------------------------------------------------------------------------
+def Attribut_Node(active_node):
+    """return a VCardText display active node."""
+    return vuetify3.VCardText(
+        f"Active Node: {active_node}",
+        classes="text-center",
+    )
+    
+# -----------------------------------------------------------------------------
+# treeview management
+# -----------------------------------------------------------------------------
+# NOT USE => specific selection => selection-strategy="independent"
+'''def treeview_change(treeview_type, **kwargs) -> None:
+    treeview = []
+    list_selected = []
+    if treeview_type == "reservoir":
+        treeview = server.state.data_hierarchy_reservoir.copy()
+        list_selected = server.state.ui_select_node_reservoir.copy()
+    elif treeview_type == "surface":
+        treeview = server.state.data_hierarchy_surface.copy()
+        list_selected = server.state.ui_select_node_surface.copy()
+    else:
+        treeview = server.state.data_hierarchy_well.copy()
+        list_selected = server.state.ui_select_node_well.copy()
+    
+    if not isinstance(list_selected, list):
+        print("Error: list_selected is not a list:", list_selected)
+        return
+
+    select_node = list_selected.copy()
+    for node_id in select_node:
+        parent_id = find_parent_id(treeview, node_id)
+        if parent_id and parent_id not in select_node:
+            select_node.append(parent_id)
+
+    select_node.sort(reverse=True)
+    if treeview_type == "reservoir":
+        server.state.ui_select_node_reservoir = select_node.copy()
+    elif treeview_type == "surface":
+        server.state.ui_select_node_surface = select_node.copy()
+    else:
+        server.state.ui_select_node_well = select_node.copy()
+        '''
+
+# -----------------------------------------------------------------------------
+# Fespp Selector management (each tree can have its own management)
+# -----------------------------------------------------------------------------
+# load fespp selector with reservoir treeview selection
+def load_fespp_selector_reservoir(**kwargs) -> None:
+    # init
+    server.state.fespp_data_selectors=[]
+    path_selectors = []
+
+    treeview = server.state.data_hierarchy_reservoir.copy()
+    list_selected = server.state.ui_select_node_reservoir.copy()
+
+    # switch node_id to path
+    for node_id in list_selected:
+        path = node_id_to_path(treeview, node_id)
+        if path:
+            path_selectors.append(path)
+
+    server.state.fespp_data_selectors_reservoir = path_selectors.copy()
+
+    server.state.fespp_data_selectors = server.state.fespp_data_selectors_reservoir
+    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_surface)
+    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_well)
+
+# load fespp selector with surface treeview selection
+def load_fespp_selector_surface(**kwargs) -> None:
+    # init
+    server.state.fespp_data_selectors=[]
+    path_selectors = []
+
+    treeview = server.state.data_hierarchy_surface.copy()
+    list_selected = server.state.ui_select_node_surface.copy()
+
+    # switch node_id to path
+    for node_id in list_selected:
+        path = node_id_to_path(treeview, node_id)
+        if path:
+            path_selectors.append(path)
+
+    server.state.fespp_data_selectors_surface = path_selectors.copy()
+
+    server.state.fespp_data_selectors = server.state.fespp_data_selectors_surface
+    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_reservoir)
+    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_well)
+
+# load fespp selector with well treeview selection
+def load_fespp_selector_well(**kwargs) -> None:
+    # init
+    server.state.fespp_data_selectors=[]
+    path_selectors = []
+
+    treeview = server.state.data_hierarchy_well.copy()
+    list_selected = server.state.ui_select_node_well.copy()
+
+    # switch node_id to path
+    for node_id in list_selected:
+        path = node_id_to_path(treeview, node_id)
+        if path:
+            path_selectors.append(path)
+
+    server.state.fespp_data_selectors_well = path_selectors.copy()
+
+    server.state.fespp_data_selectors = server.state.fespp_data_selectors_well
+    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_surface)
+    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_reservoir)
+
+# -----------------------------------------------------------------------------
+# change of state
+# -----------------------------------------------------------------------------
+@server.state.change("ui_select_node_reservoir")
+def on_select_node_change(ui_select_node_reservoir, **kwargs):
+    print("ui_select_node_reservoir")
+    load_fespp_selector_reservoir()
+    
+@server.state.change("ui_select_node_surface")
+def on_select_node_change(ui_select_node_surface, **kwargs):
+    print("ui_select_node_surface")
+    load_fespp_selector_surface()
+    
+@server.state.change("ui_select_node_well")
+def on_select_node_change(ui_select_node_well, **kwargs):
+    print("ui_select_node_well")
+    load_fespp_selector_well()
+    
+# -----------------------------------------------------------------------------
+# General UI
+# -----------------------------------------------------------------------------
 def ui(server: Server, **kwargs) -> None:
     # Get logo from public folder
     localFileManager = LocalFileManager(PUBLIC_PATH)
@@ -106,10 +229,6 @@ def ui(server: Server, **kwargs) -> None:
                     html.Div("Surface")
                 with vuetify3.VTab(value="well"):
                     html.Div("Well")
-                with vuetify3.VTab(value="representation"):
-                    html.Div("Representation")
-                with vuetify3.VTab(value="ijk_slicing"):
-                    html.Div("IJK Slicing")
             with vuetify3.VCardText(), vuetify3.VWindow(v_model=("tab",)):
                 with vuetify3.VWindowItem(value="reservoir"):
                     # Treeview CARD
@@ -118,14 +237,25 @@ def ui(server: Server, **kwargs) -> None:
                         "mdi-file-tree",
                         "60vh"
                     ):
-                        add_data_hierarchy_to_drawer(
-                            server,
-                            (
-                                DataInformation.from_dict(server.state.data_hierarchy_grids)
-                                if server.state.data_hierarchy_grids
-                                else None
-                            ),
-                            "Grids",
+                        vuetify3.VTreeview(
+                            # style
+                            slim=True,
+                            density="compact",
+                            # data
+                            item_value="id",
+                            items=("data_hierarchy_reservoir", server.state.data_hierarchy_reservoir),
+                            # activation logic
+                            activated=("active_node", []),
+                            activatable=True,
+                            active_strategy="single-independent",
+                            update_activated="active_node = $event",
+                            color="primary",
+                            open_on_click=False,
+                            # selection logic
+                            selected=("ui_select_node_reservoir", []),
+                            selectable=True,
+                            select_strategy="single-leaf",
+                            update_selected="ui_select_node_reservoir = $event",
                         )
                     # Attribut Node CARD
                     with create_card(
@@ -133,23 +263,42 @@ def ui(server: Server, **kwargs) -> None:
                         "mdi-information",
                         "30vh"
                     ):
-                        pass
+                        Attribut_Node("{{ active_node }}")
                     
                 with vuetify3.VWindowItem(value="surface"):
-                    # Treeview CARD
+              # Treeview CARD
                     with create_card(
                         "Project treeview",
                         "mdi-file-tree",
                         "60vh"
                     ):
-                        pass
+                        vuetify3.VTreeview(
+                            # style
+                            slim=True,
+                            density="compact",
+                            # data
+                            item_value="id",
+                            items=("data_hierarchy_surface", server.state.data_hierarchy_surface),
+                            # activation logic
+                            activated=("active_node", []),
+                            activatable=True,
+                            active_strategy="single-independent",
+                            update_activated="active_node = $event",
+                            color="primary",
+                            open_on_click=False,
+                            # selection logic
+                            selected=("ui_select_node_surface", []),
+                            selectable=True,
+                            select_strategy="single-leaf",
+                            update_selected="ui_select_node_surface = $event",
+                        )
                     # Attribut Node CARD
                     with create_card(
                         "Node Attribut",
                         "mdi-information",
                         "30vh"
                     ):
-                        pass
+                        Attribut_Node("{{ active_node }}")
                 
                 with vuetify3.VWindowItem(value="well"):
                     # Treeview CARD
@@ -158,14 +307,25 @@ def ui(server: Server, **kwargs) -> None:
                         "mdi-file-tree",
                         "60vh"
                     ):
-                        add_data_hierarchy_to_drawer(
-                            server,
-                            (
-                                DataInformation.from_dict(server.state.data_hierarchy_wells)
-                                if server.state.data_hierarchy_wells
-                                else None
-                            ),
-                            "Wells",
+                        vuetify3.VTreeview(
+                            # style
+                            slim=True,
+                            density="compact",
+                            # data
+                            item_value="id",
+                            items=("data_hierarchy_well", server.state.data_hierarchy_well),
+                            # activation logic
+                            activated=("active_node", []),
+                            activatable=True,
+                            active_strategy="single-independent",
+                            update_activated="active_node = $event",
+                            color="primary",
+                            open_on_click=False,
+                            # selection logic
+                            selected=("ui_select_node_well", []),
+                            selectable=True,
+                            select_strategy="classic",
+                            update_selected="ui_select_node_well = $event",
                         )
                     # Attribut Node CARD
                     with create_card(
@@ -173,7 +333,7 @@ def ui(server: Server, **kwargs) -> None:
                         "mdi-information",
                         "30vh"
                     ):
-                        pass
+                        Attribut_Node("{{ active_node }}")
 
         with layout.content:
             with vuetify3.VContainer(

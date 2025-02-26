@@ -1,17 +1,12 @@
 from typing import Any
 
+import json
 # need the * import for grid extractor plugin
 from paraview.simple import *
 from paraview import simple as pvsimple
 from collections import deque
 from trame_server import Server
 from pathlib import Path
-
-from fespp_on_trame.app.utils.data import (
-    ColoringArrayInformation,
-    DataInformation,
-    DataType,
-)
 
 DEFAULT_COLOR = "Solid Color"
 
@@ -31,11 +26,13 @@ def initialize_mesh_engine(
 
     pvsimple.LoadPlugin(str(fespp_plugin_path))
 
-    state.setdefault("data_hierarchy_grids", {})
-    state.setdefault("data_hierarchy_wells", {})
-    state.setdefault("grids_selectors", [])
-    state.setdefault("wells_selectors", [])
-    state.setdefault("selected_data_selectors", [])
+    state.setdefault("data_hierarchy_surface", [])
+    state.setdefault("data_hierarchy_well", [])
+    state.setdefault("data_hierarchy_reservoir", [])
+    state.setdefault("fespp_data_selectors_reservoir", [])
+    state.setdefault("fespp_data_selectors_surface", [])
+    state.setdefault("fespp_data_selectors_well", [])
+    state.setdefault("fespp_data_selectors", [])
     state.setdefault("coloring_arrays", [])
     state.setdefault("selected_coloring_array", "Solid Color")
 
@@ -57,12 +54,11 @@ def initialize_mesh_engine(
 
     @controller.set("define_slicing_pipeline")
     def define_slicing_pipeline() -> None:
-        print("def define_slicing_pipeline")
+        pass
         
     @state.change("slices_range_i", "slices_range_j", "slices_range_k")
     def update_slice(slices_range_i, slices_range_j, slices_range_k, **kwargs):
-        print("def update_slice")
-
+        pass
 
     def update_data_selectors() -> None:
         collector = get_epc_collector()
@@ -70,7 +66,9 @@ def initialize_mesh_engine(
         if not collector:
             return
 
-        collector.SetPropertyWithName('Selectors',server.state.selected_data_selectors)
+        print("put Fespp -> ", server.state.fespp_data_selectors)
+        collector.SetPropertyWithName('Selectors',server.state.fespp_data_selectors)
+        print("get Fespp -> ", collector.Selectors)
         
         server.controller.view_reset_camera()
         server.controller.view_update()
@@ -80,59 +78,102 @@ def initialize_mesh_engine(
     @controller.set("update_data_information")
     def update_data_information() -> None:
         collector = get_epc_collector()
-        data_info = collector.GetDataInformation().DataInformation
+        data_info = collector.GetDataInformation()
         data_assembly = data_info.GetDataAssembly()
-
-        def append_data_hierarchy(element_id: int, selectors: list[str]) -> None:
-            element_name = None
-            element_name = data_assembly.GetAttributeOrDefault(
-                element_id, "label", element_name
-            )
-            # Remove first part of the name (keep everything after "_" char)
-            element_name = element_name[element_name.find("_") + 1 :]
-
-            element_type = None
-            element_type = data_assembly.GetAttributeOrDefault(
-                element_id, "type", element_type
-            )
-
-
-            data_path = data_assembly.GetNodePath(element_id)
-            selectors.append(data_path)
-
-            parent_item = DataInformation(
-                identifier=element_id,
-                path=data_path,
-                name=element_name,
-                data_type=int(element_type),
-            )
-
-            for i in range(data_assembly.GetNumberOfChildren(element_id)):
-                child_id = data_assembly.GetChild(element_id, i)
-                parent_item.children.append(append_data_hierarchy(child_id, selectors))
-
-            return parent_item.to_dict()
-
-        main_data_id = 0
-        for i in range(data_assembly.GetNumberOfChildren(main_data_id)):
-            child_id = data_assembly.GetChild(main_data_id, i)
-            child_type = None
-            child_type = data_assembly.GetAttributeOrDefault(
-                child_id, "type", child_type
-            )
-
-            if int(child_type) == DataType.REPRESENTATION.value:
-                hierarchy = state.data_hierarchy_grids
-                selectors = state.grids_selectors
-            else:
-                hierarchy = state.data_hierarchy_wells
-                selectors = state.wells_selectors
-
-            hierarchy.update(append_data_hierarchy(child_id, selectors))
-
-        print(state.data_hierarchy_wells)
         
-    @state.change("selected_data_selectors")
+        # init
+        w_data_hierarchy_reservoir = []
+        w_data_hierarchy_well = []
+        w_data_hierarchy_surface = []
+
+        def add_subtreeview_data(parent_id: int, child_index: int, treeview_type)-> None:
+            node_id = data_assembly.GetChild(parent_id, child_index)
+            node_label = None
+            node_label = data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
+            node_title = node_label[node_label.find("_") + 1 :]
+            node_type = node_label[:node_label.find("_")]
+            node_path = data_assembly.GetNodePath(node_id)
+            
+            if treeview_type == "unknown":
+                if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                    treeview_type = "reservoir"
+                elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                    treeview_type = "well"
+                elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                    treeview_type = "surface"
+
+            data = {}
+                     
+            data["treeview"] = {}
+            data["treeview"]["parent_id"] = parent_id
+            data["treeview"]["id"] = node_id
+            data["treeview"]["title"] = node_title
+            data["treeview"]["path"] = node_path
+            data["treeview"]["type"] = node_type
+
+            data["treeview_type"] = treeview_type
+            
+            children_count = data_assembly.GetNumberOfChildren(node_id)
+            if children_count > 0:
+                data["treeview"]["children"]=[]
+                for i in range(children_count):
+                    subTreeview = add_subtreeview_data(node_id, i, treeview_type)
+                    data["treeview"]["children"].append(subTreeview["treeview"])
+                    data["treeview_type"] = subTreeview["treeview_type"]
+            return data
+        
+        root_id = 0
+        for i in range(data_assembly.GetNumberOfChildren(root_id)):
+            node_id = data_assembly.GetChild(root_id, i)
+            node_label = None
+            node_label = data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
+            node_title=node_label[node_label.find("_") + 1 :]
+            node_type=node_label[:node_label.find("_")]
+            node_path = data_assembly.GetNodePath(node_id)
+            
+            treeview_type = "unknown"
+            if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                treeview_type = "reservoir"
+            elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                treeview_type = "well"
+            elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                treeview_type = "surface"
+
+            treeview = {}
+            treeview["parent_id"] = root_id
+            treeview["id"] = node_id
+            treeview["title"] = node_title
+            treeview["path"] = node_path
+            treeview["type"] = node_type
+
+            children_count = data_assembly.GetNumberOfChildren(node_id)
+            if children_count > 0:
+                treeview["children"]=[]
+                for i in range(children_count):
+                    subTreeview = add_subtreeview_data(node_id, i, treeview_type)
+                    treeview["children"].append(subTreeview["treeview"])
+                    treeview_type = subTreeview["treeview_type"]
+            
+                    if treeview_type == "reservoir":
+                        if treeview and treeview not in w_data_hierarchy_reservoir:
+                            w_data_hierarchy_reservoir.append(treeview)
+                    elif treeview_type == "well":
+                        if treeview and treeview not in w_data_hierarchy_well:
+                            w_data_hierarchy_well.append(treeview)
+                    elif treeview_type == "surface":
+                        if treeview and treeview not in w_data_hierarchy_surface:
+                            w_data_hierarchy_surface.append(treeview)
+                        
+        state.data_hierarchy_reservoir = list(w_data_hierarchy_reservoir)
+        state.data_hierarchy_well = list(w_data_hierarchy_well)
+        state.data_hierarchy_surface = list(w_data_hierarchy_surface)
+        state.dirty("data_hierarchy_reservoir")
+        state.dirty("data_hierarchy_well")
+        state.dirty("data_hierarchy_surface")
+        state.flush()
+        
+                
+    @state.change("fespp_data_selectors")
     def on_selected_data_changed(**kwargs) -> None:
-        print("def on_selected_data_changed")
+        print("Fespp Selectors changed:", server.state.fespp_data_selectors)
         update_data_selectors()

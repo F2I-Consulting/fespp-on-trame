@@ -69,7 +69,7 @@ class App:
 
 
 def server_ready(**state):
-    print("Wells Viewer Ready", flush=True)
+    print("FESPP on TRAME Ready", flush=True)
     print("+" * 4096, flush=True)
 
 
