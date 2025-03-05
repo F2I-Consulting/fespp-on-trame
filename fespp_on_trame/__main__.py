@@ -10,7 +10,7 @@ from trame.app import get_server
 from trame.decorators import TrameApp
 from trame_server import Server
 
-from fespp_on_trame.app.core.mesh_engine import initialize_mesh_engine
+from fespp_on_trame.app.core.fespp_engine import initialize_fespp_engine
 from fespp_on_trame.app.io.http import download_file_from_url
 from fespp_on_trame.app.ui.view import ui
 from fespp_on_trame.constants import TRAME_APP_TITLE
@@ -60,7 +60,7 @@ class App:
         else:
             self.mode = "local_file"
 
-        initialize_mesh_engine(
+        initialize_fespp_engine(
             server,
             fespp_plugin_path=fespp_plugin_path,
         )

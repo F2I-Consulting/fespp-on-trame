@@ -9,6 +9,9 @@ from fespp_on_trame.constants import TRAME_APP_TITLE, PUBLIC_PATH
 
 from trame.assets.local import LocalFileManager
 
+import fespp_on_trame.app.utils.fespp_selection as fespp_selection
+import fespp_on_trame.app.utils.fespp_active as fespp_active
+
 server = get_server()
 state = server.state
 
@@ -19,33 +22,37 @@ state.setdefault("ui_select_node_reservoir", [])
 state.setdefault("ui_select_node_surface", [])
 state.setdefault("ui_select_node_well", [])
 
-# -----------------------------------------------------------------------------
-# common def
-# -----------------------------------------------------------------------------
-def find_parent_id(tree, node_id) -> None:
-    for item in tree:
-        if item.get("id") == node_id:
-            return item["parent_id"]
-        elif item.get("children"):
-            return find_parent_id(item["children"], node_id)
-    return None
+state.setdefault("active_node_reservoir", [])
+state.setdefault("active_node_surface", [])
+state.setdefault("active_node_well", [])
 
-def find_item_node_id(tree, node_id) -> None:
-    for item in tree:
-        if item.get("id") == node_id:
-            return item
-    return None
-
-def node_id_to_path(tree, node_id) -> str:
-    for node in tree:
-        if node.get("id") == node_id:
-            return node.get("path")
-        elif node.get("children"):
-            path = node_id_to_path(node["children"], node_id)
-            if path:
-                return path
-    return None
-
+def attribut_node_reservoir(node_id):
+    server.state.active_node_reservoir = node_id
+    print("attribut_node_reservoir=>",server.state.active_node_reservoir)
+    #return fespp_active.attribut_node_reservoir()
+    return vuetify3.VCardText(
+            f"Active Node: {node_id}",
+            classes="text-center",
+        )
+    
+def attribut_node_surface(node_id):
+    server.state.active_node_surface = node_id
+    print("attribut_node_surface=>",server.state.active_node_surface)
+    #return fespp_active.attribut_node_surface()
+    return vuetify3.VCardText(
+            f"Active Node: {node_id}",
+            classes="text-center",
+        )
+    
+def attribut_node_well(node_id):
+    server.state.active_node_well = node_id
+    print("attribut_node_well=>",server.state.active_node_well)
+    #return fespp_active.attribut_node_well()
+    return vuetify3.VCardText(
+            f"Active Node: {node_id}",
+            classes="text-center",
+        )
+    
 # -----------------------------------------------------------------------------
 # default Card
 # -----------------------------------------------------------------------------
@@ -74,16 +81,6 @@ def create_card(title, icon, height=None):
         else:
             return vuetify3.VCardText(style="overflow-y: auto;")
 
-# -----------------------------------------------------------------------------
-# Attribut Node Card
-# -----------------------------------------------------------------------------
-def Attribut_Node(active_node):
-    """return a VCardText display active node."""
-    return vuetify3.VCardText(
-        f"Active Node: {active_node}",
-        classes="text-center",
-    )
-    
 # -----------------------------------------------------------------------------
 # treeview management
 # -----------------------------------------------------------------------------
@@ -121,88 +118,34 @@ def Attribut_Node(active_node):
         '''
 
 # -----------------------------------------------------------------------------
-# Fespp Selector management (each tree can have its own management)
-# -----------------------------------------------------------------------------
-# load fespp selector with reservoir treeview selection
-def load_fespp_selector_reservoir(**kwargs) -> None:
-    # init
-    server.state.fespp_data_selectors=[]
-    path_selectors = []
-
-    treeview = server.state.data_hierarchy_reservoir.copy()
-    list_selected = server.state.ui_select_node_reservoir.copy()
-
-    # switch node_id to path
-    for node_id in list_selected:
-        path = node_id_to_path(treeview, node_id)
-        if path:
-            path_selectors.append(path)
-
-    server.state.fespp_data_selectors_reservoir = path_selectors.copy()
-
-    server.state.fespp_data_selectors = server.state.fespp_data_selectors_reservoir
-    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_surface)
-    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_well)
-
-# load fespp selector with surface treeview selection
-def load_fespp_selector_surface(**kwargs) -> None:
-    # init
-    server.state.fespp_data_selectors=[]
-    path_selectors = []
-
-    treeview = server.state.data_hierarchy_surface.copy()
-    list_selected = server.state.ui_select_node_surface.copy()
-
-    # switch node_id to path
-    for node_id in list_selected:
-        path = node_id_to_path(treeview, node_id)
-        if path:
-            path_selectors.append(path)
-
-    server.state.fespp_data_selectors_surface = path_selectors.copy()
-
-    server.state.fespp_data_selectors = server.state.fespp_data_selectors_surface
-    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_reservoir)
-    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_well)
-
-# load fespp selector with well treeview selection
-def load_fespp_selector_well(**kwargs) -> None:
-    # init
-    server.state.fespp_data_selectors=[]
-    path_selectors = []
-
-    treeview = server.state.data_hierarchy_well.copy()
-    list_selected = server.state.ui_select_node_well.copy()
-
-    # switch node_id to path
-    for node_id in list_selected:
-        path = node_id_to_path(treeview, node_id)
-        if path:
-            path_selectors.append(path)
-
-    server.state.fespp_data_selectors_well = path_selectors.copy()
-
-    server.state.fespp_data_selectors = server.state.fespp_data_selectors_well
-    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_surface)
-    server.state.fespp_data_selectors.extend(server.state.fespp_data_selectors_reservoir)
-
-# -----------------------------------------------------------------------------
 # change of state
 # -----------------------------------------------------------------------------
 @server.state.change("ui_select_node_reservoir")
-def on_select_node_change(ui_select_node_reservoir, **kwargs):
-    print("ui_select_node_reservoir")
-    load_fespp_selector_reservoir()
+def on_select_node_reservoir_change(ui_select_node_reservoir, **kwargs):
+    print("on_select_node_reservoir_change")
+    fespp_selection.load_fespp_selector_reservoir()
     
 @server.state.change("ui_select_node_surface")
-def on_select_node_change(ui_select_node_surface, **kwargs):
-    print("ui_select_node_surface")
-    load_fespp_selector_surface()
+def on_select_node_surface_change(ui_select_node_surface, **kwargs):
+    print("on_select_node_surface_change")
+    fespp_selection.load_fespp_selector_surface()
     
 @server.state.change("ui_select_node_well")
-def on_select_node_change(ui_select_node_well, **kwargs):
-    print("ui_select_node_well")
-    load_fespp_selector_well()
+def on_select_node_well_change(ui_select_node_well, **kwargs):
+    print("on_select_node_well_change")
+    fespp_selection.load_fespp_selector_well()
+    
+@server.state.change("active_node_reservoir")
+def on_active_node_reservoir_change(active_node_reservoir, **kwargs):
+    attribut_node_reservoir(active_node_reservoir)
+    
+@server.state.change("active_node_surface")
+def on_active_node_surface_change(active_node_surface, **kwargs):
+    attribut_node_surface(active_node_surface)
+    
+@server.state.change("active_node_well")
+def on_active_node_well_change(active_node_well, **kwargs):
+    attribut_node_well(active_node_well)
     
 # -----------------------------------------------------------------------------
 # General UI
@@ -245,10 +188,10 @@ def ui(server: Server, **kwargs) -> None:
                             item_value="id",
                             items=("data_hierarchy_reservoir", server.state.data_hierarchy_reservoir),
                             # activation logic
-                            activated=("active_node", []),
+                            activated=("active_node_reservoir", []),
                             activatable=True,
                             active_strategy="single-independent",
-                            update_activated="active_node = $event",
+                            update_activated="active_node_reservoir = $event",
                             color="primary",
                             open_on_click=False,
                             # selection logic
@@ -259,11 +202,11 @@ def ui(server: Server, **kwargs) -> None:
                         )
                     # Attribut Node CARD
                     with create_card(
-                        "Node Attribut",
+                        "Node Attribute",
                         "mdi-information",
                         "30vh"
                     ):
-                        Attribut_Node("{{ active_node }}")
+                        attribut_node_reservoir("{{ active_node_reservoir }}")
                     
                 with vuetify3.VWindowItem(value="surface"):
               # Treeview CARD
@@ -280,10 +223,10 @@ def ui(server: Server, **kwargs) -> None:
                             item_value="id",
                             items=("data_hierarchy_surface", server.state.data_hierarchy_surface),
                             # activation logic
-                            activated=("active_node", []),
+                            activated=("active_node_surface", []),
                             activatable=True,
                             active_strategy="single-independent",
-                            update_activated="active_node = $event",
+                            update_activated="active_node_surface = $event",
                             color="primary",
                             open_on_click=False,
                             # selection logic
@@ -298,7 +241,7 @@ def ui(server: Server, **kwargs) -> None:
                         "mdi-information",
                         "30vh"
                     ):
-                        Attribut_Node("{{ active_node }}")
+                        attribut_node_surface("{{ active_node_surface }}")
                 
                 with vuetify3.VWindowItem(value="well"):
                     # Treeview CARD
@@ -315,10 +258,10 @@ def ui(server: Server, **kwargs) -> None:
                             item_value="id",
                             items=("data_hierarchy_well", server.state.data_hierarchy_well),
                             # activation logic
-                            activated=("active_node", []),
+                            activated=("active_node_well", []),
                             activatable=True,
                             active_strategy="single-independent",
-                            update_activated="active_node = $event",
+                            update_activated="active_node_well = $event",
                             color="primary",
                             open_on_click=False,
                             # selection logic
@@ -333,7 +276,7 @@ def ui(server: Server, **kwargs) -> None:
                         "mdi-information",
                         "30vh"
                     ):
-                        Attribut_Node("{{ active_node }}")
+                        attribut_node_well("{{ active_node_well }}")
 
         with layout.content:
             with vuetify3.VContainer(

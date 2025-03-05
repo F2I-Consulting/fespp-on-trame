@@ -16,7 +16,7 @@ def get_epc_collector() -> Any:
 def get_render_view() -> Any:
     return pvsimple.GetActiveViewOrCreate("RenderView")
 
-def initialize_mesh_engine(
+def initialize_fespp_engine(
     server: Server, *, fespp_plugin_path: Path
 ) -> None:
     state = server.state
@@ -33,10 +33,12 @@ def initialize_mesh_engine(
     state.setdefault("fespp_data_selectors", [])
     state.setdefault("coloring_arrays", [])
     state.setdefault("selected_coloring_array", "Solid Color")
-
+    
     @controller.set("load_epc_file")
     def load_epc_file(epc_file_path: str) -> None:
 
+        state.fespp_load_status = True
+        
         # create EPC collector Source
         collector = pvsimple.EPCCollector(
             registrationName=EPC_COLLECTOR_GUI_NAME
@@ -64,15 +66,19 @@ def initialize_mesh_engine(
         if not collector:
             return
 
-        print("put Fespp -> ", server.state.fespp_data_selectors)
         collector.SetPropertyWithName('Selectors',server.state.fespp_data_selectors)
-        print("get Fespp -> ", collector.Selectors)
+
+        print(collector.ListProperties())
+        
+        collector.ApplyColors
         
         server.controller.view_reset_camera()
         server.controller.view_update()
-        
+
         pvsimple.Show(proxy=get_epc_collector(), view=get_render_view())
 
+
+    # create the treeview structure from the FESPP vtkdatasembly
     @controller.set("update_data_information")
     def update_data_information() -> None:
         collector = get_epc_collector()
@@ -173,5 +179,4 @@ def initialize_mesh_engine(
                 
     @state.change("fespp_data_selectors")
     def on_selected_data_changed(**kwargs) -> None:
-        print("Fespp Selectors changed:", server.state.fespp_data_selectors)
         update_data_selectors()
