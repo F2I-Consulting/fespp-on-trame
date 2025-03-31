@@ -112,18 +112,19 @@ class IjkGrid:
 
             if property_label != self._label: # => is a property
                 array_type = self.color_array_type(property_label)
-                fespp_engine.get_representation(self._src_slicer_i).ColorArrayName(array_type,property_label)
-                fespp_engine.get_representation(self._src_slicer_j).ColorArrayName(array_type,property_label)
-                fespp_engine.get_representation(self._src_slicer_k).ColorArrayName(array_type,property_label)
-                fespp_engine.get_representation(self._src_slicer_volume).ColorArrayName(array_type,property_label)
-                lut_i = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_i))
-                lut_j = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_j))
-                lut_k = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_k))
-                lut_volume = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_volume))
-                pvsimple.GetScalarBar(ctf=lut_i, view=pvsimple.GetActiveView()).Visibility = True
-                pvsimple.GetScalarBar(ctf=lut_j, view=pvsimple.GetActiveView()).Visibility = True
-                pvsimple.GetScalarBar(ctf=lut_k, view=pvsimple.GetActiveView()).Visibility = True
-                pvsimple.GetScalarBar(ctf=lut_volume, view=pvsimple.GetActiveView()).Visibility = True
+                if array_type is not None:
+                    fespp_engine.get_representation(self._src_slicer_i).ColorArrayName(array_type,property_label)
+                    fespp_engine.get_representation(self._src_slicer_j).ColorArrayName(array_type,property_label)
+                    fespp_engine.get_representation(self._src_slicer_k).ColorArrayName(array_type,property_label)
+                    fespp_engine.get_representation(self._src_slicer_volume).ColorArrayName(array_type,property_label)
+                    lut_i = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_i))
+                    lut_j = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_j))
+                    lut_k = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_k))
+                    lut_volume = pvsimple.GetColorTransferFunction(property_label, representation=fespp_engine.get_representation(self._src_slicer_volume))
+                    pvsimple.GetScalarBar(ctf=lut_i, view=pvsimple.GetActiveView()).Visibility = True
+                    pvsimple.GetScalarBar(ctf=lut_j, view=pvsimple.GetActiveView()).Visibility = True
+                    pvsimple.GetScalarBar(ctf=lut_k, view=pvsimple.GetActiveView()).Visibility = True
+                    pvsimple.GetScalarBar(ctf=lut_volume, view=pvsimple.GetActiveView()).Visibility = True
                 self._label = property_label
                 
             self._src_slicer_i.UpdatePipelineInformation()

@@ -27,7 +27,7 @@ RUN bash /root/build-fesapi-dependencies.sh
 RUN bash /root/build-fesapi.sh
 
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
-RUN bash /root/build-fespp.sh
+RUN ls && bash /root/build-fespp.sh && ls
 
 FROM --platform=linux/amd64 kitware/trame:py3.10-1.2-glvnd-runtime-ubuntu22.04 AS runtime
 
