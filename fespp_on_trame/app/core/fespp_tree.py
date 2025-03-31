@@ -17,6 +17,8 @@ class Tree():
         self._data_hierarchy_well = []
         self._data_hierarchy_surface = []
 
+        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PolylineSet', 'TriangulatedSet']
+        
         def add_subtreeview_data(parent_id: int, child_index: int, treeview_type)-> None:
             node_id = self._data_assembly.GetChild(parent_id, child_index)
             node_label = None
@@ -209,3 +211,36 @@ class Tree():
     # -----------------------------------------------------------------------------
     def find_node_id(self, path) -> None:
         return self._data_assembly.GetFirstNodeByPath(path)
+
+    # -----------------------------------------------------------------------------
+    # find representation parent node_id  by node_id child
+    # -----------------------------------------------------------------------------
+    def find_representation_node(self, node_id) -> None:
+        if node_id == 0 or self._data_assembly is None:
+            return
+    
+        node_label = None
+        node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
+        node_type = node_label[:node_label.find("_")]
+
+        if node_type:
+            if node_type in self._representation_type_in:
+                return node_id
+            else:
+                return self.find_representation_node(self._data_assembly.GetParent(node_id))
+        return
+    
+    # -----------------------------------------------------------------------------
+    # find representation type by node_id
+    # -----------------------------------------------------------------------------
+    def find_representation_type(self, node_id) -> None:
+        if node_id is not None:
+            type = self.find_type(node_id)
+            if type is not None:
+                if type in self._representation_type_in:
+                    return type
+                else:
+                    rep_node_id = self.find_representation_node(node_id)
+                    if rep_node_id is not None:
+                        return self.find_type(rep_node_id)
+        return

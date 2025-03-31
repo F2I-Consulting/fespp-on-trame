@@ -16,10 +16,7 @@ class Activator:
         def on_ui_active_node_reservoir_change(ui_active_node_reservoir, **kwargs):
             if ui_active_node_reservoir and len(ui_active_node_reservoir) > 0:
                 node_id = ui_active_node_reservoir[0]
-                type_node = state.tree.find_type(node_id)
-                
-                #if type_node is not None and type_node == 'IjkGrid':
-                #    state.fespp_ijkgrid.ijkGrid(node_id)
+                type_node = state.tree.find_representation_type(node_id)
                 
                 state.update({
                     "ui_active_node_reservoir_type": type_node,
