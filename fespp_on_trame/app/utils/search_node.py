@@ -48,14 +48,28 @@ def node_id_to_title(tree, node_id) -> str:
 # find node id -> type
 # -----------------------------------------------------------------------------
 def node_id_to_type(tree, node_id) -> str:
-    print("1->", tree)
     for node in tree:
         if node.get("id") == node_id:
-            print("2->", node)
             return node.get("type")
         elif node.get("children"):
-            print("3->", node["children"])
             type = node_id_to_type(node["children"], node_id)
             if type:
                 return type
     return None
+
+# -----------------------------------------------------------------------------
+# find ijkgrid parent node id
+# -----------------------------------------------------------------------------
+def find_ijkgrid(tree, node_id) -> None:
+    if node_id == 0:
+        return
+    
+    node_type = node_id_to_type(tree, node_id)
+    if node_type:
+        if node_type in [ 'IjkGrid' ]:
+            return node_id
+        else:
+            parent_id = find_parent_id(tree, node_id)
+            if parent_id:
+                return find_ijkgrid(tree, parent_id)
+    return

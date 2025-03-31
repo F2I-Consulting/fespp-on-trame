@@ -4,18 +4,46 @@ import json
 # need the * import for grid extractor plugin
 from paraview.simple import *
 from paraview import simple as pvsimple
-from collections import deque
+from trame.app import get_server
 from trame_server import Server
 from pathlib import Path
 
+from fespp_on_trame.app.core.fespp_tree import Tree
+from fespp_on_trame.app.core.reservoir.fespp_ijkgrid import IjkGrid
+
 EPC_COLLECTOR_GUI_NAME = "EPCCollector"
+
+# extract => hide block in EPCCOLLECTOR
+def epc_collector_extract(name):
+    epc_collector = get_epc_collector()
+    epc_collector.SetPropertyWithName('objecttoextract', name)
 
 def get_epc_collector() -> Any:
     return pvsimple.FindSource(EPC_COLLECTOR_GUI_NAME)
 
+def get_source(source_name) -> Any:
+    return pvsimple.FindSource(source_name)
+
+def delete_source(source) -> Any:
+    pvsimple.Delete(source)
+
+def exist_src(source_name) -> Any:
+    return pvsimple.FindSource(source_name) is not None
+
 def get_render_view() -> Any:
     return pvsimple.GetActiveViewOrCreate("RenderView")
 
+def get_representation(source) -> Any:
+    render_view = get_render_view()
+    if render_view:
+        return pvsimple.GetDisplayProperties(proxy=source, view=render_view)
+    else:
+        return None
+
+def create_ExplicitStructuredGridCrop_source(p_name, p_input):
+    pvsimple.ExplicitStructuredGridCrop(registrationName=p_name, Input=p_input)
+    return get_source(p_name)
+    
 def initialize_fespp_engine(
     server: Server, *, fespp_plugin_path: Path
 ) -> None:
@@ -23,160 +51,70 @@ def initialize_fespp_engine(
     controller = server.controller
 
     pvsimple.LoadPlugin(str(fespp_plugin_path))
+    pvsimple.LoadPlugin('/opt/paraview/lib/paraview-5.13/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.so')
 
-    state.setdefault("data_hierarchy_surface", [])
-    state.setdefault("data_hierarchy_well", [])
-    state.setdefault("data_hierarchy_reservoir", [])
-    state.setdefault("fespp_data_selectors_reservoir", [])
-    state.setdefault("fespp_data_selectors_surface", [])
-    state.setdefault("fespp_data_selectors_well", [])
-    state.setdefault("fespp_data_selectors", [])
-    state.setdefault("coloring_arrays", [])
-    state.setdefault("selected_coloring_array", "Solid Color")
+# data share for selection
+    state.setdefault("fespp_data_selectors", []) # node path to selector for load FESPP
+    state.setdefault("fespp_selection_status", 'Empty') # Empty | Change | Apply
+
+    state.setdefault("block_selector", []) # node path to BlockSelector for representation
+    state.setdefault("object_to_extract", []) # node name list to extract in new source
     
+    state.setdefault("tree", Tree(None))
+    state.setdefault("ijk_grid", IjkGrid())
+    state.flush()
+        
+
     @controller.set("load_epc_file")
     def load_epc_file(epc_file_path: str) -> None:
-
-        state.fespp_load_status = True
-        
         # create EPC collector Source
-        collector = pvsimple.EPCCollector(
-            registrationName=EPC_COLLECTOR_GUI_NAME
-        )
-        epcCollectorSource = pvsimple.GetActiveSource()
+        collector = pvsimple.EPCCollector(registrationName=EPC_COLLECTOR_GUI_NAME)
         # add epc_file_path to EPC Collector Source
         collector.SetPropertyWithName("Files", epc_file_path)
         collector.UpdatePipelineInformation()
-        
-        server.controller.update_data_information()
-
+        controller.update_data_information()
         state.file_loaded = True
-
-    @controller.set("define_slicing_pipeline")
-    def define_slicing_pipeline() -> None:
-        pass
-        
-    @state.change("slices_range_i", "slices_range_j", "slices_range_k")
-    def update_slice(slices_range_i, slices_range_j, slices_range_k, **kwargs):
-        pass
-
-    def update_data_selectors() -> None:
-        collector = get_epc_collector()
-
-        if not collector:
-            return
-
-        collector.SetPropertyWithName('Selectors',server.state.fespp_data_selectors)
-
-        print(collector.ListProperties())
-        
-        collector.ApplyColors
-        
-        server.controller.view_reset_camera()
-        server.controller.view_update()
-
-        pvsimple.Show(proxy=get_epc_collector(), view=get_render_view())
-
 
     # create the treeview structure from the FESPP vtkdatasembly
     @controller.set("update_data_information")
     def update_data_information() -> None:
         collector = get_epc_collector()
         data_info = collector.GetDataInformation()
-        data_assembly = data_info.GetDataAssembly()
+        #state.data_assembly = data_info.GetDataAssembly()
+        state.tree = Tree(data_info.GetDataAssembly())
         
-        # init
-        w_data_hierarchy_reservoir = []
-        w_data_hierarchy_well = []
-        w_data_hierarchy_surface = []
-
-        def add_subtreeview_data(parent_id: int, child_index: int, treeview_type)-> None:
-            node_id = data_assembly.GetChild(parent_id, child_index)
-            node_label = None
-            node_label = data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-            node_title = node_label[node_label.find("_") + 1 :]
-            node_type = node_label[:node_label.find("_")]
-            node_path = data_assembly.GetNodePath(node_id)
-            
-            if treeview_type == "unknown":
-                if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
-                    treeview_type = "reservoir"
-                elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
-                    treeview_type = "well"
-                elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
-                    treeview_type = "surface"
-
-            data = {}
-                     
-            data["treeview"] = {}
-            data["treeview"]["parent_id"] = parent_id
-            data["treeview"]["id"] = node_id
-            data["treeview"]["title"] = node_title
-            data["treeview"]["path"] = node_path
-            data["treeview"]["type"] = node_type
-
-            data["treeview_type"] = treeview_type
-            
-            children_count = data_assembly.GetNumberOfChildren(node_id)
-            if children_count > 0:
-                data["treeview"]["children"]=[]
-                for i in range(children_count):
-                    subTreeview = add_subtreeview_data(node_id, i, treeview_type)
-                    data["treeview"]["children"].append(subTreeview["treeview"])
-                    data["treeview_type"] = subTreeview["treeview_type"]
-            return data
-        
-        root_id = 0
-        for i in range(data_assembly.GetNumberOfChildren(root_id)):
-            node_id = data_assembly.GetChild(root_id, i)
-            node_label = None
-            node_label = data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-            node_title=node_label[node_label.find("_") + 1 :]
-            node_type=node_label[:node_label.find("_")]
-            node_path = data_assembly.GetNodePath(node_id)
-            
-            treeview_type = "unknown"
-            if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
-                treeview_type = "reservoir"
-            elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
-                treeview_type = "well"
-            elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
-                treeview_type = "surface"
-
-            treeview = {}
-            treeview["parent_id"] = root_id
-            treeview["id"] = node_id
-            treeview["title"] = node_title
-            treeview["path"] = node_path
-            treeview["type"] = node_type
-
-            children_count = data_assembly.GetNumberOfChildren(node_id)
-            if children_count > 0:
-                treeview["children"]=[]
-                for i in range(children_count):
-                    subTreeview = add_subtreeview_data(node_id, i, treeview_type)
-                    treeview["children"].append(subTreeview["treeview"])
-                    treeview_type = subTreeview["treeview_type"]
-            
-                    if treeview_type == "reservoir":
-                        if treeview and treeview not in w_data_hierarchy_reservoir:
-                            w_data_hierarchy_reservoir.append(treeview)
-                    elif treeview_type == "well":
-                        if treeview and treeview not in w_data_hierarchy_well:
-                            w_data_hierarchy_well.append(treeview)
-                    elif treeview_type == "surface":
-                        if treeview and treeview not in w_data_hierarchy_surface:
-                            w_data_hierarchy_surface.append(treeview)
-                        
-        state.data_hierarchy_reservoir = list(w_data_hierarchy_reservoir)
-        state.data_hierarchy_well = list(w_data_hierarchy_well)
-        state.data_hierarchy_surface = list(w_data_hierarchy_surface)
-        state.dirty("data_hierarchy_reservoir")
-        state.dirty("data_hierarchy_well")
-        state.dirty("data_hierarchy_surface")
-        state.flush()
-        
-                
     @state.change("fespp_data_selectors")
-    def on_selected_data_changed(**kwargs) -> None:
-        update_data_selectors()
+    def on_change_fespp_data_selectors(**kwargs) -> None:
+        if state.fespp_selection_status != 'Change':
+            state.fespp_selection_status = 'Change'
+            state.flush()
+
+        collector = get_epc_collector()
+        if not collector:
+            return
+        
+        render_view=get_render_view()
+        
+        # load node path selected
+        collector.SetPropertyWithName('Selectors', state.fespp_data_selectors)
+        #collector.ApplyColors
+        collector.UpdatePipelineInformation()
+        pvsimple.Show(proxy=get_epc_collector(), view=render_view)
+        pvsimple.Render(view=render_view)
+
+        # hide in vtkPartitionedDataSet: extracted object
+        representation = get_representation(collector)
+        representation.Assembly='Assembly'
+
+        state.fespp_selection_status = 'Apply'
+
+        controller.view_reset_camera()
+        controller.view_update()
+        pvsimple.Show(proxy=get_epc_collector(), view=render_view)
+
+    @state.change("fespp_selection_status")
+    def on_change_fespp_selection_status(**kwargs):
+        if state.fespp_selection_status == 'Apply':
+            if len(state.ui_select_node_reservoir) > 0:
+                state.ijk_grid.set_node_id(state.ui_select_node_reservoir[0])
+        

@@ -145,8 +145,6 @@ if __name__ == "__main__":
         else:
             app_server.controller.load_epc_file(str(app.local_epc_file_path))
 
-        app_server.controller.define_slicing_pipeline()
-
         ui(app.server)
 
         app.server.start()

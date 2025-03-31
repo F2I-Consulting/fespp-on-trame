@@ -9,50 +9,17 @@ from fespp_on_trame.constants import TRAME_APP_TITLE, PUBLIC_PATH
 
 from trame.assets.local import LocalFileManager
 
-import fespp_on_trame.app.utils.fespp_selection as fespp_selection
-import fespp_on_trame.app.utils.fespp_active as fespp_active
+import fespp_on_trame.app.core.fespp_selection as fespp_selection
+import fespp_on_trame.app.core.fespp_active as fespp_active
+import fespp_on_trame.app.utils.search_node as search_node
+import fespp_on_trame.app.ui.panel.slicers as panel_slicers
+#import fespp_on_trame.app.core.fespp_ijkgrid as fespp_ijkgrid
 
 server = get_server()
 state = server.state
 
 vuetify3.enable_lab()
 
-# init
-state.setdefault("ui_select_node_reservoir", [])
-state.setdefault("ui_select_node_surface", [])
-state.setdefault("ui_select_node_well", [])
-
-state.setdefault("active_node_reservoir", [])
-state.setdefault("active_node_surface", [])
-state.setdefault("active_node_well", [])
-
-def attribut_node_reservoir(node_id):
-    server.state.active_node_reservoir = node_id
-    print("attribut_node_reservoir=>",server.state.active_node_reservoir)
-    #return fespp_active.attribut_node_reservoir()
-    return vuetify3.VCardText(
-            f"Active Node: {node_id}",
-            classes="text-center",
-        )
-    
-def attribut_node_surface(node_id):
-    server.state.active_node_surface = node_id
-    print("attribut_node_surface=>",server.state.active_node_surface)
-    #return fespp_active.attribut_node_surface()
-    return vuetify3.VCardText(
-            f"Active Node: {node_id}",
-            classes="text-center",
-        )
-    
-def attribut_node_well(node_id):
-    server.state.active_node_well = node_id
-    print("attribut_node_well=>",server.state.active_node_well)
-    #return fespp_active.attribut_node_well()
-    return vuetify3.VCardText(
-            f"Active Node: {node_id}",
-            classes="text-center",
-        )
-    
 # -----------------------------------------------------------------------------
 # default Card
 # -----------------------------------------------------------------------------
@@ -82,78 +49,16 @@ def create_card(title, icon, height=None):
             return vuetify3.VCardText(style="overflow-y: auto;")
 
 # -----------------------------------------------------------------------------
-# treeview management
-# -----------------------------------------------------------------------------
-# NOT USE => specific selection => selection-strategy="independent"
-'''def treeview_change(treeview_type, **kwargs) -> None:
-    treeview = []
-    list_selected = []
-    if treeview_type == "reservoir":
-        treeview = server.state.data_hierarchy_reservoir.copy()
-        list_selected = server.state.ui_select_node_reservoir.copy()
-    elif treeview_type == "surface":
-        treeview = server.state.data_hierarchy_surface.copy()
-        list_selected = server.state.ui_select_node_surface.copy()
-    else:
-        treeview = server.state.data_hierarchy_well.copy()
-        list_selected = server.state.ui_select_node_well.copy()
-    
-    if not isinstance(list_selected, list):
-        print("Error: list_selected is not a list:", list_selected)
-        return
-
-    select_node = list_selected.copy()
-    for node_id in select_node:
-        parent_id = find_parent_id(treeview, node_id)
-        if parent_id and parent_id not in select_node:
-            select_node.append(parent_id)
-
-    select_node.sort(reverse=True)
-    if treeview_type == "reservoir":
-        server.state.ui_select_node_reservoir = select_node.copy()
-    elif treeview_type == "surface":
-        server.state.ui_select_node_surface = select_node.copy()
-    else:
-        server.state.ui_select_node_well = select_node.copy()
-        '''
-
-# -----------------------------------------------------------------------------
-# change of state
-# -----------------------------------------------------------------------------
-@server.state.change("ui_select_node_reservoir")
-def on_select_node_reservoir_change(ui_select_node_reservoir, **kwargs):
-    print("on_select_node_reservoir_change")
-    fespp_selection.load_fespp_selector_reservoir()
-    
-@server.state.change("ui_select_node_surface")
-def on_select_node_surface_change(ui_select_node_surface, **kwargs):
-    print("on_select_node_surface_change")
-    fespp_selection.load_fespp_selector_surface()
-    
-@server.state.change("ui_select_node_well")
-def on_select_node_well_change(ui_select_node_well, **kwargs):
-    print("on_select_node_well_change")
-    fespp_selection.load_fespp_selector_well()
-    
-@server.state.change("active_node_reservoir")
-def on_active_node_reservoir_change(active_node_reservoir, **kwargs):
-    attribut_node_reservoir(active_node_reservoir)
-    
-@server.state.change("active_node_surface")
-def on_active_node_surface_change(active_node_surface, **kwargs):
-    attribut_node_surface(active_node_surface)
-    
-@server.state.change("active_node_well")
-def on_active_node_well_change(active_node_well, **kwargs):
-    attribut_node_well(active_node_well)
-    
-# -----------------------------------------------------------------------------
 # General UI
 # -----------------------------------------------------------------------------
 def ui(server: Server, **kwargs) -> None:
     # Get logo from public folder
     localFileManager = LocalFileManager(PUBLIC_PATH)
     localFileManager.url("logo", "logo.png")
+
+    # FESPP engine
+    fespp_selection.Selector()
+    fespp_active.Activator()
 
     with SinglePageWithDrawerLayout(server, width=450) as layout:
         layout.title.set_text(TRAME_APP_TITLE)
@@ -176,7 +81,7 @@ def ui(server: Server, **kwargs) -> None:
                 with vuetify3.VWindowItem(value="reservoir"):
                     # Treeview CARD
                     with create_card(
-                        "Project treeview",
+                        "Data Explorer",
                         "mdi-file-tree",
                         "60vh"
                     ):
@@ -186,12 +91,12 @@ def ui(server: Server, **kwargs) -> None:
                             density="compact",
                             # data
                             item_value="id",
-                            items=("data_hierarchy_reservoir", server.state.data_hierarchy_reservoir),
+                            items=("ui_subtree_reservoir", state.ui_subtree_reservoir),
                             # activation logic
-                            activated=("active_node_reservoir", []),
+                            activated=("ui_active_node_reservoir", []),
                             activatable=True,
                             active_strategy="single-independent",
-                            update_activated="active_node_reservoir = $event",
+                            update_activated="ui_active_node_reservoir = $event",
                             color="primary",
                             open_on_click=False,
                             # selection logic
@@ -200,13 +105,16 @@ def ui(server: Server, **kwargs) -> None:
                             select_strategy="single-leaf",
                             update_selected="ui_select_node_reservoir = $event",
                         )
+                            
                     # Attribut Node CARD
                     with create_card(
-                        "Node Attribute",
+                        "Data Apps",
                         "mdi-information",
                         "30vh"
                     ):
-                        attribut_node_reservoir("{{ active_node_reservoir }}")
+                        with vuetify3.VExpansionPanels(style="display: initial;"):
+                            with html.Div(v_if=("ui_active_node_reservoir_type === 'IjkGrid'",)):
+                                panel_slicers.SlicerControls()
                     
                 with vuetify3.VWindowItem(value="surface"):
               # Treeview CARD
@@ -221,12 +129,12 @@ def ui(server: Server, **kwargs) -> None:
                             density="compact",
                             # data
                             item_value="id",
-                            items=("data_hierarchy_surface", server.state.data_hierarchy_surface),
+                            items=("ui_subtree_surface", state.ui_subtree_surface),
                             # activation logic
-                            activated=("active_node_surface", []),
+                            activated=("ui_active_node_surface", []),
                             activatable=True,
                             active_strategy="single-independent",
-                            update_activated="active_node_surface = $event",
+                            update_activated="ui_active_node_surface = $event",
                             color="primary",
                             open_on_click=False,
                             # selection logic
@@ -237,11 +145,11 @@ def ui(server: Server, **kwargs) -> None:
                         )
                     # Attribut Node CARD
                     with create_card(
-                        "Node Attribut",
+                        "Node panel",
                         "mdi-information",
                         "30vh"
                     ):
-                        attribut_node_surface("{{ active_node_surface }}")
+                        vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
                 
                 with vuetify3.VWindowItem(value="well"):
                     # Treeview CARD
@@ -256,12 +164,12 @@ def ui(server: Server, **kwargs) -> None:
                             density="compact",
                             # data
                             item_value="id",
-                            items=("data_hierarchy_well", server.state.data_hierarchy_well),
+                            items=("ui_subtree_well", state.ui_subtree_well),
                             # activation logic
-                            activated=("active_node_well", []),
+                            activated=("ui_active_node_well", []),
                             activatable=True,
                             active_strategy="single-independent",
-                            update_activated="active_node_well = $event",
+                            update_activated="ui_active_node_well = $event",
                             color="primary",
                             open_on_click=False,
                             # selection logic
@@ -272,11 +180,11 @@ def ui(server: Server, **kwargs) -> None:
                         )
                     # Attribut Node CARD
                     with create_card(
-                        "Node Attribut",
+                        "Node panel",
                         "mdi-information",
                         "30vh"
                     ):
-                        attribut_node_well("{{ active_node_well }}")
+                        vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
 
         with layout.content:
             with vuetify3.VContainer(
@@ -298,3 +206,4 @@ def ui(server: Server, **kwargs) -> None:
         layout.footer.hide()
 
         return layout
+
