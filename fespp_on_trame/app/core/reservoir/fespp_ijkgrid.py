@@ -17,6 +17,7 @@ class IjkGrid:
     def __init__(self):
         self._node_id = None
         self._label = None
+        self._property_path = None
             
         # paraview source
         self._src_extract_init = None
@@ -59,10 +60,9 @@ class IjkGrid:
             # create sources slicers
             #self._label = state.tree.find_label(self._node_id)
             fespp_engine.epc_collector_extract(state.tree.find_label(self._node_id))
-            blockSelectors = state.fespp_data_selectors.copy()
-            property_path = state.tree.find_path(node_id)
-            blockSelectors.remove(property_path)
-            fespp_engine.get_representation(fespp_engine.get_epc_collector()).BlockSelectors = blockSelectors
+            self._property_path = state.tree.find_path(node_id)
+
+
             self._src_extract_init = fespp_engine.get_source(state.tree.find_label(self._node_id))
             self._src_slicer_i = fespp_engine.create_ExplicitStructuredGridCrop_source('sliceri', self._src_extract_init)
             self._src_slicer_j = fespp_engine.create_ExplicitStructuredGridCrop_source('slicerj', self._src_extract_init)
@@ -144,7 +144,13 @@ class IjkGrid:
                 pvsimple.Hide(proxy=self._src_slicer_k)
             ctrl.view_update()
             pvsimple.Render(view=pvsimple.GetActiveView())
-            
+
+    def update_visibily(self): # change BlockSelectors 
+        if self._property_path is not None:
+            blockSelectors = state.fespp_data_selectors.copy()
+            blockSelectors.remove(self._property_path)
+            fespp_engine.get_representation(fespp_engine.get_epc_collector()).BlockSelectors = blockSelectors
+        
     def get_source_slider_i(self):
         return self._src_slicer_i
 

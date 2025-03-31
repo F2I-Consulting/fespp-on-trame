@@ -105,6 +105,7 @@ def initialize_fespp_engine(
         # hide in vtkPartitionedDataSet: extracted object
         representation = get_representation(collector)
         representation.Assembly='Assembly'
+        state.ijk_grid.update_visibily()
 
         state.fespp_selection_status = 'Apply'
 
