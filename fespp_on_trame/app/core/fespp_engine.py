@@ -80,7 +80,6 @@ def initialize_fespp_engine(
     def update_data_information() -> None:
         collector = get_epc_collector()
         data_info = collector.GetDataInformation()
-        #state.data_assembly = data_info.GetDataAssembly()
         state.tree = Tree(data_info.GetDataAssembly())
         
     @state.change("fespp_data_selectors")

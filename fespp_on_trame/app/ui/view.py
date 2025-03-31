@@ -140,7 +140,7 @@ def ui(server: Server, **kwargs) -> None:
                             # selection logic
                             selected=("ui_select_node_surface", []),
                             selectable=True,
-                            select_strategy="single-leaf",
+                            select_strategy="classic",
                             update_selected="ui_select_node_surface = $event",
                         )
                     # Attribut Node CARD

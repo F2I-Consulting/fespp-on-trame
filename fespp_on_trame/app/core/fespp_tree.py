@@ -89,15 +89,15 @@ class Tree():
                         treeview["children"].append(subTreeview["treeview"])
                         treeview_type = subTreeview["treeview_type"]
                         # add subTree in type tree
-                        if treeview_type == "reservoir":
-                            if treeview and treeview not in self._data_hierarchy_reservoir:
-                                self._data_hierarchy_reservoir.append(treeview)
-                        elif treeview_type == "well":
-                            if treeview and treeview not in self._data_hierarchy_well:
-                                self._data_hierarchy_well.append(treeview)
-                        elif treeview_type == "surface":
-                            if treeview and treeview not in self._data_hierarchy_surface:
-                                self._data_hierarchy_surface.append(treeview)
+                if treeview_type == "reservoir":
+                    if treeview and treeview not in self._data_hierarchy_reservoir:
+                        self._data_hierarchy_reservoir.append(treeview)
+                elif treeview_type == "well":
+                    if treeview and treeview not in self._data_hierarchy_well:
+                        self._data_hierarchy_well.append(treeview)
+                elif treeview_type == "surface":
+                    if treeview and treeview not in self._data_hierarchy_surface:
+                        self._data_hierarchy_surface.append(treeview)
 
             state.ui_subtree_reservoir = list(self._data_hierarchy_reservoir)
             state.ui_subtree_well = list(self._data_hierarchy_well)
