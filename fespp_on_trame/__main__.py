@@ -120,17 +120,15 @@ if __name__ == "__main__":
                 epc_file_name = urlparse(app.remote_epc_file_location).path.split("/")[
                     -1
                 ]
-                # h5_file_name = urlparse(app.remote_h5_file_location).path.split("/")[
-                #     -1
-                # ]
+                h5_file_name = urlparse(app.remote_h5_file_location).path.split("/")[
+                    -1
+                ]
 
                 if not epc_file_name.endswith(".epc"):
                     epc_file_name = f"{epc_file_name}.epc"
 
-                # if not h5_file_name.endswith(".h5"):
-                #     h5_file_name = f"{h5_file_name}.h5"
-
-                h5_file_name = app.h5_file_name
+                if not h5_file_name.endswith(".h5"):
+                    h5_file_name = f"{h5_file_name}.h5"
 
                 epc_file_handle = stack.enter_context(
                     open(f"{temp_dir}/{epc_file_name}", "wb+")
