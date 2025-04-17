@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import json
@@ -10,6 +11,9 @@ from pathlib import Path
 
 from fespp_on_trame.app.core.fespp_tree import Tree
 from fespp_on_trame.app.core.reservoir.fespp_ijkgrid import IjkGrid
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 EPC_COLLECTOR_GUI_NAME = "EPCCollector"
 
@@ -63,7 +67,6 @@ def initialize_fespp_engine(
     state.setdefault("tree", Tree(None))
     state.setdefault("ijk_grid", IjkGrid())
     state.flush()
-        
 
     @controller.set("load_epc_file")
     def load_epc_file(epc_file_path: str) -> None:
@@ -75,12 +78,25 @@ def initialize_fespp_engine(
         controller.update_data_information()
         state.file_loaded = True
 
+    @controller.set("add_epc_file")
+    def add_epc_file(epc_file_path: str) -> None:
+        collector = get_epc_collector()
+        # add epc_file_path to EPC Collector Source
+        collector.SetPropertyWithName("Files", epc_file_path)
+        collector.UpdatePipelineInformation()
+        controller.update_data_information()
+        state.file_loaded = True
+        
     # create the treeview structure from the FESPP vtkdatasembly
     @controller.set("update_data_information")
     def update_data_information() -> None:
         collector = get_epc_collector()
-        data_info = collector.GetDataInformation()
-        state.tree = Tree(data_info.GetDataAssembly())
+        client_side_object = collector.GetClientSideObject()
+        if hasattr(client_side_object, "GetOutput"):
+            output = client_side_object.GetOutput()
+            if hasattr(output, "GetDataAssembly"):
+                assembly = output.GetDataAssembly()
+        state.tree = Tree(assembly)
         
     @state.change("fespp_data_selectors")
     def on_change_fespp_data_selectors(**kwargs) -> None:
