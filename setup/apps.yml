@@ -10,12 +10,10 @@ trame:
     - ${secret}
     - --server
     - --fespp-plugin-path
-    - /work/ttl/build-fespp/lib/paraview-5.13/plugins/Fespp/Fespp.so
+    - /work/ttl/install-fespp/lib/paraview-5.13/plugins/Fespp/Fespp.so
     - --local-epc-file-path
-    - /deploy/data/PETREL_IJK/PETREL_OLYMPUS_TRAME.epc
+    - /deploy/data/empty.epc
     - --remote-epc-file-location
     - ${remote_epc_file_location}
     - --remote-h5-file-location
     - ${remote_h5_file_location}
-    - --h5filename
-    - ${h5filename}

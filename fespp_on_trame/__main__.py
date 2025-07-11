@@ -6,9 +6,9 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import paraview.web.venv  # noqa: F401 # type: ignore # Needed to use ParaView with a venv
-from trame.app import get_server
 from trame.decorators import TrameApp
 from trame_server import Server
+from trame.app import get_server
 
 from fespp_on_trame.app.core.fespp_engine import initialize_fespp_engine
 from fespp_on_trame.app.io.http import download_file_from_url
@@ -29,7 +29,6 @@ class App:
     local_epc_file_path: Path
     remote_h5_file_location: str | None
     remote_epc_file_location: str | None
-    h5_file_name: str | None
     mode: Literal["remote_file", "local_file"]
 
     def __init__(
@@ -39,23 +38,17 @@ class App:
         fespp_plugin_path: Path,
         local_epc_file_path: Path,
         remote_h5_file_location: str | None,
-        remote_epc_file_location: str | None,
-        h5_file_name: str | None
+        remote_epc_file_location: str | None
     ):
         self.server = get_server(server, client_type="vue3")
-
         self.server.state.trame__title = TRAME_APP_TITLE
-
         self.local_epc_file_path = local_epc_file_path
-
         assert self.local_epc_file_path.exists()
 
         if remote_epc_file_location and remote_h5_file_location:
-            assert h5_file_name is not None
             assert remote_epc_file_location != remote_h5_file_location
             self.remote_epc_file_location = decode_url_base64(remote_epc_file_location)
             self.remote_h5_file_location = decode_url_base64(remote_h5_file_location)
-            self.h5_file_name = h5_file_name
             self.mode = "remote_file"
         else:
             self.mode = "local_file"
@@ -69,7 +62,6 @@ class App:
 def server_ready(**state):
     print("FESPP on TRAME Ready", flush=True)
     print("+" * 4096, flush=True)
-
 
 if __name__ == "__main__":
     app_server = get_server()
@@ -87,9 +79,6 @@ if __name__ == "__main__":
         "--remote-h5-file-location", dest="remote_h5_file_location"
     )
     app_server.cli.add_argument(
-        "--h5filename", dest="h5_file_name"
-    )
-    app_server.cli.add_argument(
         "--fespp-plugin-path",
         dest="fespp_plugin_path",
         required=True,
@@ -105,7 +94,6 @@ if __name__ == "__main__":
             local_epc_file_path=args.local_epc_file_path,
             remote_h5_file_location=args.remote_h5_file_location if args.remote_h5_file_location != r"${remote_h5_file_location}" else None,
             remote_epc_file_location=args.remote_epc_file_location if args.remote_epc_file_location != r"${remote_epc_file_location}" else None,
-            h5_file_name=args.h5_file_name if args.h5_file_name != r"${h5filename}" else None,
         )
 
         # Needed to define paraview view
@@ -141,7 +129,8 @@ if __name__ == "__main__":
                 download_file_from_url(app.remote_h5_file_location, h5_file_handle)
                 app_server.controller.load_epc_file(epc_file_handle.name)
         else:
-            app_server.controller.load_epc_file(str(app.local_epc_file_path))
+            pass
+            # app_server.controller.load_epc_file(str(app.local_epc_file_path))
 
         ui(app.server)
 

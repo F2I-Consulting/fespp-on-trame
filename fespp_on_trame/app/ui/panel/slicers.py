@@ -1,7 +1,5 @@
 from trame.app import get_server
-from paraview import simple  # type: ignore
 from trame.widgets import vuetify3 as vuetify3, html
-from trame_server import Server
 from typing import Literal
 
 server = get_server()
@@ -13,23 +11,23 @@ class SlicerControls(html.Div):
     def __init__(self):
         super().__init__(style="display: flex; align-items: center; width: auto;")
         
-        state.setdefault("current_range_i", [0, 0])  
-        state.setdefault("current_range_j", [0, 0])
-        state.setdefault("current_range_k", [0, 0])
-        state.setdefault("current_slices_i_active", False)
-        state.setdefault("current_slices_i", 0)
-        state.setdefault("current_slices_j_active", False)
-        state.setdefault("current_slices_j", 0)
-        state.setdefault("current_slices_k_active", False)
-        state.setdefault("current_slices_k", 0)
-        state.setdefault("current_slices_range_active", False)
-        state.setdefault("current_slices_range_i", [0, 0])
-        state.setdefault("current_slices_range_j", [0, 0])
-        state.setdefault("current_slices_range_k", [0, 0])
-        state.setdefault("current_slices_range_mode", "range")
+        state.setdefault("ui_range_i", [0, 0])  
+        state.setdefault("ui_range_j", [0, 0])
+        state.setdefault("ui_range_k", [0, 0])
+        state.setdefault("ui_slices_i_active", False)
+        state.setdefault("ui_slices_i", 0)
+        state.setdefault("ui_slices_j_active", False)
+        state.setdefault("ui_slices_j", 0)
+        state.setdefault("ui_slices_k_active", False)
+        state.setdefault("ui_slices_k", 0)
+        state.setdefault("ui_slices_range_active", False)
+        state.setdefault("ui_slices_range_i", [0, 0])
+        state.setdefault("ui_slices_range_j", [0, 0])
+        state.setdefault("ui_slices_range_k", [0, 0])
+        state.setdefault("ui_slices_range_mode", "range")
         
-        self._mode_var = f"current_slices_range_mode"
-        self._slices_range_active_var = f"current_slices_range_active"
+        self._mode_var = f"ui_slices_range_mode"
+        self._slices_range_active_var = f"ui_slices_range_active"
         
         with self:
             with vuetify3.VExpansionPanel(
@@ -53,8 +51,8 @@ class SlicerControls(html.Div):
                     self.Slider("k")
 
     def RangeSlider(self, index: Literal["i", "j", "k"]):
-        range_var = f"current_range_{index}"
-        slices_range_var = f"current_slices_range_{index}"
+        range_var = f"ui_range_{index}"
+        slices_range_var = f"ui_slices_range_{index}"
 
         vuetify3.VRangeSlider(
             v_if=(f"{self._mode_var} === 'range'"),
@@ -69,8 +67,8 @@ class SlicerControls(html.Div):
         )
 
     def Slider(self, index: Literal["i", "j", "k"]):
-        range_var = f"current_range_{index}"
-        slices_var = f"current_slices_{index}"
+        range_var = f"ui_range_{index}"
+        slices_var = f"ui_slices_{index}"
             
         vuetify3.VSlider(
             v_if=(f"{self._mode_var} === 'slice'"),

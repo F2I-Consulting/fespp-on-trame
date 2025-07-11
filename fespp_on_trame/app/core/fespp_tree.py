@@ -17,9 +17,9 @@ class Tree():
         self._data_hierarchy_well = []
         self._data_hierarchy_surface = []
 
-        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PolylineSet', 'TriangulatedSet']
+        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PolylineSet', 'TriangulatedSet', 'partial']
         
-        def add_subtreeview_data(parent_id: int, child_index: int, treeview_type)-> None:
+        def add_subtreeview_data(parent_id: int, child_index: int, treeview_type, disabled = False)-> None:
             node_id = self._data_assembly.GetChild(parent_id, child_index)
             node_label = None
             node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
@@ -34,27 +34,41 @@ class Tree():
                     treeview_type = "well"
                 elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
+                elif node_type in ['partial']:
+                    disabled = True
+                    node_supportType = None
+                    node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
+                    if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                        node_title = '!!!PARTIAL!!! '+ node_title
+                        treeview_type = "reservoir"
+                    elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                        node_title = node_label
+                        treeview_type = "well"
+                    elif node_supportType in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                        node_title = node_label
+                        treeview_type = "surface"
 
             data = {}
-
             data["treeview"] = {}
             data["treeview"]["parent_id"] = parent_id
             data["treeview"]["id"] = node_id
             data["treeview"]["title"] = node_title
             data["treeview"]["path"] = node_path
             data["treeview"]["type"] = node_type
-
+            if disabled: data["treeview"]["disabled"] = True
+            
             data["treeview_type"] = treeview_type
 
             children_count = self._data_assembly.GetNumberOfChildren(node_id)
             if children_count > 0:
                 data["treeview"]["children"]=[]
                 for i in range(children_count):
-                    subTreeview = add_subtreeview_data(node_id, i, treeview_type)
+                    subTreeview = add_subtreeview_data(node_id, i, treeview_type, disabled)
                     data["treeview"]["children"].append(subTreeview["treeview"])
                     data["treeview_type"] = subTreeview["treeview_type"]
             return data
 
+        disabled = False
         if self._data_assembly is not None:
             root_id = 0
             for i in range(data_assembly.GetNumberOfChildren(root_id)):
@@ -66,6 +80,7 @@ class Tree():
                 node_path = self._data_assembly.GetNodePath(node_id)
                 
                 # dispatch on reservoir/surface/well
+                treeview = {}
                 treeview_type = "unknown"
                 if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
                     treeview_type = "reservoir"
@@ -73,19 +88,33 @@ class Tree():
                     treeview_type = "well"
                 elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
+                elif node_type in ['partial']:
+                    disabled = True
+                    node_supportType = None
+                    node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
+                    treeview["disabled"] = True,
+                    if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                        node_title = '!!!PARTIAL!!! '+ node_title
+                        treeview_type = "reservoir"
+                    elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                        node_title = node_label
+                        treeview_type = "well"
+                    elif node_supportType in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                        node_title = node_label
+                        treeview_type = "surface"
                 # initialize node dict
-                treeview = {}
                 treeview["parent_id"] = root_id
                 treeview["id"] = node_id
                 treeview["title"] = node_title
                 treeview["path"] = node_path
                 treeview["type"] = node_type
+                if disabled: treeview["disabled"] = True
                 
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
                 if children_count > 0:
                     treeview["children"]=[]
                     for i in range(children_count):
-                        subTreeview = add_subtreeview_data(node_id, i, treeview_type)
+                        subTreeview = add_subtreeview_data(node_id, i, treeview_type, disabled)
                         treeview["children"].append(subTreeview["treeview"])
                         treeview_type = subTreeview["treeview_type"]
                         # add subTree in type tree

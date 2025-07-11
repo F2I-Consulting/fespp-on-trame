@@ -1,9 +1,7 @@
 dataclasses_json
 numpy
-paraview-trame-components
 trame
 trame-vuetify
 trame-vtk
-vtk
 wheel
 setuptools

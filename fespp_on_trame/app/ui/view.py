@@ -10,61 +10,57 @@ from fespp_on_trame.constants import TRAME_APP_TITLE, PUBLIC_PATH
 from trame.assets.local import LocalFileManager
 
 import fespp_on_trame.app.core.fespp_engine as fespp_engine
-import fespp_on_trame.app.core.fespp_selection as fespp_selection
-import fespp_on_trame.app.core.fespp_active as fespp_active
 import fespp_on_trame.app.ui.panel.slicers as panel_slicers
 #import fespp_on_trame.app.core.fespp_ijkgrid as fespp_ijkgrid
 
 import contextlib
 from fespp_on_trame.app.io.http import download_file_from_url
+from fespp_on_trame.app.io.drop_files import save_uploaded_files
 from tempfile import mkdtemp
-from urllib.parse import urlparse
+
 
 server = get_server()
 state = server.state
-ctrl = server.controller
+controller = server.controller
 
 vuetify3.enable_lab()
 
 state.dialog_visible = False
 state.execute_action = False
 
+class Representation:
+    Points = 0
+    Wireframe = 1
+    Surface = 2
+    SurfaceWithEdges = 3
+
 # Fonction pour exécuter une action spécifique
 @state.change("execute_action")
 def run_action(execute_action, **kwargs):
-    if execute_action and state.remote_epc_file_location and state.remote_h5_file_location:
+    if execute_action and state.remote_files_location:
+        list_url = state.remote_files_location.split('|')
         temp_dir = mkdtemp()
-
-        epc_file_name = urlparse(state.remote_epc_file_location).path.split("/")[
-            -1
-        ]
-        h5_file_name = urlparse(state.remote_h5_file_location).path.split("/")[
-            -1
-        ]
-
-        if not epc_file_name.endswith(".epc"):
-            epc_file_name = f"{epc_file_name}.epc"
-
-        if not h5_file_name.endswith(".h5"):
-            h5_file_name = f"{h5_file_name}.h5"
-
-        epc_file_handle = contextlib.ExitStack().enter_context(
-            open(f"{temp_dir}/{epc_file_name}", "wb+")
-        )
-        h5_file_handle = contextlib.ExitStack().enter_context(
-            open(f"{temp_dir}/{h5_file_name}", "wb+")
-        )
+        epc_paths = []
+        
+        for url in list_url:
+            file_name = download_file_from_url(url, temp_dir)
+        
+            if file_name.lower().endswith('.epc'):
+                epc_paths.append(file_name)
                 
-        download_file_from_url(state.remote_epc_file_location, epc_file_handle)
-        download_file_from_url(state.remote_h5_file_location, h5_file_handle)
-        
-        print(epc_file_handle)
-        
-        ctrl.add_epc_file(epc_file_handle.name)
+        for epc_path in epc_paths:
+            controller.load_epc_file(epc_path)
         
         state.execute_action = False
         state.remote_epc_file_location = None
         state.remote_h5_file_location = None
+        
+    elif execute_action and state.files:
+        epc_paths = save_uploaded_files(state.files)
+        for epc_path in epc_paths:
+            controller.load_epc_file(epc_path)
+        state.files = None
+    state.execute_action = False
 
                 
 # -----------------------------------------------------------------------------
@@ -103,10 +99,6 @@ def ui(server: Server, **kwargs) -> None:
     localFileManager = LocalFileManager(PUBLIC_PATH)
     localFileManager.url("logo", "logo.png")
 
-    # FESPP engine
-    fespp_selection.Selector()
-    fespp_active.Activator()
-
     with SinglePageWithDrawerLayout(server, width=450) as layout:
         layout.title.set_text(TRAME_APP_TITLE)
 
@@ -114,10 +106,54 @@ def ui(server: Server, **kwargs) -> None:
             vuetify3.VImg(src=localFileManager["logo"], height="35", width="35")
 
         with layout.toolbar:
-            with vuetify3.VContainer():
+            with vuetify3.VContainer(
+                classes="fill-height",
+            ):
                 vuetify3.VSpacer()
+                
+                with vuetify3.VBtn(icon=True, click=server.controller.view_reset_camera):
+                    vuetify3.VIcon("mdi-image-filter-center-focus", color="blue")
+                
+                with html.Div(style="width: 15%;"):
+                    vuetify3.VSelect(
+                        # Representation
+                        v_model=("ui_representation", "Surface"),
+                        items=(
+                            "representations",
+                            [
+                                "Points","Wireframe","Surface","Surface With Edges",
+                            ],
+                        ),
+                        label="Representation",
+                        hide_details=True,
+                        dense=True,
+                        outlined=True,
+                        color="blue",
+                        base_color="blue",
+                    )
+                with html.Div(style="width: 5%;"):
+                    vuetify3.VTextField(
+                        v_model=("ui_scale_z", 1.0),
+                        label="scale z",
+                        hide_details=True,
+                        dense=True,
+                        outlined=True,
+                        color="blue",
+                        base_color="blue",
+                        bg_color="white",
+                        reverse=True,
+                        type="number",
+                    )
+                    
+                vuetify3.VSpacer()
+                
+                with html.Div(style="width: 15%;"):
+                    vuetify3.VSpacer()
+                    
                 vuetify3.VBtn(
                     "Import files",
+                    variant="tonal",
+                    color="blue",
                     click="dialog_visible = true",
                 )
     
@@ -127,30 +163,26 @@ def ui(server: Server, **kwargs) -> None:
                 ):
                     with vuetify3.VCard():
                         vuetify3.VCardTitle("Import files")
-            
+
                         with vuetify3.VCardText():
                             with vuetify3.VRow(classes="my-3 mx-0"):
                                 with vuetify3.VCol(cols="9", classes="pa-0 pr-2"):
                                     vuetify3.VTextField(
                                         variant="outlined",
                                         prepend_icon="mdi-server",
-                                        label="Import epc file from_url",
-                                        v_model=("remote_epc_file_location", None),
+                                        label="Import from URLs",
+                                        v_model=("remote_files_location", None),
                                         density="comfortable",
-                                        placeholder="https://...",
+                                        placeholder="url separated with '&' character",
                                         hide_details="auto",
                                     )
                                 vuetify3.VDivider(classes="my-5")
-                                with vuetify3.VCol(cols="9", classes="pa-0 pr-2"):
-                                    vuetify3.VTextField(
-                                        variant="outlined",
-                                        prepend_icon="mdi-server",
-                                        label="Import h5 file from_url",
-                                        v_model=("remote_h5_file_location", None),
-                                        density="comfortable",
-                                        placeholder="https://...",
-                                        hide_details="auto",
-                                    )
+                                vuetify3.VFileUpload(
+                                    v_model=("files", None),
+                                    density="comfortable",
+                                    clearable=True,
+                                    multiple=True,
+                                )
             
                         with vuetify3.VCardActions():
                             vuetify3.VSpacer()
@@ -187,6 +219,8 @@ def ui(server: Server, **kwargs) -> None:
                                 # style
                                 slim=True,
                                 density="compact",
+                                open_all=True,
+                                item_props=True,
                                 # data
                                 item_value="id",
                                 items=("ui_subtree_reservoir", state.ui_subtree_reservoir),
@@ -206,7 +240,7 @@ def ui(server: Server, **kwargs) -> None:
                             
                         # Attribut Node CARD
                         with create_card(
-                            "Data Apps",
+                            "Attributes",
                             "mdi-information",
                             "30vh"
                         ):
@@ -217,7 +251,7 @@ def ui(server: Server, **kwargs) -> None:
                     with vuetify3.VWindowItem(value="surface"):
                 # Treeview CARD
                         with create_card(
-                            "Project treeview",
+                            "Data Explorer",
                             "mdi-file-tree",
                             "60vh"
                         ):
@@ -225,6 +259,7 @@ def ui(server: Server, **kwargs) -> None:
                                 # style
                                 slim=True,
                                 density="compact",
+                                open_all=True,
                                 # data
                                 item_value="id",
                                 items=("ui_subtree_surface", state.ui_subtree_surface),
@@ -243,7 +278,7 @@ def ui(server: Server, **kwargs) -> None:
                             )
                         # Attribut Node CARD
                         with create_card(
-                            "Node panel",
+                            "Attributes",
                             "mdi-information",
                             "30vh"
                         ):
@@ -252,7 +287,7 @@ def ui(server: Server, **kwargs) -> None:
                     with vuetify3.VWindowItem(value="well"):
                         # Treeview CARD
                         with create_card(
-                            "Project treeview",
+                            "Data Explorer",
                             "mdi-file-tree",
                             "60vh"
                         ):
@@ -260,6 +295,7 @@ def ui(server: Server, **kwargs) -> None:
                                 # style
                                 slim=True,
                                 density="compact",
+                                open_all=True,
                                 # data
                                 item_value="id",
                                 items=("ui_subtree_well", state.ui_subtree_well),
@@ -278,7 +314,7 @@ def ui(server: Server, **kwargs) -> None:
                             )
                         # Attribut Node CARD
                         with create_card(
-                            "Node panel",
+                            "Attributes",
                             "mdi-information",
                             "30vh"
                         ):
@@ -286,7 +322,7 @@ def ui(server: Server, **kwargs) -> None:
              
         with layout.content:
             with vuetify3.VContainer(
-                fluid=True, classes="pa-0 fill-height", v_if="file_loaded"
+                fluid=True, classes="pa-0 fill-height"
             ):
                 view = paraview.VtkRemoteView(
                     simple.GetActiveViewOrCreate("RenderView") if simple else None,

@@ -1,52 +1,71 @@
-FROM paraview_builder:0.0.0 AS builder
-
-ARG GRID_EXTRACTOR_PLUGIN_PATH=gep/gridextractorplugin
+FROM paraview_builder:gpu AS builder
 
 # paraview build options
-ENV PARALLEL_NB=4
-ENV PVSB_GIT_TAG="v5.13.2"
-ENV RENDERING_BACKEND="OSMESA"
+ENV PARALLEL_NB=12
+ENV PVSB_GIT_TAG="v5.13.3"
+ENV RENDERING_BACKEND="EGL"
 ENV ENABLE="-DENABLE_hdf5=ON"
 ENV USE_SYSTEM="-DUSE_SYSTEM_hdf5=ON -DUSE_SYSTEM_zlib=ON"
 
 # build paraview
 RUN /work/build.bash
 
-# total stuff specific dependencies
-RUN apt update && apt install -y libboost-all-dev sqlite3 libxml2-dev libfreetype-dev
+# Install FESPP dependencies
+RUN apt update && \
+    apt install -y --no-install-recommends libboost-all-dev sqlite3 libxml2-dev libfreetype-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV FESPP_BUILD_ROOT_DIR=/work/ttl
-
+ENV FESPP_BUILD_ROOT_DIR=/work/ttl 
+run ls
+# Copy and build FESPP
+COPY ./fespp/build_scripts/build.sh /root/build.sh
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
-COPY ./fespp/build_scripts/build.sh /root/build.sh
-
-# build total stuff
-# RUN bash /root/build.sh
-RUN bash /root/build-fesapi-dependencies.sh
-RUN bash /root/build-fesapi.sh
-
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
-RUN ls && bash /root/build-fespp.sh && ls
+RUN bash /root/build-fesapi-dependencies.sh && \
+    bash /root/build-fesapi.sh && \
+    bash /root/build-fespp.sh
 
 FROM --platform=linux/amd64 kitware/trame:py3.10-1.2-glvnd-runtime-ubuntu22.04 AS runtime
 
+# Install minimal GL and EGL dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglvnd0 libgl1 libglx0 libegl1 libgles2 \
+    libnvidia-gl-525 libegl-dev mesa-utils libegl1-mesa-dev libgles2-mesa-dev xvfb \
+    && rm -rf /var/lib/apt/lists/*
+    
+# Configure environment for GPU acceleration
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
+ENV PV_DEBUG_GL=1
+ENV PV_DEBUG_EGL=1
+ENV PV_USE_VTKGPI=1
+ENV VTK_OPENGL_HAS_EGL=1
+ENV VTK_USE_X=0
+ENV DISPLAY=:99
+
 RUN apt update && apt install -y libhdf5-103
-
 RUN install -d -o trame-user -g trame-user /deploy
+ENV TRAME_PARAVIEW=/opt/paraview
 
+# Copy built components
 COPY --from=builder /work/pvsb-build/install /opt/paraview
 COPY --from=builder /work/ttl /work/ttl
 
-ENV TRAME_PARAVIEW=/opt/paraview
-
+# Copy application files
 COPY --chown=trame-user:trame-user ./setup /deploy/setup
 COPY --chown=trame-user:trame-user ./public /deploy/public
 COPY --chown=trame-user:trame-user ./fespp_on_trame /deploy/fespp_on_trame
 COPY --chown=trame-user:trame-user ./setup.cfg /deploy/setup.cfg
 COPY --chown=trame-user:trame-user ./setup.py /deploy/setup.py
-
-# bring some data into the image
 COPY ./data /deploy/data
 
-RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && mkdir /deploy/server/www/__trame_vuetify_lab && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
+# Add custom startup script
+COPY start.sh /opt/trame/
+RUN chmod +x /opt/trame/start.sh
+
+# Install Python dependencies
+RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
+
+ENTRYPOINT ["/opt/trame/start.sh"]
