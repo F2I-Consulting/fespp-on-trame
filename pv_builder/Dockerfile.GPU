@@ -1,0 +1,15 @@
+ARG BASE_IMAGE=nvidia/opengl:1.0-glvnd-devel-ubuntu22.04
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive 
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
+
+RUN mkdir /work
+COPY ./prepare.bash.GPU /work/prepare.bash
+COPY ./build.bash.GPU /work/build.bash
+
+RUN /work/prepare.bash
+
+WORKDIR /work
+ENTRYPOINT ["/work/build.bash"]

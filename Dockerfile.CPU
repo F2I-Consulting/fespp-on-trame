@@ -1,9 +1,9 @@
-FROM paraview_builder:0.0.0 AS builder
+FROM pv_builder_cpu:0.1.0 AS builder
 
 # paraview build options
 ENV PARALLEL_NB=12
 ENV PVSB_GIT_TAG="v5.13.3"
-ENV RENDERING_BACKEND="OSMESA"
+#ENV RENDERING_BACKEND="OSMESA"
 ENV ENABLE="-DENABLE_hdf5=ON"
 ENV USE_SYSTEM="-DUSE_SYSTEM_hdf5=ON -DUSE_SYSTEM_zlib=ON"
 
@@ -17,14 +17,11 @@ ENV FESPP_BUILD_ROOT_DIR=/work/ttl
 
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
-#COPY ./fespp/build_scripts/build.sh /root/build.sh
 
 # build total stuff
-# RUN bash /root/build.sh
 RUN bash /root/build-fesapi-dependencies.sh
 RUN bash /root/build-fesapi.sh
 
-RUN ls
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
 RUN bash /root/build-fespp.sh
 

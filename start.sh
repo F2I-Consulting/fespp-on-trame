@@ -8,11 +8,6 @@ sleep 2
 
 # Debug output
 echo "Starting Trame application with GPU acceleration"
-echo "=> Apache with Xvfb support <="
-echo "EGL Configuration:"
-echo "PV_USE_VTKGPI=${PV_USE_VTKGPI}"
-echo "VTK_OPENGL_HAS_EGL=${VTK_OPENGL_HAS_EGL}"
-echo "VTK_USE_X=${VTK_USE_X}"
 echo "EGL Status:"
 glxinfo -B | grep -i "device\|renderer"
 

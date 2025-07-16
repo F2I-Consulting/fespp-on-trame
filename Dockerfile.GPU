@@ -1,9 +1,8 @@
-FROM paraview_builder:gpu AS builder
+FROM pv_builder_gpu:0.1.0 AS builder
 
 # paraview build options
 ENV PARALLEL_NB=12
 ENV PVSB_GIT_TAG="v5.13.3"
-ENV RENDERING_BACKEND="EGL"
 ENV ENABLE="-DENABLE_hdf5=ON"
 ENV USE_SYSTEM="-DUSE_SYSTEM_hdf5=ON -DUSE_SYSTEM_zlib=ON"
 
@@ -17,9 +16,7 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV FESPP_BUILD_ROOT_DIR=/work/ttl 
-run ls
 # Copy and build FESPP
-COPY ./fespp/build_scripts/build.sh /root/build.sh
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
