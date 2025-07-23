@@ -4,7 +4,6 @@ cd $build_root_dir
 git clone https://github.com/F2I-Consulting/fespp
 mkdir build-fespp
 cd fespp
-git checkout v3.3
 cd ${build_root_dir}/build-fespp/
 cmake \
     -DPARAVIEW_PLUGIN_ENABLE_Fespp=ON \
