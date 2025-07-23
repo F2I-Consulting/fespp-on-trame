@@ -6,10 +6,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir /work
 
 COPY ./prepare.bash.CPU /work/prepare.bash
-#COPY ./prepare_ubuntu20_qt_deps.bash /work/prepare_qt.bash
+RUN /work/prepare.bash
 
 RUN /work/prepare.bash
-#RUN /work/prepare_qt.bash
 
 COPY ./build.bash.CPU /work/build.bash
 
