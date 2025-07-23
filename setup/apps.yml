@@ -1,0 +1,19 @@
+trame:
+  cmd:
+    - /opt/paraview/bin/pvpython
+    - /deploy/fespp_on_trame
+    - --host
+    - ${host}
+    - --port
+    - ${port}
+    - --authKey
+    - ${secret}
+    - --server
+    - --fespp-plugin-path
+    - /work/ttl/install-fespp/lib/paraview-5.13/plugins/Fespp/Fespp.so
+    - --local-epc-file-path
+    - /deploy/data/empty.epc
+    - --remote-epc-file-location
+    - ${remote_epc_file_location}
+    - --remote-h5-file-location
+    - ${remote_h5_file_location}
