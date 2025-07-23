@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir /work
 
 COPY ./prepare.bash.CPU /work/prepare.bash
+RUN /work/prepare.bash
 
 RUN /work/prepare.bash
 
