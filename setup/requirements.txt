@@ -1,0 +1,7 @@
+dataclasses_json
+numpy
+trame
+trame-vuetify
+trame-vtk
+wheel
+setuptools

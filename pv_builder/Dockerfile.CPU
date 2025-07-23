@@ -1,0 +1,17 @@
+ARG BASE_IMAGE=nvidia/opengl:1.0-glvnd-devel-ubuntu20.04
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive 
+
+RUN mkdir /work
+
+COPY ./prepare.bash.CPU /work/prepare.bash
+#COPY ./prepare_ubuntu20_qt_deps.bash /work/prepare_qt.bash
+
+RUN /work/prepare.bash
+#RUN /work/prepare_qt.bash
+
+COPY ./build.bash.CPU /work/build.bash
+
+WORKDIR /work
+ENTRYPOINT ["/work/build.bash"]
