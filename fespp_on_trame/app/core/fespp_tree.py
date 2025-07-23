@@ -17,7 +17,7 @@ class Tree():
         self._data_hierarchy_well = []
         self._data_hierarchy_surface = []
 
-        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PolylineSet', 'TriangulatedSet', 'partial']
+        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'Polyline','PolylineSet', 'TriangulatedSet', 'partial']
         
         def add_subtreeview_data(parent_id: int, child_index: int, treeview_type, disabled = False)-> None:
             node_id = self._data_assembly.GetChild(parent_id, child_index)
@@ -32,7 +32,7 @@ class Tree():
                     treeview_type = "reservoir"
                 elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
-                elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                elif node_type in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
                 elif node_type in ['partial']:
                     disabled = True
@@ -44,7 +44,7 @@ class Tree():
                     elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                         node_title = node_label
                         treeview_type = "well"
-                    elif node_supportType in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                    elif node_supportType in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                         node_title = node_label
                         treeview_type = "surface"
 
@@ -86,7 +86,7 @@ class Tree():
                     treeview_type = "reservoir"
                 elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
-                elif node_type in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                elif node_type in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
                 elif node_type in ['partial']:
                     disabled = True
@@ -99,7 +99,7 @@ class Tree():
                     elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                         node_title = node_label
                         treeview_type = "well"
-                    elif node_supportType in ['Grid2d', 'PolylineSet', 'TriangulatedSet']:
+                    elif node_supportType in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                         node_title = node_label
                         treeview_type = "surface"
                 # initialize node dict
