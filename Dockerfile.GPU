@@ -63,6 +63,6 @@ COPY start.sh /opt/trame/
 RUN chmod +x /opt/trame/start.sh
 
 # Install Python dependencies
-RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
+RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install .
 
 ENTRYPOINT ["/opt/trame/start.sh"]
