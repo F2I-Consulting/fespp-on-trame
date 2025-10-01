@@ -61,7 +61,6 @@ class App:
 
 def server_ready(**state):
     print("FESPP on TRAME Ready", flush=True)
-    print("+" * 4096, flush=True)
 
 if __name__ == "__main__":
     app_server = get_server()
