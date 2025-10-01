@@ -11,10 +11,10 @@ cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DWITH_RESQML2_2=ON \
     -DWITH_EXAMPLE=ON \
-    -DCMAKE_INSTALL_PREFIX=/work/ttl/install-fesapi/ \
-    -DMINIZIP_INCLUDE_DIR=/work/ttl/dependencies/install-minizip/include \
-    -DMINIZIP_LIBRARY_RELEASE=/work/ttl/dependencies/install-minizip/lib/libminizip.a \
-    -DMINIZIP_LIBRARY_DEBUG=/work/ttl/dependencies/install-minizip/lib/libminizip.a \
+    -DCMAKE_INSTALL_PREFIX=${build_root_dir}/install-fesapi/ \
+    -DMINIZIP_INCLUDE_DIR=${build_root_dir}/dependencies/install-minizip/include \
+    -DMINIZIP_LIBRARY_RELEASE=${build_root_dir}/dependencies/install-minizip/lib/libminizip.a \
+    -DMINIZIP_LIBRARY_DEBUG=${build_root_dir}/dependencies/install-minizip/lib/libminizip.a \
     ../fesapi
 make -j$(nproc)
 cmake --install .
