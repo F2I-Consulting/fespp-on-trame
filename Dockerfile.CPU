@@ -22,6 +22,7 @@ COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
 RUN bash /root/build-fesapi-dependencies.sh
 RUN bash /root/build-fesapi.sh
 
+RUN pwd && ls && pwd
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
 RUN bash /root/build-fespp.sh
 
@@ -45,4 +46,4 @@ COPY --chown=trame-user:trame-user ./setup.py /deploy/setup.py
 # bring some data into the image
 COPY ./data /deploy/data
 
-RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && mkdir /deploy/server/www/__trame_vuetify_lab && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
+RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . 
