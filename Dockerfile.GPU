@@ -19,7 +19,10 @@ ENV FESPP_BUILD_ROOT_DIR=/work/ttl
 
 # build total stuff
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
+RUN bash /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
+RUN bash /root/build-fesapi.sh
+
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
 RUN bash /root/build-fespp.sh
 
