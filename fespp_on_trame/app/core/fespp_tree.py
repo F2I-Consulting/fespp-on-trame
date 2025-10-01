@@ -1,7 +1,5 @@
 from trame.app import get_server
 
-import fespp_on_trame.app.core.fespp_selection as fespp_selection
-
 server = get_server()
 state = server.state
 
@@ -17,58 +15,63 @@ class Tree():
         self._data_hierarchy_well = []
         self._data_hierarchy_surface = []
 
-        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'Polyline','PolylineSet', 'TriangulatedSet', 'partial']
-        
-        def add_subtreeview_data(parent_id: int, child_index: int, treeview_type, disabled = False)-> None:
-            node_id = self._data_assembly.GetChild(parent_id, child_index)
-            node_label = None
-            node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-            node_title = node_label[node_label.find("_") + 1 :]
-            node_type = node_label[:node_label.find("_")]
-            node_path = self._data_assembly.GetNodePath(node_id)
+        self._representation_type_in = ['IjkGrid','Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline','PolylineSet', 'TriangulatedSet', 'partial']
+
+    def add_subtreeview_data(self, parent_id: int, child_index: int, treeview_type, disabled = False)-> None:
+        node_id = self._data_assembly.GetChild(parent_id, child_index)
+        node_label = None
+        node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
+        node_title = node_label[node_label.find("_") + 1 :]
+        node_type = node_label[:node_label.find("_")]
+        node_path = self._data_assembly.GetNodePath(node_id)
             
-            if treeview_type == "unknown":
-                if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+        if treeview_type == "unknown":
+            if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                treeview_type = "reservoir"
+            elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                treeview_type = "well"
+            elif node_type in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
+                treeview_type = "surface"
+            elif node_type in ['partial']:
+                disabled = True
+                node_supportType = None
+                node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
+                if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                    node_title = '!!!PARTIAL!!! '+ node_title
                     treeview_type = "reservoir"
-                elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                    node_title = node_label
                     treeview_type = "well"
-                elif node_type in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
+                elif node_supportType in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
+                    node_title = node_label
                     treeview_type = "surface"
-                elif node_type in ['partial']:
-                    disabled = True
-                    node_supportType = None
-                    node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
-                    if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
-                        node_title = '!!!PARTIAL!!! '+ node_title
-                        treeview_type = "reservoir"
-                    elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
-                        node_title = node_label
-                        treeview_type = "well"
-                    elif node_supportType in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
-                        node_title = node_label
-                        treeview_type = "surface"
 
-            data = {}
-            data["treeview"] = {}
-            data["treeview"]["parent_id"] = parent_id
-            data["treeview"]["id"] = node_id
-            data["treeview"]["title"] = node_title
-            data["treeview"]["path"] = node_path
-            data["treeview"]["type"] = node_type
-            if disabled: data["treeview"]["disabled"] = True
+        data = {}
+        data["treeview"] = {}
+        data["treeview"]["parent_id"] = parent_id
+        data["treeview"]["id"] = node_id
+        data["treeview"]["title"] = node_title
+        data["treeview"]["path"] = node_path
+        data["treeview"]["type"] = node_type
+        if disabled: data["treeview"]["disabled"] = True
             
-            data["treeview_type"] = treeview_type
+        data["treeview_type"] = treeview_type
 
-            children_count = self._data_assembly.GetNumberOfChildren(node_id)
-            if children_count > 0:
-                data["treeview"]["children"]=[]
-                for i in range(children_count):
-                    subTreeview = add_subtreeview_data(node_id, i, treeview_type, disabled)
-                    data["treeview"]["children"].append(subTreeview["treeview"])
-                    data["treeview_type"] = subTreeview["treeview_type"]
-            return data
+        children_count = self._data_assembly.GetNumberOfChildren(node_id)
+        if children_count > 0:
+            data["treeview"]["children"]=[]
+            for i in range(children_count):
+                subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
+                data["treeview"]["children"].append(subTreeview["treeview"])
+                data["treeview_type"] = subTreeview["treeview_type"]
+        return data
 
+    def set_tree(self, data_assembly):
+        self._data_hierarchy_reservoir = []
+        self._data_hierarchy_well = []
+        self._data_hierarchy_surface = []
         disabled = False
+        self._data_assembly = data_assembly
         if self._data_assembly is not None:
             root_id = 0
             for i in range(data_assembly.GetNumberOfChildren(root_id)):
@@ -86,7 +89,7 @@ class Tree():
                     treeview_type = "reservoir"
                 elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
-                elif node_type in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
+                elif node_type in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
                 elif node_type in ['partial']:
                     disabled = True
@@ -99,7 +102,7 @@ class Tree():
                     elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                         node_title = node_label
                         treeview_type = "well"
-                    elif node_supportType in ['Grid2d', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
+                    elif node_supportType in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                         node_title = node_label
                         treeview_type = "surface"
                 # initialize node dict
@@ -109,12 +112,12 @@ class Tree():
                 treeview["path"] = node_path
                 treeview["type"] = node_type
                 if disabled: treeview["disabled"] = True
-                
+            
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
                 if children_count > 0:
                     treeview["children"]=[]
                     for i in range(children_count):
-                        subTreeview = add_subtreeview_data(node_id, i, treeview_type, disabled)
+                        subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                         treeview["children"].append(subTreeview["treeview"])
                         treeview_type = subTreeview["treeview_type"]
                         # add subTree in type tree
@@ -127,14 +130,9 @@ class Tree():
                 elif treeview_type == "surface":
                     if treeview and treeview not in self._data_hierarchy_surface:
                         self._data_hierarchy_surface.append(treeview)
-
             state.ui_subtree_reservoir = list(self._data_hierarchy_reservoir)
             state.ui_subtree_well = list(self._data_hierarchy_well)
             state.ui_subtree_surface = list(self._data_hierarchy_surface)
-#            state.dirty("ui_subtree_reservoir")
-#            state.dirty("ui_subtree_well")
-#            state.dirty("ui_subtree_surface")
-#            state.flush()
 
     # -----------------------------------------------------------------------------
     # find ijkgrid parent node id
@@ -272,4 +270,26 @@ class Tree():
                     rep_node_id = self.find_representation_node(node_id)
                     if rep_node_id is not None:
                         return self.find_type(rep_node_id)
+        return
+    
+    # -----------------------------------------------------------------------------
+    # find attribute value by node_id/attribute name
+    # -----------------------------------------------------------------------------
+    def find_attribute_value(self, node_id, attribute_name) -> None:
+        if node_id is not None:
+            attribute_value = None
+            attribute_value = self._data_assembly.GetAttributeOrDefault(node_id, attribute_name, attribute_value)
+            return attribute_value
+        return
+    
+    # -----------------------------------------------------------------------------
+    # find the value of the nearest parent's attribute
+    # -----------------------------------------------------------------------------
+    def find_parent_attribute_value(self, node_id, attribute_name) -> None:
+        if node_id is not None:
+            attribute_value = None
+            attribute_value = self._data_assembly.GetAttributeOrDefault(node_id, attribute_name, attribute_value)
+            if attribute_value is None:
+                return self.find_parent_attribute_value(self._data_assembly.GetParent(node_id),attribute_name)
+            return attribute_value
         return

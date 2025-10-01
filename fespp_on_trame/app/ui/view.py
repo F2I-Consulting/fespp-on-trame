@@ -4,6 +4,7 @@ from trame.ui.vuetify3 import SinglePageWithDrawerLayout
 from trame.widgets import vuetify3 as vuetify3, paraview, html
 from trame_server import Server
 from typing import Literal
+import ptc
 
 from fespp_on_trame.constants import TRAME_APP_TITLE, PUBLIC_PATH
 
@@ -23,10 +24,10 @@ server = get_server()
 state = server.state
 controller = server.controller
 
-vuetify3.enable_lab()
-
 state.dialog_visible = False
 state.execute_action = False
+state.ptc_show_vcr = False
+state.ui_time_label = ""
 
 class Representation:
     Points = 0
@@ -111,6 +112,9 @@ def ui(server: Server, **kwargs) -> None:
             ):
                 vuetify3.VSpacer()
                 
+                with html.Div(style="width: 15%;", v_if=("ptc_show_vcr")):
+                    vuetify3.VTextField("{{ ui_time_label }}", prepend_inner_icon="mdi-timetable", density="compact", disabled=True)
+                
                 with vuetify3.VBtn(icon=True, click=server.controller.view_reset_camera):
                     vuetify3.VIcon("mdi-image-filter-center-focus", color="blue")
                 
@@ -134,7 +138,7 @@ def ui(server: Server, **kwargs) -> None:
                 with html.Div(style="width: 5%;"):
                     vuetify3.VTextField(
                         v_model=("ui_scale_z", 1.0),
-                        label="scale z",
+                        label="z scale",
                         hide_details=True,
                         dense=True,
                         outlined=True,
@@ -144,7 +148,7 @@ def ui(server: Server, **kwargs) -> None:
                         reverse=True,
                         type="number",
                     )
-                    
+                
                 vuetify3.VSpacer()
                 
                 with html.Div(style="width: 15%;"):
@@ -283,6 +287,7 @@ def ui(server: Server, **kwargs) -> None:
                             "30vh"
                         ):
                             vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
+                            #ptc.proxy_editor.PlaneEditorPanel()
 
                     with vuetify3.VWindowItem(value="well"):
                         # Treeview CARD
@@ -310,6 +315,7 @@ def ui(server: Server, **kwargs) -> None:
                                 selected=("ui_select_node_well", []),
                                 selectable=True,
                                 select_strategy="classic",
+                                indent_lines="default",
                                 update_selected="ui_select_node_well = $event",
                             )
                         # Attribut Node CARD
@@ -319,6 +325,7 @@ def ui(server: Server, **kwargs) -> None:
                             "30vh"
                         ):
                             vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
+                            #ptc.proxy_editor.PlaneEditorPanel()
              
         with layout.content:
             with vuetify3.VContainer(
@@ -328,14 +335,39 @@ def ui(server: Server, **kwargs) -> None:
                     simple.GetActiveViewOrCreate("RenderView") if simple else None,
                     interactive_ratio=1,
                     interactive_quality=70,
-                    namespace="view",
+                    namespace="time_view",
                     style="width: 100%; height: 100%;",
                 )
+                with ptc.Div(
+                    v_show=("ptc_show_vcr", False),
+                    style="position: relative; bottom: 2.5rem; left: 5rem; right: 5rem;width: 80%"
+                    ):
+                    ptc.TimeControl(namespace="time_view",)
+                #ptc.PipelineBrowser()
+                #ptc.RepresentBy(classes="mr-2")
+                
                 # Link view callbacks
                 server.controller.view_replace = view.replace_view
                 server.controller.view_update = view.update
                 server.controller.view_reset_camera = view.reset_camera
                 server.controller.on_server_ready.add(server.controller.view_update)
+               
+                with vuetify3.VDialog(
+                    v_model=("isLoading", False),
+                    persistent=True, 
+                    width="400",
+                ):
+                    with vuetify3.VCard():
+                        vuetify3.VCardTitle("Loading...")
+                        with vuetify3.VCardText():
+                            vuetify3.VProgressLinear(
+                                v_model=("download_progress",),
+                                color="blue",
+                                height="20",
+                                striped=True,
+                                stream=True,
+                            )
+                            vuetify3.VListItemTitle(v_text=("download_message",), classes="mt-2")
 
         layout.footer.hide()
 
