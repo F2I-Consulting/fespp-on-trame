@@ -138,8 +138,8 @@ class Selector:
         for node_id in list_selected:
             if self._tree.find_type(node_id) == "Trajectory":
                 self._wellheads.append(Wellhead(self._tree, node_id))
+                
             elif self._tree.find_type(node_id) == "TimeSeries":
-                print("TimeSeries selected")
                 self._timeseries = TimeSeries(self._tree, node_id)
 
         # Optimiser la sélection avant de l'utiliser
