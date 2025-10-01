@@ -42,7 +42,7 @@ def initialize_fespp_engine(
     state.setdefault("ui_select_node_reservoir", [])
     state.setdefault("ui_select_node_surface", [])
     state.setdefault("ui_select_node_well", [])
-    state.setdefault("ui_representation", "Surface")
+    #state.setdefault("ui_representation", "Surface")
     
     state.setdefault("isLoading", False)
     state.setdefault("download_progress", 0)
@@ -98,7 +98,9 @@ def initialize_fespp_engine(
         state.view_update = True
 
         _collector.show()
-        server.controller.on_data_loaded()
+        pvsimple.SetActiveSource(_collector.get_source())
+        server.controller.on_data_loaded() # for ptc.TimeControl()
+        server.controller.on_active_proxy_change() # for ptc.RepresentBy() / ptc.ColorBy
         pvsimple.Render(view=_view)
 
     #======================= Main Properties
@@ -114,13 +116,13 @@ def initialize_fespp_engine(
         pvsimple.Render(view=_view)
         controller.view_update()
         
-    @state.change("ui_representation")
-    def update_ui_representation(ui_representation, **kwargs):
+    @state.change("representation_active")
+    def update_ui_representation(representation_active, **kwargs):
         if _collector is not None:
-            _collector.representationType = ui_representation
+            _collector.representationType = representation_active
             _collector.show()
         if _ijkGrid is not None:
-            _ijkGrid.representationType = ui_representation
+            _ijkGrid.representationType = representation_active
             _ijkGrid.show()
         pvsimple.Render(view=_view)
         controller.view_update()

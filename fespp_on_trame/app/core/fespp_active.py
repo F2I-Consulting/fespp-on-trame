@@ -17,13 +17,16 @@ class Activator:
         def on_ui_active_node_reservoir_change(ui_active_node_reservoir, **kwargs):
             if ui_active_node_reservoir and len(ui_active_node_reservoir) > 0:
                 node_id = ui_active_node_reservoir[0]
-                type_node = self._tree.find_representation_type(node_id)
+                type_node_rep = self._tree.find_representation_type(node_id)
+                type_node = self._tree.find_type(node_id)
                 
                 state.update({
+                    "ui_active_node_reservoir_type_rep": type_node_rep,
                     "ui_active_node_reservoir_type": type_node,
                 })
             else:
                 state.update({
+                    "ui_active_node_reservoir_type_rep": "",
                     "ui_active_node_reservoir_type": "",
                 })
 

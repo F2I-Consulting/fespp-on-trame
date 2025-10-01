@@ -1,7 +1,13 @@
 dataclasses_json
 numpy
 trame
+trame-iframe
 trame-vuetify
 trame-vtk
+trame-dockview
+vtk
+requests
 wheel
 setuptools
+# La dépendance Git (format accepté par pip)
+git+https://github.com/Kitware/paraview-trame-components.git@main#egg=paraview-trame-components
