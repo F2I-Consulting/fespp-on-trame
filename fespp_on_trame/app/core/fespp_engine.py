@@ -29,29 +29,38 @@ def initialize_fespp_engine(
 
     _view = pvsimple.GetActiveViewOrCreate("RenderView")
 
+    _tree = Tree(None)
+
     _collector = Collector()            # SOURCE
-    _ijkGrid = IjkGrid(_collector)      # SOURCE
+    _ijkGrid = IjkGrid(_collector, _tree)      # SOURCE
     
     # FESPP engine
-    _selector = Selector(_ijkGrid)
-    fespp_active.Activator()
+    _selector = Selector(_ijkGrid, _tree)
+    fespp_active.Activator(_tree)
     
     #=> initialize ui variable <=
     state.setdefault("ui_select_node_reservoir", [])
     state.setdefault("ui_select_node_surface", [])
     state.setdefault("ui_select_node_well", [])
     state.setdefault("ui_representation", "Surface")
-        
+    
+    state.setdefault("isLoading", False)
+    state.setdefault("download_progress", 0)
+    state.setdefault("download_message", "Préparation du téléchargement...")
+    
     state.setdefault("fespp_data_selectors", []) # node path to selector for load FESPP
 
     state.setdefault("view_update", False)
     state.setdefault("view_reset_camera", False)
     state.setdefault("representation_update", False)
     state.setdefault("object_to_extract", []) # node name list to extract in new source
-    
-    state.setdefault("tree", Tree(None))
+
     state.flush()
 
+    @controller.add("on_data_change")
+    def update():
+        server.controller.view_update()
+        
     @controller.set("load_epc_file")
     def load_epc_file(epc_file_path: str):
         state.file_loaded = _collector.add_file(epc_file_path)
@@ -65,17 +74,15 @@ def initialize_fespp_engine(
             output = client_side_object.GetOutput()
             if hasattr(output, "GetDataAssembly"):
                 assembly = output.GetDataAssembly()
-        state.tree = Tree(assembly)
+        _tree.set_tree(assembly)
         
     @state.change("fespp_data_selectors")
     def on_change_fespp_data_selectors( **kwargs):
         if _collector is None:
             return
-        
         # load node path selected
         _collector.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
         _collector.get_source().UpdatePipelineInformation()
-        _collector.show()
         
         pvsimple.Render(view=_view)
 
@@ -88,12 +95,11 @@ def initialize_fespp_engine(
         _ijkGrid.update_block_visibility()
         
         controller.view_replace
-        #state.view_reset_camera = True
         state.view_update = True
 
         _collector.show()
+        server.controller.on_data_loaded()
         pvsimple.Render(view=_view)
-        #pvsimple.Show(proxy=get_epc_collector(), view=render_view)
 
     #======================= Main Properties
     @state.change("ui_scale_z")
@@ -143,6 +149,20 @@ def initialize_fespp_engine(
         pvsimple.Render(view=_view)
         controller.view_update()
 
+    #======================= UI: change time
+    @state.change("time_index")
+    def changeTimeLabel( **kwargs):
+        try:
+            index = state.time_index
+            if index is not None:
+                label = _tree.find_attribute_value(0, f"time{pvsimple.GetTimeKeeper().TimestepValues[index]:.6f}")
+                if label is not None:
+                    state.ui_time_label = label
+                else:
+                    state.ui_time_label = f"time{pvsimple.GetTimeKeeper().TimestepValues[index]:.6f}"
+        except:
+            state.ui_time_label = ""
+
     #======================= TreeView: change selection
     @state.change("ui_select_node_surface")
     def on_change_ui_select_node_surface(**kwargs):
@@ -153,7 +173,7 @@ def initialize_fespp_engine(
     def on_change_ui_select_node_well(**kwargs):
         if _selector is not None:
             _selector.select_node_well()
-        
+    
     @state.change("ui_select_node_reservoir")
     def on_change_ui_select_node_reservoir(**kwargs):
         if _selector is not None:
@@ -175,3 +195,5 @@ def initialize_fespp_engine(
             controller.view_update()
             state.view_update = False
             state.flush()
+            
+

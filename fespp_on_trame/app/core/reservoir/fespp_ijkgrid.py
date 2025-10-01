@@ -1,17 +1,20 @@
 from trame.app import get_server
 from paraview import simple as pvsimple
 
-import fespp_on_trame.app.core.fespp_engine as fespp_engine
 from fespp_on_trame.app.core.sources.collector import Collector
+from fespp_on_trame.app.core.fespp_tree import Tree
+
 
 server = get_server()
 state = server.state
 ctrl = server.controller
 
 class IjkGrid:
-    def __init__(self, collector: Collector):
+    def __init__(self, collector: Collector, tree: Tree):
         
         self._collector = collector
+        
+        self._tree = tree
         
         self._node_id = None
         self._title = None
@@ -81,7 +84,7 @@ class IjkGrid:
                 pvsimple.Delete(self._src_slicer_volume)
             return
         
-        ijkgrid_node_id = state.tree.find_parent_node_id_with_type(node_id, 'IjkGrid')
+        ijkgrid_node_id = self._tree.find_parent_node_id_with_type(node_id, 'IjkGrid')
         if ijkgrid_node_id is None:
             return
         
@@ -95,16 +98,16 @@ class IjkGrid:
 
             self._node_id = ijkgrid_node_id
             # create sources slicers
-            self._collector.extract_block(state.tree.find_label(self._node_id))
-            self._property_path = state.tree.find_path(node_id)
+            self._collector.extract_block(self._tree.find_label(self._node_id))
 
+            self._property_path = self._tree.find_path(node_id)
 
-            self._src_extract_init = pvsimple.FindSource(state.tree.find_label(self._node_id))
+            self._src_extract_init = pvsimple.FindSource(self._tree.find_label(self._node_id))
             self._src_slicer_i = pvsimple.ExplicitStructuredGridCrop(registrationName='sliceri', Input=self._src_extract_init)
             self._src_slicer_j = pvsimple.ExplicitStructuredGridCrop(registrationName='slicerj', Input=self._src_extract_init)
             self._src_slicer_k = pvsimple.ExplicitStructuredGridCrop(registrationName='slicerk', Input=self._src_extract_init)
             self._src_slicer_volume = pvsimple.ExplicitStructuredGridCrop(registrationName='slicervolume', Input=self._src_extract_init)
-
+            
             self._src_extract_init.UpdatePipelineInformation()
             self._src_slicer_i.UpdatePipelineInformation()
             self._src_slicer_j.UpdatePipelineInformation()
@@ -141,8 +144,8 @@ class IjkGrid:
             self._src_slicer_k.OutputWholeExtent = [extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]]
             self._src_slicer_volume.OutputWholeExtent = [extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]]
 
-        property_title = state.tree.find_title(node_id)
-        property_type = state.tree.find_type(node_id)
+        property_title = self._tree.find_title(node_id)
+        property_type = self._tree.find_type(node_id)
         if property_title != self._title: # => is a property
             array_type = self.color_array_type(property_title)
             if array_type is not None:
