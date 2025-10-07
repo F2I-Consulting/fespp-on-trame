@@ -286,10 +286,13 @@ class Tree():
     # find the value of the nearest parent's attribute
     # -----------------------------------------------------------------------------
     def find_parent_attribute_value(self, node_id, attribute_name) -> None:
-        if node_id is not None:
-            attribute_value = None
-            attribute_value = self._data_assembly.GetAttributeOrDefault(node_id, attribute_name, attribute_value)
-            if attribute_value is None:
-                return self.find_parent_attribute_value(self._data_assembly.GetParent(node_id),attribute_name)
+        if node_id is None or node_id == 0:
+            return
+        
+        attribute_value = None
+        attribute_value = self._data_assembly.GetAttributeOrDefault(node_id, attribute_name, attribute_value)
+            
+        if attribute_value is not None:
             return attribute_value
-        return
+        
+        return self.find_parent_attribute_value(self._data_assembly.GetParent(node_id),attribute_name)
