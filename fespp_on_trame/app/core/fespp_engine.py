@@ -64,6 +64,7 @@ def initialize_fespp_engine(
     state.setdefault("view_update", False)
     state.setdefault("view_reset_camera", False)
     state.setdefault("representation_update", False)
+    
     # List of node names to extract into a new source
     state.setdefault("object_to_extract", []) 
 
