@@ -416,21 +416,12 @@ def ui(server: Server, **kwargs) -> None:
                     with ptc.Div(
                         v_show=("ptc_show_vcr", False), # Conditional display of the time controls
                         # Limits the block width for better centering aesthetics
-                        style="width: 60%; min-width: 300px; max-width: 600px;",
+                        style="width: 80%; min-width: 400px; max-width: 800px;",
                         # d-flex for horizontal alignment, align-center for vertical alignment
                         classes="ma-2 d-flex align-center", 
                     ):
-                        # Time Step Label (Text)
-                        ptc.VLabel(
-                            "{{ ui_time_label }}",
-                            v_if=("ptc_show_vcr"),
-                            classes="mr-2 text-subtitle-1 font-weight-bold flex-shrink-0",
-                            # Fixed width prevents layout shift when content changes
-                            style="overflow: visible; white-space: nowrap; width: 100px;",
-                        )
-                    
                         # The Time Control widget
-                        ptc.TimeControl(namespace="time_view",)
+                        custom_time_control.custom_time_control_ui(custom_time_control.CustomTimeControl(namespace="time_view",play_delay=0.1))
                 
                 # Loading Progress Bar (Center, hidden when Trame is not busy)
                 with vuetify3.VRow(

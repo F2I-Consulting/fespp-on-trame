@@ -42,6 +42,7 @@ def initialize_fespp_engine(
     state.setdefault("ui_select_node_surface", [])
     state.setdefault("ui_select_node_well", [])
     
+    state.setdefault("animation_delay", 0.1)
     
     # State variable to hold the list of node paths selected for FESPP loading
     state.setdefault("fespp_data_selectors", []) 
