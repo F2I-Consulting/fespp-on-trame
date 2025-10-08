@@ -1,9 +1,6 @@
-import logging
-from typing import Any
 
-import json
 # Need the * import for grid extractor plugin (ParaView requirement)
-from paraview.simple import *
+#from paraview.simple import *
 from paraview import simple as pvsimple
 from trame_server import Server
 from pathlib import Path
@@ -13,10 +10,6 @@ from fespp_on_trame.app.core.reservoir.fespp_ijkgrid import IjkGrid
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.fespp_selection import Selector
 import fespp_on_trame.app.core.fespp_active as fespp_active
-
-# Set up logging for the module
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 def initialize_fespp_engine(
     server: Server, *, fespp_plugin_path: Path
@@ -48,11 +41,7 @@ def initialize_fespp_engine(
     state.setdefault("ui_select_node_reservoir", [])
     state.setdefault("ui_select_node_surface", [])
     state.setdefault("ui_select_node_well", [])
-    #state.setdefault("ui_representation", "Surface")
     
-    state.setdefault("isLoading", False)
-    state.setdefault("download_progress", 0)
-    state.setdefault("download_message", "Préparation du téléchargement...")
     
     # State variable to hold the list of node paths selected for FESPP loading
     state.setdefault("fespp_data_selectors", []) 
@@ -63,11 +52,7 @@ def initialize_fespp_engine(
     # State flags to trigger view updates and camera resets from Trame
     state.setdefault("view_update", False)
     state.setdefault("view_reset_camera", False)
-    state.setdefault("representation_update", False)
     
-    # List of node names to extract into a new source
-    state.setdefault("object_to_extract", []) 
-
     # Ensure all state changes are synchronized
     state.flush()
 
