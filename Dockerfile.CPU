@@ -22,7 +22,6 @@ COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
 RUN bash /root/build-fesapi-dependencies.sh
 RUN bash /root/build-fesapi.sh
 
-RUN pwd && ls && pwd
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
 RUN bash /root/build-fespp.sh
 
