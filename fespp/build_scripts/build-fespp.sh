@@ -14,7 +14,7 @@ cmake \
     -Dnlohmann_json_DIR=/work/pvsb-build/install/lib/cmake/nlohmann_json \
     -DSQLite3_INCLUDE_DIR=/work/pvsb-build/install/include \
     -DSQLite3_LIBRARY=/work/pvsb-build/install/lib/libsqlite3.so \
-    ../fespp
+    ${build_root_dir}/fespp
 make -j$(nproc)
 cmake --install .
 rm -Rf ${build_root_dir}/fespp
