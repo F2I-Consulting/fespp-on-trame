@@ -1,100 +1,140 @@
 import asyncio
 import ptc
 from trame.app import get_server
-from trame.widgets import vuetify3 as vuetify3
+from trame.widgets import vuetify3 as vuetify
+from trame.widgets import html
 
 server = get_server()
 state = server.state
 
 class CustomTimeControl(ptc.TimeControl):
-    """
-    TimeControl surchargé avec un délai configurable entre chaque step.
-    
-    Usage:
-        CustomTimeControl(
-            play_delay=0.5,  # Délai en secondes (par défaut 0.1)
-        )
-    """
-    
-    def __init__(self, play_delay=0.1, **kwargs):
-        """
-        Initialise le TimeControl avec un délai personnalisé.
-        
-        Args:
-            play_delay (float): Délai en secondes entre chaque step (défaut: 0.1)
-            **kwargs: Autres arguments passés au TimeControl de base
-        """
+    def __init__(self, play_delay=1.0, **kwargs):  # Changé à 1.0 par défaut
         self._play_delay = play_delay
         super().__init__(**kwargs)
+        print(f"CustomTimeControl initialized with delay: {play_delay}s")
     
     @property
     def play_delay(self):
-        """Récupère le délai actuel."""
         return self._play_delay
     
     @play_delay.setter
     def play_delay(self, value):
-        """
-        Modifie le délai entre les steps.
-        
-        Args:
-            value (float): Nouveau délai en secondes
-        """
+        old_value = self._play_delay
         self._play_delay = value
+        print(f"CustomTimeControl: play_delay changed from {old_value}s to {value}s")
     
     async def play_animation(self):
-        """
-        Surcharge de la méthode play_animation avec délai configurable.
-        """
+        print(f"Starting animation with delay: {self._play_delay}s")
         with self.state:
             while self.state.time_play:
                 with self.state:
                     self.next()
                 await asyncio.sleep(self._play_delay)
+        print("Animation stopped")
 
-
-# Exemple avec number-input pour contrôler le délai
 def custom_time_control_ui(tc: CustomTimeControl):
     """
-    Exemple avec un number-inout UI pour contrôler le délai.
+    Version avec gestion robuste des états None
     """
-    # Time Step Label (Text)
-    ptc.VLabel(
-        "{{ ui_time_label }}",
-        v_if=("ptc_show_vcr"),
-        classes="mr-2 text-subtitle-1 font-weight-bold flex-shrink-0",
-        # Fixed width prevents layout shift when content changes
-        style="overflow: visible; white-space: nowrap; width: 100px;",
-        )
-
-    time_ctrl = tc
     
-    @server.state.change("animation_delay")
-    def update_delay(animation_delay, **kwargs):
-        """Callback quand le slider change."""
-        time_ctrl.play_delay = float(animation_delay)
+    SPEEDS = [4.0, 2.0, 1.0, 0.5, 0.25]
+    DEFAULT_INDEX = 2
     
-    # UI pour contrôler le délai
-    with vuetify3.VContainer():
-        vuetify3.VTextField(
-            label="delay",
-            v_model="animation_delay",
-            v_if=("ptc_show_vcr"),
-            # Le type 'number' force la gestion numérique par le navigateur
-            type="number", 
-            min=0.01,
-            max=4.0,
-            step=0.01,
-            # Ajoutez les boutons incrémentation/décrémentation
-            append_icon="mdi-plus",
-            prepend_icon="mdi-minus",
-            # Gérez l'incrémentation/décrémentation avec des événements
-            # C'est la partie clé pour remplacer le VNumberInput
-            click_prepend=f"animation_delay = Number(animation_delay) - 0.01",
-            click_append=f"animation_delay = Number(animation_delay) + 0.01",
-            # Optionnel: Pour limiter le nombre de décimales affichées
-            # key_up="animation_delay = Number(animation_delay).toFixed(2)", 
-            density="compact"
-        )
+    # Fonction utilitaire pour obtenir un index valide
+    def get_safe_speed_index():
+        """Retourne toujours un index valide, même si state.speed_index est None"""
+        index = state.speed_index
+        if index is None:
+            state.speed_index = DEFAULT_INDEX
+            state.animation_delay = SPEEDS[DEFAULT_INDEX]
+            tc.play_delay = SPEEDS[DEFAULT_INDEX]
+            return DEFAULT_INDEX
+        return index  # S'assurer que c'est un entier
     
-    return time_ctrl
+    # Initialize state de manière robuste
+    if not hasattr(state, 'speed_index') or state.speed_index is None:
+        state.speed_index = DEFAULT_INDEX
+        state.animation_delay = SPEEDS[DEFAULT_INDEX]
+        tc.play_delay = SPEEDS[DEFAULT_INDEX]
+    
+    def speed_down():
+        current_index = get_safe_speed_index()
+        
+        if current_index > 0:
+            new_index = current_index - 1
+            state.speed_index = new_index
+            state.animation_delay = SPEEDS[new_index]
+            tc.play_delay = SPEEDS[new_index]
+    
+    def speed_up():
+        current_index = get_safe_speed_index()
+        
+        if current_index < len(SPEEDS) - 1:
+            new_index = current_index + 1
+            state.speed_index = new_index
+            state.animation_delay = SPEEDS[new_index]
+            tc.play_delay = SPEEDS[new_index]
+    
+    with html.Div(style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color-background: white; "):
+        
+        # Contrôle principal
+        with html.Div(style="display: flex; align-items: center; gap: 12px;"):
+            ptc.VLabel(
+                "{{ ui_time_label }}",
+                v_if=("ptc_show_vcr",),
+                classes="text-subtitle-1 font-weight-bold",
+                style="overflow: visible; white-space: nowrap;",
+            )
+            
+            tc
+            
+            with vuetify.VBtnGroup(
+                v_if=("ptc_show_vcr",),
+                density="compact",
+                variant="text",
+            ):
+                # Slow down button
+                vuetify.VBtn(
+                    icon="mdi-minus",
+                    size="small",
+                    click=speed_down,
+                    disabled=("speed_index <= 0",),
+                    tooltip="slow",
+                )
+                
+                # Speed indicator
+                with vuetify.VBtn(
+                    size="x-large",
+                    disabled=True,
+                    style="min-width: 20px;max-width: 30px;",
+                    variant="tonal"
+                ):
+                    vuetify.VIcon(
+                        size="x-large",
+                        icon=(f"['mdi-gauge-empty', 'mdi-gauge-low', 'mdi-gauge', 'mdi-gauge-full', 'mdi-gauge-full'][speed_index ?? {DEFAULT_INDEX}]",),
+                        color=(f"['#1976D2', '#42A5F5', '#66BB6A', '#FFA726', '#F44336'][speed_index ?? {DEFAULT_INDEX}]",),
+                    )
+                
+                # Speed up button
+                vuetify.VBtn(
+                    icon="mdi-plus",
+                    size="small",
+                    click=speed_up,
+                    disabled=(f"speed_index >= {len(SPEEDS) - 1}",),
+                    tooltip="speed up",
+                )
+        
+    @state.change("animation_delay")
+    def on_animation_delay_change(animation_delay, **kwargs):
+        safe_delay = animation_delay if animation_delay is not None else "None"
+        
+        # Mettre à jour tc.play_delay si animation_delay change depuis l'extérieur
+        if animation_delay is not None:
+            try:
+                tc.play_delay = float(animation_delay)
+            except (TypeError, ValueError):
+                pass
+    
+    get_safe_speed_index()
+    
+    return tc
