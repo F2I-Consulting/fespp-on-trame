@@ -30,3 +30,8 @@
 *.exe
 *.out
 *.app
+/.venv
+/fespp_on_trame.egg-info
+/fespp_on_trame/__pycache__
+fespp_on_trame/app/core/fespp_engine copy.py
+/tests/__pycache__
