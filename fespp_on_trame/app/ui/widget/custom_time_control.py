@@ -11,7 +11,6 @@ class CustomTimeControl(ptc.TimeControl):
     def __init__(self, play_delay=1.0, **kwargs):  # Changé à 1.0 par défaut
         self._play_delay = play_delay
         super().__init__(**kwargs)
-        print(f"CustomTimeControl initialized with delay: {play_delay}s")
     
     @property
     def play_delay(self):
@@ -19,18 +18,14 @@ class CustomTimeControl(ptc.TimeControl):
     
     @play_delay.setter
     def play_delay(self, value):
-        old_value = self._play_delay
         self._play_delay = value
-        print(f"CustomTimeControl: play_delay changed from {old_value}s to {value}s")
     
     async def play_animation(self):
-        print(f"Starting animation with delay: {self._play_delay}s")
         with self.state:
             while self.state.time_play:
                 with self.state:
                     self.next()
                 await asyncio.sleep(self._play_delay)
-        print("Animation stopped")
 
 def custom_time_control_ui(tc: CustomTimeControl):
     """
