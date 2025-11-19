@@ -1,10 +1,14 @@
 #!/bin/bash
 build_root_dir=${FESPP_BUILD_ROOT_DIR:-"/work/ttl"}
 cd $build_root_dir
-git clone https://github.com/F2I-Consulting/fespp
+
+curl -L -o fespp.tar.gz https://github.com/F2I-Consulting/fespp/archive/refs/tags/v3.3.0.tar.gz
+mkdir fespp
+tar -xzpf fespp.tar.gz -C fespp --strip-components=1
+rm -f fespp.tar.gz
+
 mkdir build-fespp
-cd fespp
-git checkout dev
+
 cd ${build_root_dir}/build-fespp/
 cmake \
     -DPARAVIEW_PLUGIN_ENABLE_Fespp=ON \
