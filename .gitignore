@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+.venv/bin/activate
+/.venv
+/fespp_on_trame.egg-info
