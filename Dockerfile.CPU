@@ -13,7 +13,7 @@ RUN /work/build.bash
 # total stuff specific dependencies
 RUN apt update && apt install -y libboost-all-dev sqlite3 libxml2-dev libfreetype-dev
 
-ENV FESPP_BUILD_ROOT_DIR=/work/ttl 
+ENV FESPP_BUILD_ROOT_DIR=/work/ttl
 
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
