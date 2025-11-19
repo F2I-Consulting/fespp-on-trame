@@ -1,7 +1,7 @@
 #!/bin/bash
 build_root_dir=${FESPP_BUILD_ROOT_DIR:-"/work/ttl"}
 cd $build_root_dir
-curl -L -o fesapi.tar.gz https://github.com/F2I-Consulting/fesapi/archive/refs/tags/v2.13.0.0.tar.gz
+curl -L -o fesapi.tar.gz https://github.com/F2I-Consulting/fesapi/archive/refs/tags/v2.14.0.0.tar.gz
 mkdir fesapi
 tar -xzpf fesapi.tar.gz -C fesapi --strip-components=1
 rm -f fesapi.tar.gz
