@@ -113,7 +113,6 @@ class Selector:
         # switch node_id to path
         for node_id in list_selected:
             if self._tree.find_type(node_id) == "TimeSeries":
-                print("TimeSeries selected")
                 self._timeseries = TimeSeries(self._tree, node_id)
                 
             path = self._tree.find_path(node_id)

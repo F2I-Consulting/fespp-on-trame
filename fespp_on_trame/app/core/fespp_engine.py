@@ -1,6 +1,3 @@
-
-# Need the * import for grid extractor plugin (ParaView requirement)
-#from paraview.simple import *
 from paraview import simple as pvsimple
 from trame_server import Server
 from pathlib import Path
@@ -25,6 +22,9 @@ def initialize_fespp_engine(
 
     # Get or create the active ParaView render view
     _view = pvsimple.GetActiveViewOrCreate("RenderView")
+    _view.Visible = 1
+    _view.Location = 'Bottom Left'
+    _view.OrientationAxesVisibility = 0
 
     # Initialize FESPP core components
     _tree = Tree(None)
@@ -53,6 +53,8 @@ def initialize_fespp_engine(
     # State flags to trigger view updates and camera resets from Trame
     state.setdefault("view_update", False)
     state.setdefault("view_reset_camera", False)
+    
+    state.setdefault("view_loading_message", "Loading... Please wait.")
     
     # Ensure all state changes are synchronized
     state.flush()
@@ -87,9 +89,11 @@ def initialize_fespp_engine(
     def on_change_fespp_data_selectors( **kwargs):
         if _collector is None:
             return
+        
         # Set the 'Selectors' property on the ParaView source to load selected data
         _collector.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
         _collector.get_source().UpdatePipelineInformation()
+        _collector.show()
         
         pvsimple.Render(view=_view)
         
@@ -97,12 +101,15 @@ def initialize_fespp_engine(
         # Hide objects in vtkPartitionedDataSet: extracted object
         representation = _collector.get_representation()
         representation.Assembly='Assembly'
-
+        representation.BlockSelectors = state.fespp_data_selectors.copy()
+        #_collector.show()
+        #pvsimple.Render(view=_view)
+        
         # Update IJK Grid visibility if a reservoir node is selected
         if len(state.ui_select_node_reservoir) > 0:
             _ijkGrid.set_node_id(state.ui_select_node_reservoir[0])
         _ijkGrid.update_block_visibility()
-        
+
         # Trigger Trame view replacement and general update
         controller.view_replace
         state.view_update = True
@@ -114,18 +121,13 @@ def initialize_fespp_engine(
         server.controller.on_data_loaded() # for ptc.TimeControl()
         server.controller.on_active_proxy_change() # for ptc.RepresentBy() / ptc.ColorBy
         
-        # =========================================================
         # CAMERA RESET LOGIC (ONLY ON FIRST LOAD)
         if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
-            # 1. TRIGGER RESET VIA TRAME STATE
-            # This will trigger the @state.change("view_reset_camera") function
-            state.view_reset_camera = True # <--- New approach
-            
-            # 2. Mark the load as complete
+            state.view_reset_camera = True 
             state.has_data_loaded_once = True  
-        # =========================================================
-        # ----------------------------------------------------
         # Final render to display the scene with the new camera
+        state.view_update = True
+        _collector.show()
         pvsimple.Render(view=_view)
         # ----------------------------------------------------
 

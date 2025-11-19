@@ -1,5 +1,7 @@
 from trame.app import get_server
 
+from fespp_on_trame.app.ui.config.tree_icons import get_icon_for_type
+
 server = get_server()
 state = server.state
 
@@ -26,7 +28,8 @@ class Tree():
         node_path = self._data_assembly.GetNodePath(node_id)
             
         if treeview_type == "unknown":
-            if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+            #if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+            if node_type in ['IjkGrid', 'UnstructuredGrid']:
                 treeview_type = "reservoir"
             elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                 treeview_type = "well"
@@ -36,7 +39,8 @@ class Tree():
                 disabled = True
                 node_supportType = None
                 node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
-                if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                #if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                if node_supportType in ['IjkGrid', 'UnstructuredGrid']:
                     node_title = '!!!PARTIAL!!! '+ node_title
                     treeview_type = "reservoir"
                 elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
@@ -53,6 +57,7 @@ class Tree():
         data["treeview"]["title"] = node_title
         data["treeview"]["path"] = node_path
         data["treeview"]["type"] = node_type
+        data["treeview"]["icon"] = get_icon_for_type(node_type)
         if disabled: data["treeview"]["disabled"] = True
             
         data["treeview_type"] = treeview_type
@@ -85,7 +90,8 @@ class Tree():
                 # dispatch on reservoir/surface/well
                 treeview = {}
                 treeview_type = "unknown"
-                if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                #if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                if node_type in ['IjkGrid', 'UnstructuredGrid']:
                     treeview_type = "reservoir"
                 elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
@@ -96,7 +102,8 @@ class Tree():
                     node_supportType = None
                     node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
                     treeview["disabled"] = True,
-                    if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                    #if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
+                    if node_supportType in ['IjkGrid', 'UnstructuredGrid']:
                         node_title = '!!!PARTIAL!!! '+ node_title
                         treeview_type = "reservoir"
                     elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
@@ -111,6 +118,8 @@ class Tree():
                 treeview["title"] = node_title
                 treeview["path"] = node_path
                 treeview["type"] = node_type
+                treeview["icon"] = get_icon_for_type(node_type)
+                treeview["parent_id"] = 0
                 if disabled: treeview["disabled"] = True
             
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
@@ -133,7 +142,7 @@ class Tree():
             state.ui_subtree_reservoir = list(self._data_hierarchy_reservoir)
             state.ui_subtree_well = list(self._data_hierarchy_well)
             state.ui_subtree_surface = list(self._data_hierarchy_surface)
-
+    
     # -----------------------------------------------------------------------------
     # find ijkgrid parent node id
     # -----------------------------------------------------------------------------
