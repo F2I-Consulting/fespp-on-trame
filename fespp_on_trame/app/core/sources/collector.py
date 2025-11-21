@@ -57,6 +57,7 @@ class Collector:
         return True
     
     def extract_block(self, blockname):
+        self._collector.SetPropertyWithName('extractMode', 2)
         self._collector.SetPropertyWithName('objecttoextract', blockname)
 
     #==

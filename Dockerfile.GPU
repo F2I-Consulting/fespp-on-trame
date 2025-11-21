@@ -16,13 +16,15 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV FESPP_BUILD_ROOT_DIR=/work/ttl 
-# Copy and build FESPP
+
+# build total stuff
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
+RUN bash /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
+RUN bash /root/build-fesapi.sh
+
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
-RUN bash /root/build-fesapi-dependencies.sh && \
-    bash /root/build-fesapi.sh && \
-    bash /root/build-fespp.sh
+RUN bash /root/build-fespp.sh
 
 FROM --platform=linux/amd64 kitware/trame:py3.10-1.2-glvnd-runtime-ubuntu22.04 AS runtime
 
@@ -63,6 +65,6 @@ COPY start.sh /opt/trame/
 RUN chmod +x /opt/trame/start.sh
 
 # Install Python dependencies
-RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
+RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install .
 
 ENTRYPOINT ["/opt/trame/start.sh"]
