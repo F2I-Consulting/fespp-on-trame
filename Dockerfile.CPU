@@ -13,7 +13,7 @@ RUN /work/build.bash
 # total stuff specific dependencies
 RUN apt update && apt install -y libboost-all-dev sqlite3 libxml2-dev libfreetype-dev
 
-ENV FESPP_BUILD_ROOT_DIR=/work/ttl 
+ENV FESPP_BUILD_ROOT_DIR=/work/ttl
 
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
@@ -27,7 +27,7 @@ RUN bash /root/build-fespp.sh
 
 FROM --platform=linux/amd64 kitware/trame:py3.10-1.2-glvnd-runtime-ubuntu22.04 AS runtime
 
-RUN apt update && apt install -y libhdf5-103
+RUN apt update && apt install -y libhdf5-103 git
 
 RUN install -d -o trame-user -g trame-user /deploy
 
@@ -45,4 +45,4 @@ COPY --chown=trame-user:trame-user ./setup.py /deploy/setup.py
 # bring some data into the image
 COPY ./data /deploy/data
 
-RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install . && mkdir /deploy/server/www/__trame_vuetify_lab && cp -r /deploy/server/venv/lib/python3.10/site-packages/trame_vuetify/module/vue3-lab-serve/. /deploy/server/www/__trame_vuetify_lab/
+RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install -r setup/requirements.txt && pip3 install . 
