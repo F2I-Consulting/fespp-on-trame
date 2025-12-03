@@ -30,20 +30,8 @@ The project requires a two-step build process:
 
 ### Step 1: Build ParaView Builder Image
 
-First, navigate to the `pv_builder` directory and build the base ParaView builder image.
-
-#### CPU Mode
-
 ```bash
-cd pv_builder
-docker build -t pv_builder_cpu:0.1.0 -f Dockerfile.CPU .
-```
-
-#### GPU Mode
-
-```bash
-cd pv_builder
-docker build -t pv_builder_gpu:0.1.0 -f Dockerfile.GPU .
+docker build -t paraview:6.0.x -f Dockerfile.paraview .
 ```
 
 **Note**: The GPU build requires NVIDIA Docker support. Make sure your system has the NVIDIA Container Toolkit installed.
@@ -52,16 +40,9 @@ docker build -t pv_builder_gpu:0.1.0 -f Dockerfile.GPU .
 
 After successfully building the ParaView builder image, return to the project root directory and build the main application image.
 
-#### CPU Mode
 
 ```bash
-docker build -t fespp_on_trame_cpu:dev -f Dockerfile.CPU .
-```
-
-#### GPU Mode
-
-```bash
-docker build -t fespp_on_trame_gpu:dev -f Dockerfile.GPU .
+docker build -f Dockerfile -t fespp_on_trame:pv6.0.1 .
 ```
 
 ## Usage
@@ -71,13 +52,13 @@ docker build -t fespp_on_trame_gpu:dev -f Dockerfile.GPU .
 #### CPU Mode
 
 ```bash
-docker run -p 8080:8080 fespp_on_trame_cpu:dev
+docker run -p 8080:8080 fespp_on_trame:pv6.0.1
 ```
 
 #### GPU Mode
 
 ```bash
-docker run --gpus all -p 8080:8080 fespp_on_trame_gpu:dev
+docker run --gpus all -p 8080:8080 fespp_on_trame:pv6.0.1
 ```
 
 ### Accessing the Application

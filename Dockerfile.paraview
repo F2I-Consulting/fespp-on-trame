@@ -1,0 +1,65 @@
+FROM nvidia/opengl:1.2-glvnd-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
+
+# Installation des dépendances système
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        # Outils de build
+        software-properties-common \
+        build-essential \
+        ninja-build \
+        git \
+        curl \
+        wget \
+        ca-certificates \
+        pkg-config \
+        file \
+        patchelf \
+        # Compilateurs et parsers
+        bison \
+        flex \
+        # Bibliothèques de développement
+        libgl1-mesa-dev \
+        libegl1-mesa-dev \
+        libglvnd-dev \
+        libegl-dev \
+        libgles2-mesa-dev \
+        libx11-dev \
+        libxext-dev \
+        libxt-dev \
+        libpng-dev \
+        libhdf5-dev \
+        zlib1g-dev \
+        libpthread-stubs0-dev \
+        # Bibliothèques runtime pour GPU
+        libegl1 \
+        libglvnd0 \
+        libgl1 \
+        libglx0 \
+        libgles2 \
+        mesa-utils && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Installation de CMake 3.28.0
+RUN mkdir -p /opt/cmake/3.28.0 && \
+    cd /opt/cmake/3.28.0 && \
+    curl -L https://cmake.org/files/v3.28/cmake-3.28.0-linux-x86_64.tar.gz | \
+    tar --strip-components=1 -xz && \
+    ln -sf /opt/cmake/3.28.0/bin/cmake /usr/bin/cmake && \
+    ln -sf /opt/cmake/3.28.0/bin/cpack /usr/bin/cpack && \
+    ln -sf /opt/cmake/3.28.0/bin/ctest /usr/bin/ctest
+
+WORKDIR /work
+RUN git clone --recursive https://gitlab.kitware.com/paraview/paraview-superbuild.git pvsb-sources
+
+# Création du script de build unifié
+COPY build.bash /work/build.bash
+RUN cat /work/build.bash
+RUN chmod +x /work/build.bash
+
+WORKDIR /work
