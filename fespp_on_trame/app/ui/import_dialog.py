@@ -27,8 +27,8 @@ class ImportDialog:
         # Register the import action handler on state change
         self.state.change("execute_action")(self._on_execute_action)
         # Ensure OSDU-related state keys exist and set sensible defaults
-        if not hasattr(self.state, "osdu_etp_token_type"):
-            self.state.osdu_etp_token_type = "Bearer"
+        if not hasattr(self.state, "osdu_token_type"):
+            self.state.osdu_token_type = "Bearer"
         if not hasattr(self.state, "osdu_proxy_token_type"):
             self.state.osdu_proxy_token_type = "Bearer"
         # tab default
@@ -81,7 +81,7 @@ class ImportDialog:
                 # Title (harmonized)
                 with vuetify3.VCardTitle(classes="d-flex align-center bg-blue-grey-lighten-5"):
                     vuetify3.VIcon(icon="mdi-cloud-upload", class_="mr-0", color="blue")
-                    html.Span("Import", classes="pl-4")
+                    html.Span("Import from", classes="pl-4")
 
                 # Tabs for From Files / From OSDU (styled like drawer tabs)
                 with vuetify3.VCardText(classes="py-2"):
@@ -93,8 +93,8 @@ class ImportDialog:
                         grow=True,
                         selected_class="font-weight-bold text-blue",
                     ):
-                        vuetify3.VTab("From Files", value="files")
-                        vuetify3.VTab("From OSDU", value="osdu")
+                        vuetify3.VTab("Files", value="files")
+                        vuetify3.VTab("OSDU", value="osdu")
 
                     with vuetify3.VWindow(v_model=("import_tab",), classes="pt-4"):
                         # --- From Files tab (existing content) ---
@@ -141,7 +141,7 @@ class ImportDialog:
                                 # ETP URL
                                 vuetify3.VTextField(
                                     v_model=("osdu_etp_url", None),
-                                    label="ETP URL",
+                                    label="RDDMS ETP URL",
                                     variant="outlined",
                                     density="comfortable",
                                     clearable=True,
@@ -158,61 +158,70 @@ class ImportDialog:
                                     color="blue",
                                 )
 
-                                # ETP Token Type + Token
+                                # ETP Token Type + Token (VSelect + aligned field)
                                 with vuetify3.VRow(classes="ma-0"):
                                     with vuetify3.VCol(cols="6", classes="pa-0 pr-2"):
                                         vuetify3.VSelect(
-                                            items=["Bearer", "Basic"],
-                                            v_model=("osdu_etp_token_type", "Bearer"),
-                                            label="ETP Token Type",
-                                            density="comfortable",
+                                            v_model=("osdu_token_type", "Bearer"),
+                                            items=("osdu_token_type_options", ["Bearer", "Basic"]),
+                                            label="OSDU Token Type",
                                             hide_details=True,
+                                            dense=True,
+                                            outlined=True,
                                             color="blue",
+                                            base_color="blue",
                                         )
+
                                     with vuetify3.VCol(cols="6", classes="pa-0 pl-2"):
                                         vuetify3.VTextField(
-                                            v_model=("osdu_etp_token", None),
-                                            label="ETP Token",
+                                            v_model=("osdu_token", None),
+                                            label="OSDU Token",
                                             variant="outlined",
                                             density="comfortable",
                                             clearable=True,
                                             color="blue",
                                         )
 
-                                # Proxy connexion expansion
-                                with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-4"):
-                                    with vuetify3.VExpansionPanel():
-                                        with vuetify3.VExpansionPanelTitle():
-                                            html.Span("Proxy Connection")
-                                        with vuetify3.VExpansionPanelText():
-                                            vuetify3.VTextField(
-                                                v_model=("osdu_proxy_url", None),
-                                                label="Proxy Url",
-                                                variant="outlined",
-                                                density="comfortable",
-                                                clearable=True,
-                                                color="blue",
-                                            )
-
-                                            with vuetify3.VRow(classes="ma-0"):
-                                                with vuetify3.VCol(cols="6", classes="pa-0 pr-2"):
-                                                    vuetify3.VSelect(
-                                                        items=["Bearer", "Basic"],
-                                                        v_model=("osdu_proxy_token_type", "Bearer"),
-                                                        label="ProxyToken Type",
-                                                        density="comfortable",
-                                                        hide_details=True,
-                                                        color="blue",
-                                                    )
-                                                with vuetify3.VCol(cols="6", classes="pa-0 pl-2"):
+                                # Proxy connexion expansion wrapped in a subtle card
+                                with vuetify3.VCard(classes="mb-4", outlined=True, elevation=0):
+                                    with vuetify3.VCardText(classes="pa-3"):
+                                        with vuetify3.VExpansionPanels(style="display: initial;"):
+                                            with vuetify3.VExpansionPanel():
+                                                with vuetify3.VExpansionPanelTitle():
+                                                    html.Span("Proxy Connection")
+                                                with vuetify3.VExpansionPanelText():
                                                     vuetify3.VTextField(
-                                                        v_model=("osdu_proxy_token", None),
-                                                        label="Proxy Token",
+                                                        v_model=("osdu_proxy_url", None),
+                                                        label="Proxy Url",
                                                         variant="outlined",
                                                         density="comfortable",
                                                         clearable=True,
                                                         color="blue",
                                                     )
+
+                                                    with vuetify3.VRow(classes="ma-0"):
+                                                        with vuetify3.VCol(cols="6", classes="pa-0 pr-2"):
+                                                            vuetify3.VSelect(
+                                                                v_model=("osdu_proxy_token_type", "Bearer"),
+                                                                items=("osdu_proxy_token_type_options", ["Bearer", "Basic"]),
+                                                                label="Proxy Token Type",
+                                                                hide_details=True,
+                                                                dense=True,
+                                                                outlined=True,
+                                                                color="blue",
+                                                                base_color="blue",
+                                                            )
+
+                                                        with vuetify3.VCol(cols="6", classes="pa-0 pl-2"):
+                                                            vuetify3.VTextField(
+                                                                v_model=("osdu_proxy_token", None),
+                                                                label="Proxy Token",
+                                                                variant="outlined",
+                                                                density="comfortable",
+                                                                clearable=True,
+                                                                color="blue",
+                                                            )
+                                                
 
                 # Actions
                 with vuetify3.VCardActions(classes="pa-4 bg-blue-grey-lighten-5"):
