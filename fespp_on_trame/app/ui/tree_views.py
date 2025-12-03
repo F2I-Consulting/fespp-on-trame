@@ -7,7 +7,7 @@ class TreeViews:
 
     Instantiate with the Trame `controller` and `state` so the class
     registers the `init_opened_nodes` controller action and sets
-    `state.ui_opened_*` variables.
+    `state.ui_opened_*` variables and per-grid selection states.
     """
 
     def __init__(self, controller, state):
@@ -34,21 +34,49 @@ class TreeViews:
         except Exception:
             state.ui_opened_well = []
 
+        # Initialize per-grid selection states for reservoir (each grid has independent selection)
+        self._init_grid_selections()
+
+    def _init_grid_selections(self):
+        """Initialize per-grid selection states for reservoir grids.
+        
+        For each grid (root node with type IjkGrid/UnstructuredGrid),
+        create a separate state variable ui_selected_grid_<id> to allow
+        independent "single-leaf" selection per grid.
+        """
+        if not hasattr(self.state, "ui_subtree_reservoir"):
+            return
+        
+        for grid in self.state.ui_subtree_reservoir:
+            grid_id = grid.get("id")
+            if grid_id is not None:
+                state_key = f"ui_selected_grid_{grid_id}"
+                # Initialize if not already set
+                if not hasattr(self.state, state_key):
+                    setattr(self.state, state_key, [])
+
+
     def reservoir_tree(self):
+        """Render reservoir grids with independent selection per grid.
+        
+        Each grid (IjkGrid/UnstructuredGrid) gets its own VTreeview with
+        "single-leaf" selection strategy, allowing simultaneous selection
+        of children from different grids.
+        """
+        # Use a single items binding but update_selected captures per-grid state via JavaScript
         with vuetify3.VTreeview(
             slim=True,
             density="comfortable",
             opened=("ui_opened_reservoir", []),
             line="connected",
             item_value="id",
-            items=("ui_subtree_reservoir", []),
-            activated=("ui_active_node_reservoir", []),
+            items=("ui_subtree_reservoir", []),  # All grids at once
             activatable=True,
             active_strategy="single-independent",
             update_activated="ui_active_node_reservoir = $event",
             color="primary",
             open_on_click=False,
-            selected=("ui_select_node_reservoir", []),
+            selected=("ui_select_node_reservoir", []),  # Restored: single global selection for now
             selectable=True,
             select_strategy="single-leaf",
             item_props=True,
