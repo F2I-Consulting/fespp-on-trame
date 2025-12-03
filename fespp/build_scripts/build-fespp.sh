@@ -2,12 +2,16 @@
 build_root_dir=${FESPP_BUILD_ROOT_DIR:-"/work/ttl"}
 cd $build_root_dir
 
-curl -L -o fespp.tar.gz https://github.com/F2I-Consulting/fespp/archive/refs/tags/v3.3.0.tar.gz
-mkdir fespp
-tar -xzpf fespp.tar.gz -C fespp --strip-components=1
-rm -f fespp.tar.gz
-
+git clone https://github.com/F2I-Consulting/fespp
+cd fespp
+git checkout dev
 mkdir build-fespp
+#curl -L -o fespp.tar.gz https://github.com/F2I-Consulting/fespp/archive/refs/tags/v3.3.0.tar.gz
+#mkdir fespp
+#tar -xzpf fespp.tar.gz -C fespp --strip-components=1
+#rm -f fespp.tar.gz
+#
+#mkdir build-fespp
 
 cd ${build_root_dir}/build-fespp/
 cmake \
@@ -23,4 +27,4 @@ make -j$(nproc)
 cmake --install .
 rm -Rf ${build_root_dir}/fespp
 rm -Rf ${build_root_dir}/build-fespp
-cp -R ${build_root_dir}/install-fesapi/lib/* /work/ttl/install-fespp/lib/paraview-5.13/plugins/Fespp/.
+cp -R ${build_root_dir}/install-fesapi/lib/* /work/ttl/install-fespp/lib/paraview-6.0/plugins/Fespp/.

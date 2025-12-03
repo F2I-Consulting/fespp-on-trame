@@ -18,7 +18,7 @@ def initialize_fespp_engine(
     # Load the custom FESPP ParaView plugin
     pvsimple.LoadPlugin(str(fespp_plugin_path))
     # Load the ExplicitStructuredGrid plugin for handling explicit grid slicing
-    pvsimple.LoadPlugin('/opt/paraview/lib/paraview-5.13/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.so')
+    pvsimple.LoadPlugin('/opt/paraview/lib/paraview-6.0/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.so')
 
     # Get or create the active ParaView render view
     _view = pvsimple.GetActiveViewOrCreate("RenderView")
