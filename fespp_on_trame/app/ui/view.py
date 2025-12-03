@@ -20,6 +20,7 @@ from fespp_on_trame.app.ui.config.tree_selection import get_item_props_js
 from fespp_on_trame.app.ui.toolbar import Toolbar
 from fespp_on_trame.app.ui.helpers import create_card
 from fespp_on_trame.app.ui.import_dialog import ImportDialog
+from fespp_on_trame.app.ui.tree_views import TreeViews
 
 # NOTE: This file was partially refactored to improve maintainability.
 # - Toolbar UI moved to `fespp_on_trame.app.ui.toolbar.Toolbar`
@@ -52,24 +53,10 @@ state.is_dragging = False        # Flag to track the dragging state
 state.init_height_dataexplorer = "600px"      # Initial height for the data explorer card
 state.init_height_attribute = "600px"         # Initial height for the attribute card
 
-# -----------------------------------------------------------------------------
-# State Change Handlers (Server-Side Logic)
-# -----------------------------------------------------------------------------
+# NOTE: Tree opened-nodes initialization is now handled by TreeViews class
+# See: fespp_on_trame.app.ui.tree_views.TreeViews.__init__
 
-# Initialize opened nodes only once
-@controller.set("init_opened_nodes")
-def init_opened_nodes(tree_data):
-    """Returns only the IDs of the first level nodes"""
-    return [node["id"] for node in tree_data if node.get("parent_id") == 0 or "parent_id" not in node]
-
-# Call after building your trees
-state.ui_opened_reservoir = controller.init_opened_nodes(state.ui_subtree_reservoir)
-state.ui_opened_surface = controller.init_opened_nodes(state.ui_subtree_surface)
-state.ui_opened_well = controller.init_opened_nodes(state.ui_subtree_well)
-
-
-# Function to execute a specific action (triggered when state.execute_action changes to True)
-# NOTE: This is now handled by ImportDialog class which manages its own state change handler
+# NOTE: Import action is now handled by ImportDialog class which manages its own state change handler
 # See: fespp_on_trame.app.ui.import_dialog.ImportDialog._on_execute_action
         
 # -----------------------------------------------------------------------------
@@ -105,6 +92,9 @@ def ui(server: Server, **kwargs) -> None:
 
         # Initialize import dialog (registers state change handler internally)
         import_dialog = ImportDialog(state, controller)
+
+        # Initialize tree views (registers opened-nodes handler and initializes state)
+        tv = TreeViews(controller, state)
 
         # Main application toolbar -> delegate to Toolbar class
         with layout.toolbar:
@@ -150,38 +140,9 @@ def ui(server: Server, **kwargs) -> None:
                                 "mdi-file-tree",
                                 "init_height_dataexplorer",
                             ):
-                                # Treeview for displaying reservoir data hierarchy
-                                with vuetify3.VSheet(classes="pa-3"): 
-                                    with vuetify3.VTreeview(
-                                        slim=True,
-                                        density="comfortable", 
-                                        opened=("ui_opened_reservoir", []),
-                                        line="connected", 
-                                        # Data binding
-                                        item_value="id",
-                                        items=("ui_subtree_reservoir", []), 
-                                        # Activation logic
-                                        activated=("ui_active_node_reservoir", []),
-                                        activatable=True,
-                                        active_strategy="single-independent",
-                                        update_activated="ui_active_node_reservoir = $event",
-                                        color="primary",
-                                        open_on_click=False,
-                                        # Selection logic
-                                        selected=("ui_select_node_reservoir", []),
-                                        selectable=True,
-                                        select_strategy="single-leaf",
-                                        item_props=True,
-                                        update_selected="ui_select_node_reservoir = $event",
-                                        indent_lines="default",
-                                        separate_roots =True,
-                                    ):
-                                        with vuetify3.Template(v_slot_prepend="{ item }"):
-                                            vuetify3.VIcon(
-                                                "{{item.icon}}", 
-                                                size="small", 
-                                                color="green-darken-1"
-                                            )
+                                # Treeview for displaying reservoir data hierarchy (extracted)
+                                with vuetify3.VSheet(classes="pa-3"):
+                                    tv.reservoir_tree()
                             # Node Attribute CARD
                             with create_card(
                                 "Attributes",
@@ -211,36 +172,8 @@ def ui(server: Server, **kwargs) -> None:
                                 "mdi-file-tree",
                                 "init_height_dataexplorer"
                             ):
-                                # Treeview definition for surfaces (similar structure to reservoir)
-                                with vuetify3.VTreeview(
-                                    slim=True,
-                                    density="compact",
-                                    opened=("ui_opened_surface", []),
-                                    line="connected", 
-                                    # data
-                                    item_value="id",
-                                    items=("ui_subtree_surface", []),
-                                    # activation logic
-                                    activated=("ui_active_node_surface", []),
-                                    activatable=True,
-                                    active_strategy="single-independent",
-                                    update_activated="ui_active_node_surface = $event",
-                                    color="primary",
-                                    open_on_click=False,
-                                    # selection logic
-                                    selected=("ui_select_node_surface", []),
-                                    selectable=True,
-                                    select_strategy="classic",
-                                    update_selected="ui_select_node_surface = $event",
-                                    indent_lines="default",
-                                    separate_roots =True,
-                                ):
-                                    with vuetify3.Template(v_slot_prepend="{ item }"):
-                                        vuetify3.VIcon(
-                                            "{{item.icon}}", 
-                                            size="small", 
-                                            color="green-darken-1"
-                                    )
+                                # Treeview for surfaces (extracted)
+                                tv.surface_tree()
                             # Node Attribute CARD
                             with create_card(
                                 "Attributes",
@@ -258,36 +191,8 @@ def ui(server: Server, **kwargs) -> None:
                                 "mdi-file-tree",
                                 "init_height_dataexplorer"
                             ):
-                                # Treeview definition for wells
-                                with vuetify3.VTreeview(
-                                    slim=True,
-                                    density="compact",
-                                    opened=("ui_opened_well", []),
-                                    line="connected", 
-                                    # data
-                                    item_value="id",
-                                    items=("ui_subtree_well", []),
-                                    # activation logic
-                                    activated=("ui_active_node_well", []),
-                                    activatable=True,
-                                    active_strategy="single-independent",
-                                    update_activated="ui_active_node_well = $event",
-                                    color="primary",
-                                    open_on_click=False,
-                                    # selection logic
-                                    selected=("ui_select_node_well", []),
-                                    selectable=True,
-                                    select_strategy="classic",
-                                    indent_lines="default",
-                                    separate_roots =True,
-                                    update_selected="ui_select_node_well = $event",
-                                ):
-                                    with vuetify3.Template(v_slot_prepend="{ item }"):
-                                        vuetify3.VIcon(
-                                            "{{item.icon}}", 
-                                            size="small", 
-                                            color="green-darken-1"
-                                    )
+                                # Treeview for wells (extracted)
+                                tv.well_tree()
                             # Node Attribute CARD
                             with create_card(
                                 "Attributes",
