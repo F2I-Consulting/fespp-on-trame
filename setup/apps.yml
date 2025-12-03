@@ -10,7 +10,7 @@ trame:
     - ${secret}
     - --server
     - --fespp-plugin-path
-    - /work/ttl/install-fespp/lib/paraview-5.13/plugins/Fespp/Fespp.so
+    - /work/ttl/install-fespp/lib/paraview-6.0/plugins/Fespp/Fespp.so
     - --local-epc-file-path
     - /deploy/data/empty.epc
     - --remote-epc-file-location
