@@ -16,11 +16,18 @@ import fespp_on_trame.app.ui.panel.slicers as panel_slicers
 import fespp_on_trame.app.ui.widget.custom_time_control as custom_time_control
 from fespp_on_trame.app.ui.config.tree_selection import get_item_props_js
 
+# new modular imports
+from fespp_on_trame.app.ui.toolbar import Toolbar
+from fespp_on_trame.app.ui.helpers import create_card
+from fespp_on_trame.app.ui.import_dialog import ImportDialog
+
+# NOTE: This file was partially refactored to improve maintainability.
+# - Toolbar UI moved to `fespp_on_trame.app.ui.toolbar.Toolbar`
+# - Import dialog moved to `fespp_on_trame.app.ui.import_dialog.ImportDialog`
+# - Card helper moved to `fespp_on_trame.app.ui.helpers.create_card`
+
 
 import contextlib
-from fespp_on_trame.app.io.http import download_file_from_url
-from fespp_on_trame.app.io.drop_files import save_uploaded_files
-from tempfile import mkdtemp
 
 
 # -----------------------------------------------------------------------------
@@ -62,86 +69,8 @@ state.ui_opened_well = controller.init_opened_nodes(state.ui_subtree_well)
 
 
 # Function to execute a specific action (triggered when state.execute_action changes to True)
-@state.change("execute_action")
-def run_action(execute_action, **kwargs):
-    """
-    Handles file import logic, either from remote URLs or local uploads.
-    It retrieves EPC file paths and calls the controller to load them.
-    """
-    if execute_action and state.remote_files_location:
-        # Case 1: Import from remote URLs (e.g., from an input field)
-        list_url = state.remote_files_location.split('|')
-        temp_dir = mkdtemp()
-        epc_paths = []
-        
-        # Download files from URLs
-        for url in list_url:
-            file_name = download_file_from_url(url, temp_dir)
-        
-            if file_name.lower().endswith('.epc'):
-                epc_paths.append(file_name)
-                
-        # Load the collected EPC files using a controller function
-        for epc_path in epc_paths:
-            controller.load_epc_file(epc_path)
-        
-        # Reset state variables after action completion
-        state.execute_action = False
-        state.remote_epc_file_location = None
-        state.remote_h5_file_location = None
-        
-    elif execute_action and state.files:
-        # Case 2: Import from local file uploads
-        # Save uploaded files to a temporary location and get the paths
-        epc_paths = save_uploaded_files(state.files)
-        # Load the collected EPC files
-        for epc_path in epc_paths:
-            controller.load_epc_file(epc_path)
-        # Clear the file list in the state
-        state.files = None
-        
-    # Ensure the execution flag is reset regardless of the path taken
-    state.execute_action = False
-
-# -----------------------------------------------------------------------------
-# UI Component Helpers
-# -----------------------------------------------------------------------------
-
-def create_card(title, icon, height=None):
-    """
-    Creates a Vuetify VCard that is vertically resizable (CSS resize: vertical).
-    The content (VCardText) adapts to the new height and is scrollable.
-    """
-
-    # 1. Base Card Properties (Flat, Bordered + Resizable)
-    card_props = {
-        "classes": "pa-0 mb-4 border d-flex flex-column", 
-        "elevation": 0,
-        "flat": True,
-        "tile": False,
-        "style": "resize: vertical; overflow: hidden; min-height: 250px;" 
-    }
-    
-    # Handling initial height
-    if height:
-        card_props["style"] = card_props["style"].replace("250px", height)
-        card_props["height"] = height 
-
-    with vuetify3.VCard(**card_props):
-        
-        # 2. Styled Title Section (VToolbar)
-        with vuetify3.VToolbar(
-            density="compact",
-            classes="bg-blue-grey-lighten-5 flex-grow-0", 
-            color="blue-grey-darken-2"
-        ):
-            vuetify3.VIcon(icon, classes="mr-3")
-            vuetify3.VToolbarTitle(title, classes="text-subtitle-1 font-weight-medium")
-            
-        # 3. Adaptive and Scrollable Content Area
-        return vuetify3.VCardText(
-            classes="pa-3 flex-grow-1 overflow-y-auto", 
-        )
+# NOTE: This is now handled by ImportDialog class which manages its own state change handler
+# See: fespp_on_trame.app.ui.import_dialog.ImportDialog._on_execute_action
         
 # -----------------------------------------------------------------------------
 # General UI Definition
@@ -174,126 +103,13 @@ def ui(server: Server, **kwargs) -> None:
         with layout.icon:
             vuetify3.VImg(src=localFileManager["logo"], height="35", width="35")
 
-        # Main application toolbar
+        # Initialize import dialog (registers state change handler internally)
+        import_dialog = ImportDialog(state, controller)
+
+        # Main application toolbar -> delegate to Toolbar class
         with layout.toolbar:
-            
-            vuetify3.VSpacer()
-            with vuetify3.VContainer(
-                classes="fill-height",
-                ):
-                vuetify3.VSpacer() 
-                
-                # Widget to select representation (e.g., Surface, Wireframe) from ptc library
-                with html.Div(style="width: 15%;", classes="d-flex align-center"):
-                    ptc.RepresentBy(
-                        color = "blue",
-                        base_color="blue", 
-                        item_color="blue"
-                    )
-                
-                # Input field for Z-axis scaling
-                with html.Div(style="width: 5%;", classes="d-flex align-center"): 
-                    vuetify3.VTextField(
-                        v_model=("ui_scale_z", 1.0), # Bind to state variable 'ui_scale_z'
-                        label="Z scale",
-                        hide_details=True,
-                        density="compact",
-                        variant="outlined",
-                        color="blue",
-                        base_color="blue",
-                        bg_color="white",
-                        reverse=True,
-                        type="number",
-                    )
-                
-                vuetify3.VSpacer()
-                
-                with html.Div(style="width: 15%;", classes="d-flex align-center"): 
-
-                    # Button to open the Import Files dialog
-                    vuetify3.VBtn(
-                        "Import files",
-                        variant="tonal",
-                        color="blue",
-                        click="dialog_visible = true", # Open the dialog
-                    )
-
-                # Widget for color palette selection
-                with html.Div(classes="d-flex align-center"):
-                    ptc.PalettePicker(flat=True)
-
-                # File Import Dialog (Modal)
-                with vuetify3.VDialog(
-                    v_model=("dialog_visible", False), # Controlled by state.dialog_visible
-                    max_width="600" # Increased width for better spacing
-                ):
-                    with vuetify3.VCard():
-        
-                        # 1. Header (VCardTitle) - Clear and visual
-                        with vuetify3.VCardTitle(classes="d-flex align-center bg-blue-grey-lighten-5"): 
-                            # Light background color and vertical centering
-                            vuetify3.VIcon(icon="mdi-cloud-upload", class_="mr-0", color="blue")
-                            html.Span("Import Files", classes="pl-4") # Updated Title
-        
-                        # 2. Content (VCardText) - Action separation
-                        with vuetify3.VCardText(classes="py-5"): # Added vertical padding
-            
-                            # --- Section 1: Import from URL ---
-                            with vuetify3.VRow(classes="ma-0 mb-5"):
-                                with vuetify3.VCol(cols="12", classes="pa-0"):
-                                    with html.Div(classes="d-flex align-center mb-2"):
-                                        vuetify3.VIcon(icon="mdi-link-variant", class_="mr-0", color="blue-grey-darken-2")
-                                        html.Span("Import from Remote URL", classes="text-h6 font-weight-regular pl-4")
-                            
-                                    vuetify3.VTextField(
-                                        variant="outlined",
-                                        label="Enter URLs (separated with '&' character)", # Label
-                                        v_model=("remote_files_location", None),
-                                        density="comfortable",
-                                        placeholder="Ex: http://example.com/file1.obj&http://example.com/file2.ply",
-                                        hide_details="auto",
-                                        clearable=True
-                                    )
-                
-                            vuetify3.VDivider(classes="mb-5")
-                
-                            # --- Section 2: Local File Upload ---
-                            with vuetify3.VRow(classes="ma-0"):
-                                with vuetify3.VCol(cols="12", classes="pa-0"):
-                                    with html.Div(classes="d-flex align-center mb-3"):
-                                        vuetify3.VIcon(icon="mdi-folder-upload", class_="mr-0", color="blue-grey-darken-2")
-                                        html.Span("Upload Local Files", classes="text-h6 font-weight-regular pl-4")
-                            
-                                    vuetify3.VFileUpload(
-                                        v_model=("files", None), # Bind to state.files for file data
-                                        density="comfortable",
-                                        clearable=True,
-                                        multiple=True,
-                                        prepend_icon="mdi-upload-multiple", 
-                                        label="Drag and drop or click to select files", # Label
-                                        classes="pa-3", 
-                                    )
-
-                        # 3. Actions (VCardActions)
-                        with vuetify3.VCardActions(classes="pa-4 bg-blue-grey-lighten-5"): # Light background for actions
-                            vuetify3.VSpacer()
-
-                            # Cancel Button 
-                            vuetify3.VBtn(
-                                "Cancel", 
-                                variant="text", 
-                                color="blue-grey-darken-2",
-                                click="dialog_visible = false"
-                            )
-                
-                            # Import Button 
-                            vuetify3.VBtn(
-                                "Import", 
-                                color="blue",
-                                variant="elevated", 
-                                click="dialog_visible = false; execute_action = true", # Triggers the run_action function
-                                prepend_icon="mdi-check-circle" 
-                            )
+            toolbar = Toolbar(localFileManager, import_dialog)
+            toolbar.render()
                             
 
         # Side Drawer (Navigation/Control Panel)
