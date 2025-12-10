@@ -94,20 +94,27 @@ def initialize_fespp_engine(
         _collector.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
         _collector.get_source().UpdatePipelineInformation()
         _collector.show()
-        
+
         pvsimple.Render(view=_view)
         
         # Configure representation for partitioned dataset (e.g., show assembly structure)
         # Hide objects in vtkPartitionedDataSet: extracted object
         representation = _collector.get_representation()
         representation.Assembly='Assembly'
-        representation.BlockSelectors = state.fespp_data_selectors.copy()
+        representation.BlockSelectors = ['/data']
         #_collector.show()
         #pvsimple.Render(view=_view)
         
         # Update IJK Grid visibility if a reservoir node is selected
         if len(state.ui_select_node_reservoir) > 0:
-            _ijkGrid.set_node_id(state.ui_select_node_reservoir[0])
+            # Iterate over all selected reservoir nodes to find the first valid match.
+            # We only update the IJK grid configuration once, with the first relevant node found.
+            for reservoir_node_id in state.ui_select_node_reservoir:
+                # Check if the current node is itself an 'IjkGrid' node or has an 'IjkGrid' parent.
+                # This determines if the selected reservoir node is relevant to the IJK visualization logic.
+                    if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
+                        _ijkGrid.set_node_id(reservoir_node_id)
+                        break 
         _ijkGrid.update_block_visibility()
 
         # Trigger Trame view replacement and general update
