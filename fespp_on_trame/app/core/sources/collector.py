@@ -35,11 +35,11 @@ class Collector:
         if scale != self._scale_z:
             self._scale_z = scale
 
-    def update_representation(self):
-        pvsimple.GetRepresentation(proxy=self._collector, view=pvsimple.GetActiveView()).Representation = self._representationType
+#    def update_representation(self):
+#        pvsimple.GetRepresentation(proxy=self._collector, view=pvsimple.GetActiveView()).Representation = self._representationType
         
-    def update_scale(self):
-        pvsimple.GetRepresentation(proxy=self._collector, view=pvsimple.GetActiveView()).Scale = self._scale_z
+#    def update_scale(self):
+#        pvsimple.GetRepresentation(proxy=self._collector, view=pvsimple.GetActiveView()).Scale = self._scale_z
         
     
     #== GETTER
@@ -62,7 +62,7 @@ class Collector:
 
     #==
     def show(self):
-        self.update_representation()
-        self.update_scale()
+#        self.update_representation()
+#        self.update_scale()
         pvsimple.Show(proxy=self._collector, view=pvsimple.GetActiveView())
     

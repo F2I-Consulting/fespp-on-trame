@@ -19,8 +19,8 @@ class IjkGrid:
         self._node_id = None
         self._title = None
         self._property_path = None
-        self._representationType = None
-        self._scale = None
+#        self._representationType = None
+#        self._scale = None
             
         # paraview source
         self._src_extract_init = None
@@ -29,37 +29,37 @@ class IjkGrid:
         self._src_slicer_k = None
         self._src_slicer_volume = None
 
-    @property
-    def representationType(self):
-        return self._representationType
+#    @property
+#    def representationType(self):
+#        return self._representationType
 
-    @representationType.setter
-    def representationType(self, value):
-        if value != self._representationType:
-            self._representationType = value
-            self.update_representation()
+#    @representationType.setter
+#    def representationType(self, value):
+#        if value != self._representationType:
+#            self._representationType = value#
+#            self.update_representation()
 
-    @property
-    def scale(self):
-        return self._scale
+#    @property
+#    def scale(self):
+#        return self._scale
 
-    @scale.setter
-    def scale(self, scale):
-        if scale != self._scale:
-            self._scale = scale
-            self.update_scale()
+#    @scale.setter
+#    def scale(self, scale):
+#        if scale != self._scale:
+#            self._scale = scale
+#            self.update_scale()
             
-    def update_representation(self):
-        pvsimple.GetRepresentation(proxy=self._src_slicer_volume, view=pvsimple.GetActiveView()).Representation = self._representationType
-        pvsimple.GetRepresentation(proxy=self._src_slicer_i, view=pvsimple.GetActiveView()).Representation = self._representationType
-        pvsimple.GetRepresentation(proxy=self._src_slicer_j, view=pvsimple.GetActiveView()).Representation = self._representationType
-        pvsimple.GetRepresentation(proxy=self._src_slicer_k, view=pvsimple.GetActiveView()).Representation = self._representationType
+#    def update_representation(self):
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_volume, view=pvsimple.GetActiveView()).Representation = self._representationType
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_i, view=pvsimple.GetActiveView()).Representation = self._representationType
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_j, view=pvsimple.GetActiveView()).Representation = self._representationType
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_k, view=pvsimple.GetActiveView()).Representation = self._representationType
         
-    def update_scale(self):
-        pvsimple.GetRepresentation(proxy=self._src_slicer_volume, view=pvsimple.GetActiveView()).Scale = self._scale
-        pvsimple.GetRepresentation(proxy=self._src_slicer_i, view=pvsimple.GetActiveView()).Scale = self._scale
-        pvsimple.GetRepresentation(proxy=self._src_slicer_j, view=pvsimple.GetActiveView()).Scale = self._scale
-        pvsimple.GetRepresentation(proxy=self._src_slicer_k, view=pvsimple.GetActiveView()).Scale = self._scale
+#    def update_scale(self):
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_volume, view=pvsimple.GetActiveView()).Scale = self._scale
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_i, view=pvsimple.GetActiveView()).Scale = self._scale
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_j, view=pvsimple.GetActiveView()).Scale = self._scale
+#        pvsimple.GetRepresentation(proxy=self._src_slicer_k, view=pvsimple.GetActiveView()).Scale = self._scale
 
         
     def color_array_type(self, name) -> None:
@@ -114,6 +114,11 @@ class IjkGrid:
             self._src_slicer_k.UpdatePipelineInformation()
             self._src_slicer_volume.UpdatePipelineInformation()
             
+            pvsimple.GetRepresentation(proxy=self._src_slicer_volume, view=pvsimple.GetActiveView()).Representation = state.representation_active
+            pvsimple.GetRepresentation(proxy=self._src_slicer_i, view=pvsimple.GetActiveView()).Representation = state.representation_active
+            pvsimple.GetRepresentation(proxy=self._src_slicer_j, view=pvsimple.GetActiveView()).Representation = state.representation_active
+            pvsimple.GetRepresentation(proxy=self._src_slicer_k, view=pvsimple.GetActiveView()).Representation = state.representation_active
+
             self.update_block_visibility()
             
             pvsimple.Show(proxy=self._src_extract_init, view=pvsimple.GetActiveView())
@@ -167,8 +172,8 @@ class IjkGrid:
     #==
     def show(self):
         if self._node_id is not None:
-            self.update_representation()
-            self.update_scale()
+#            self.update_representation()
+#            self.update_scale()
             if state.ui_slices_range_mode == 'slice':
                 pvsimple.Hide(proxy=self._src_slicer_volume, view=pvsimple.GetActiveView())
                 pvsimple.Show(proxy=self._src_slicer_i, view=pvsimple.GetActiveView())
