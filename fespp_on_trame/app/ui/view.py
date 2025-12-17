@@ -101,9 +101,6 @@ def ui(server: Server, **kwargs) -> None:
         with layout.toolbar:
             toolbar = Toolbar(localFileManager, import_dialog)
             toolbar.render()
-            toolbar = Toolbar(localFileManager, import_dialog)
-            toolbar.render()
-                            
 
         # Side Drawer (Navigation/Control Panel)
         with layout.drawer as drawer:
