@@ -26,6 +26,14 @@ class ImportDialog:
         self.controller = controller
         # Register the import action handler on state change
         self.state.change("execute_action")(self._on_execute_action)
+        # Ensure OSDU-related state keys exist and set sensible defaults
+        if not hasattr(self.state, "osdu_token_type"):
+            self.state.osdu_token_type = "Bearer"
+        if not hasattr(self.state, "osdu_proxy_token_type"):
+            self.state.osdu_proxy_token_type = "Bearer"
+        # tab default
+        if not hasattr(self.state, "import_tab"):
+            self.state.import_tab = "files"
 
     def _on_execute_action(self, execute_action, **kwargs):
         """Handle file import logic when execute_action changes to True.
@@ -67,50 +75,155 @@ class ImportDialog:
     def render(self):
         with vuetify3.VDialog(
             v_model=("dialog_visible", False),
-            max_width="600",
+            max_width="760",
         ):
             with vuetify3.VCard():
+                # Title (harmonized)
                 with vuetify3.VCardTitle(classes="d-flex align-center bg-blue-grey-lighten-5"):
                     vuetify3.VIcon(icon="mdi-cloud-upload", class_="mr-0", color="blue")
-                    html.Span("Import Files", classes="pl-4")
+                    html.Span("Import from", classes="pl-4")
 
-                with vuetify3.VCardText(classes="py-5"):
-                    # Remote URL import
-                    with vuetify3.VRow(classes="ma-0 mb-5"):
-                        with vuetify3.VCol(cols="12", classes="pa-0"):
-                            with html.Div(classes="d-flex align-center mb-2"):
-                                vuetify3.VIcon(icon="mdi-link-variant", class_="mr-0", color="blue-grey-darken-2")
-                                html.Span("Import from Remote URL", classes="text-h6 font-weight-regular pl-4")
+                # Tabs for From Files / From OSDU (styled like drawer tabs)
+                with vuetify3.VCardText(classes="py-2"):
+                    with vuetify3.VTabs(
+                        v_model=("import_tab", "files"),
+                        classes="bg-grey-lighten-4",
+                        color="blue",
+                        density="comfortable",
+                        grow=True,
+                        selected_class="font-weight-bold text-blue",
+                    ):
+                        vuetify3.VTab("Files", value="files")
+                        vuetify3.VTab("OSDU", value="osdu")
 
-                            vuetify3.VTextField(
-                                variant="outlined",
-                                label="Enter URLs (separated with '&' character)",
-                                v_model=("remote_files_location", None),
-                                density="comfortable",
-                                placeholder="Ex: http://example.com/file1.obj&http://example.com/file2.ply",
-                                hide_details="auto",
-                                clearable=True,
-                            )
+                    with vuetify3.VWindow(v_model=("import_tab",), classes="pt-4"):
+                        # --- From Files tab (existing content) ---
+                        with vuetify3.VWindowItem(value="files"):
+                            # Remote URL import
+                            with vuetify3.VRow(classes="ma-0 mb-4"):
+                                with vuetify3.VCol(cols="12", classes="pa-0"):
+                                    with html.Div(classes="d-flex align-center mb-2"):
+                                        vuetify3.VIcon(icon="mdi-link-variant", class_="mr-0", color="blue-grey-darken-2")
+                                        html.Span("Import from Remote URL", classes="text-h6 font-weight-regular pl-4")
 
-                    vuetify3.VDivider(classes="mb-5")
+                                    vuetify3.VTextField(
+                                        variant="outlined",
+                                        label="Enter URLs (separated with '&' character)",
+                                        v_model=("remote_files_location", None),
+                                        density="comfortable",
+                                        placeholder="Ex: http://example.com/file1.obj&http://example.com/file2.ply",
+                                        hide_details="auto",
+                                        clearable=True,
+                                    )
 
-                    # Local file upload
-                    with vuetify3.VRow(classes="ma-0"):
-                        with vuetify3.VCol(cols="12", classes="pa-0"):
-                            with html.Div(classes="d-flex align-center mb-3"):
-                                vuetify3.VIcon(icon="mdi-folder-upload", class_="mr-0", color="blue-grey-darken-2")
-                                html.Span("Upload Local Files", classes="text-h6 font-weight-regular pl-4")
+                            vuetify3.VDivider(classes="mb-4")
 
-                            vuetify3.VFileUpload(
-                                v_model=("files", None),
-                                density="comfortable",
-                                clearable=True,
-                                multiple=True,
-                                prepend_icon="mdi-upload-multiple",
-                                label="Drag and drop or click to select files",
-                                classes="pa-3",
-                            )
+                            # Local file upload
+                            with vuetify3.VRow(classes="ma-0"):
+                                with vuetify3.VCol(cols="12", classes="pa-0"):
+                                    with html.Div(classes="d-flex align-center mb-3"):
+                                        vuetify3.VIcon(icon="mdi-folder-upload", class_="mr-0", color="blue-grey-darken-2")
+                                        html.Span("Upload Local Files", classes="text-h6 font-weight-regular pl-4")
 
+                                    vuetify3.VFileUpload(
+                                        v_model=("files", None),
+                                        density="comfortable",
+                                        clearable=True,
+                                        multiple=True,
+                                        prepend_icon="mdi-upload-multiple",
+                                        label="Drag and drop or click to select files",
+                                        classes="pa-3",
+                                    )
+
+                        # --- From OSDU tab ---
+                        with vuetify3.VWindowItem(value="osdu"):
+                            with vuetify3.VContainer(fluid=True, classes="pa-0"):
+                                # ETP URL
+                                vuetify3.VTextField(
+                                    v_model=("osdu_etp_url", None),
+                                    label="RDDMS ETP URL",
+                                    variant="outlined",
+                                    density="comfortable",
+                                    clearable=True,
+                                    color="blue",
+                                )
+
+                                # OSDU Data Partition
+                                vuetify3.VTextField(
+                                    v_model=("osdu_data_partition", None),
+                                    label="OSDU Data Partition",
+                                    variant="outlined",
+                                    density="comfortable",
+                                    clearable=True,
+                                    color="blue",
+                                )
+
+                                # ETP Token Type + Token (VSelect + aligned field)
+                                with vuetify3.VRow(classes="ma-0"):
+                                    with vuetify3.VCol(cols="6", classes="pa-0 pr-2"):
+                                        vuetify3.VSelect(
+                                            v_model=("osdu_token_type", "Bearer"),
+                                            items=("osdu_token_type_options", ["Bearer", "Basic"]),
+                                            label="OSDU Token Type",
+                                            hide_details=True,
+                                            dense=True,
+                                            outlined=True,
+                                            color="blue",
+                                            base_color="blue",
+                                        )
+
+                                    with vuetify3.VCol(cols="6", classes="pa-0 pl-2"):
+                                        vuetify3.VTextField(
+                                            v_model=("osdu_token", None),
+                                            label="OSDU Token",
+                                            variant="outlined",
+                                            density="comfortable",
+                                            clearable=True,
+                                            color="blue",
+                                        )
+
+                                # Proxy connexion expansion wrapped in a subtle card
+                                with vuetify3.VCard(classes="mb-4", outlined=True, elevation=0):
+                                    with vuetify3.VCardText(classes="pa-3"):
+                                        with vuetify3.VExpansionPanels(style="display: initial;"):
+                                            with vuetify3.VExpansionPanel():
+                                                with vuetify3.VExpansionPanelTitle():
+                                                    html.Span("Proxy Connection")
+                                                with vuetify3.VExpansionPanelText():
+                                                    vuetify3.VTextField(
+                                                        v_model=("osdu_proxy_url", None),
+                                                        label="Proxy Url",
+                                                        variant="outlined",
+                                                        density="comfortable",
+                                                        clearable=True,
+                                                        color="blue",
+                                                    )
+
+                                                    with vuetify3.VRow(classes="ma-0"):
+                                                        with vuetify3.VCol(cols="6", classes="pa-0 pr-2"):
+                                                            vuetify3.VSelect(
+                                                                v_model=("osdu_proxy_token_type", "Bearer"),
+                                                                items=("osdu_proxy_token_type_options", ["Bearer", "Basic"]),
+                                                                label="Proxy Token Type",
+                                                                hide_details=True,
+                                                                dense=True,
+                                                                outlined=True,
+                                                                color="blue",
+                                                                base_color="blue",
+                                                            )
+
+                                                        with vuetify3.VCol(cols="6", classes="pa-0 pl-2"):
+                                                            vuetify3.VTextField(
+                                                                v_model=("osdu_proxy_token", None),
+                                                                label="Proxy Token",
+                                                                variant="outlined",
+                                                                density="comfortable",
+                                                                clearable=True,
+                                                                color="blue",
+                                                            )
+                                                
+
+                # Actions
                 with vuetify3.VCardActions(classes="pa-4 bg-blue-grey-lighten-5"):
                     vuetify3.VSpacer()
                     vuetify3.VBtn(
