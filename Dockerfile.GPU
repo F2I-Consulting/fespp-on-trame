@@ -64,6 +64,8 @@ COPY ./data /deploy/data
 COPY start.sh /opt/trame/
 RUN chmod +x /opt/trame/start.sh
 
+RUN apt-get update && apt-get install -y git
+
 # Install Python dependencies
 RUN /opt/trame/entrypoint.sh build && . /opt/trame/activate_venv.sh && cd /deploy && pip3 install .
 
