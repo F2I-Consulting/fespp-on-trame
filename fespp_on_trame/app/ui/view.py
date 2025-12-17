@@ -14,6 +14,7 @@ from trame.assets.local import LocalFileManager
 import fespp_on_trame.app.core.fespp_engine as fespp_engine
 import fespp_on_trame.app.ui.panel.slicers as panel_slicers
 import fespp_on_trame.app.ui.widget.custom_time_control as custom_time_control
+import fespp_on_trame.app.ui.widget.custom_transform_editor as custom_transform_editor
 from fespp_on_trame.app.ui.config.tree_selection import get_item_props_js
 
 # new modular imports
@@ -295,7 +296,63 @@ def ui(server: Server, **kwargs) -> None:
                                 "init_height_attribute"
                             ):
                                 vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
-
+                            
+                # General parameters CARD
+                # On utilise la fonction d'aide 'create_card' pour avoir le même look and feel
+                # que "Data Explorer" et "Attributes".
+                with create_card(
+                    "General Display Settings",
+                    "mdi-cogs", # Icône appropriée pour les paramètres généraux
+                    "init_height_attribute"
+                ):
+                    # Tout le contenu de la carte est placé dans un VSheet avec padding (grâce à create_card),
+                    # puis on utilise VExpansionPanels/VExpansionPanel pour le contenu interne.         
+                    with vuetify3.VExpansionPanels(classes="mt-0", elevation=10,):
+                        with vuetify3.VExpansionPanel(
+                            title="Display Options", # Titre du panneau déroulant
+                            value="display_options",
+                            elevation=0,
+                            classes="border-b"
+                        ) as expansion_panel:
+                            # 💡 VExpansionPanelText est CRUCIAL pour que les composants aient un padding correct
+                            with vuetify3.VExpansionPanelText(classes="pa-4"):
+                
+                                # 1. Représentation (Surface, Wireframe...)
+                                html.Div("Representation", classes="text-caption text-uppercase font-weight-bold mb-n1")
+                                ptc.RepresentBy(
+                                    color = "blue",
+                                    base_color="blue", 
+                                    item_color="blue",
+                                    flat=True,
+                                )
+                
+                                vuetify3.VDivider(classes="my-3")
+                
+                                # 2. Transformation (Échelle, etc.)
+                                html.Div("Transformation", classes="text-caption text-uppercase font-weight-bold mb-n1")
+                                custom_transform_editor.GlobalTransformEditor(
+                                    show_translation=False,
+                                    show_scale=True,
+                                    show_origin=False,
+                                    show_orientation=False,
+                                    classes="text-blue",
+                                )
+                
+                                vuetify3.VDivider(classes="my-3")
+                
+                                # 3. Couleur de fond (Background Color)
+                                with html.Div(classes="d-flex align-center pt-2"): 
+                                    html.Span(
+                                        "Background Color:", 
+                                        classes="text-caption font-weight-medium mr-3" # Label pour le picker
+                                    )
+                                    ptc.PalettePicker(
+                                        color = "blue",
+                                        base_color="blue", 
+                                        item_color="blue",
+                                        flat=True,
+                                    )
+                        
         # Main Content Area (3D Viewer)
         with layout.content:
             vuetify3.VOverlay(

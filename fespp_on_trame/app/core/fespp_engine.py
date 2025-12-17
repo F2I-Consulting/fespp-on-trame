@@ -140,29 +140,44 @@ def initialize_fespp_engine(
 
     #======================= Main Properties
     # Handler for Z-scaling changes
-    @state.change("ui_scale_z")
-    def ui_scale_z_update(ui_scale_z, **kwargs):
-        scale = [1.0,1.0, float(ui_scale_z)]
-        if _collector is not None:
-            _collector.scale_z = scale
-            _collector.show()
-        if _ijkGrid is not None:
-            _ijkGrid.scale = scale
-            _ijkGrid.show()
-        pvsimple.Render(view=_view)
-        controller.view_update()
+#    @state.change("ui_scale_z")
+#    def ui_scale_z_update(ui_scale_z, **kwargs):
+#        scale = [1.0,1.0, float(ui_scale_z)]
+#        if _collector is not None:
+#            _collector.scale_z = scale
+#            _collector.show()
+#        if _ijkGrid is not None:
+#            _ijkGrid.scale = scale
+#            _ijkGrid.show()
+#        pvsimple.Render(view=_view)
+#        controller.view_update()
         
     # Handler for representation type changes (e.g., Surface, Wireframe)
     @state.change("representation_active")
     def update_ui_representation(representation_active, **kwargs):
-        if _collector is not None:
-            _collector.representationType = representation_active
-            _collector.show()
-        if _ijkGrid is not None:
-            _ijkGrid.representationType = representation_active
-            _ijkGrid.show()
-        pvsimple.Render(view=_view)
-        controller.view_update()
+        print("Updating representation to:", representation_active)
+        view = pvsimple.GetActiveViewOrCreate("RenderView")
+        for sourceId, source in pvsimple.GetSources().items():
+            display_representation = pvsimple.GetRepresentation(source, view=_view)
+            print("Source:", sourceId, "Representation:", display_representation)
+            if display_representation is not None:
+                print(" - Updated representation for source:", sourceId)
+                try:
+                    display_representation.Representation = representation_active
+                    print("   New representation type:", display_representation.Representation)
+                except AttributeError:
+                    print("   Source does not support Representation attribute.")
+                    continue
+        pvsimple.Render()
+        server.controller.view_update()
+        #if _collector is not None:
+        #    _collector.representationType = representation_active
+        #    _collector.show()
+        #if _ijkGrid is not None:
+        #    _ijkGrid.representationType = representation_active
+        #    _ijkGrid.show()
+        #pvsimple.Render(view=_view)
+        #controller.view_update()
 
     #======================= UI: change Slicer
     # Handler for IJK slices position changes
