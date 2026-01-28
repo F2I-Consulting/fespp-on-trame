@@ -38,11 +38,21 @@ class ImportDialog:
     def _on_execute_action(self, execute_action, **kwargs):
         """Handle file import logic when execute_action changes to True.
 
-        Supports two import modes:
+        Supports three import modes:
         1. Import from remote URLs (e.g., from an input field)
         2. Import from local file uploads
+        3. Import from OSDU/ETP server connection
         """
-        if execute_action and self.state.remote_files_location:
+        if not execute_action:
+            return
+
+        # Check which tab is active to determine import mode
+        current_tab = self.state.import_tab
+
+        if current_tab == "osdu":
+            # Case 3: Import from OSDU/ETP server
+            self._handle_osdu_import()
+        elif self.state.remote_files_location:
             # Case 1: Import from remote URLs
             list_url = self.state.remote_files_location.split('|')
             temp_dir = mkdtemp()
@@ -59,10 +69,9 @@ class ImportDialog:
                 self.controller.load_epc_file(epc_path)
 
             # Reset state variables after action completion
-            self.state.execute_action = False
             self.state.remote_files_location = None
 
-        elif execute_action and self.state.files:
+        elif self.state.files:
             # Case 2: Import from local file uploads
             epc_paths = save_uploaded_files(self.state.files)
             for epc_path in epc_paths:
@@ -71,6 +80,43 @@ class ImportDialog:
 
         # Ensure the execution flag is reset regardless of the path taken
         self.state.execute_action = False
+
+    def _handle_osdu_import(self):
+        """Handle OSDU/ETP connection and data import."""
+        # Validate required fields
+        if not self.state.osdu_etp_url:
+            print("Error: ETP URL is required")
+            return
+
+        if not self.state.osdu_data_partition:
+            print("Error: OSDU Data Partition is required")
+            return
+
+        if not self.state.osdu_token:
+            print("Error: OSDU Token is required")
+            return
+
+        # Prepare connection parameters
+        etp_url = self.state.osdu_etp_url
+        data_partition = self.state.osdu_data_partition
+        token = self.state.osdu_token
+        token_type = self.state.osdu_token_type
+
+        # Optional proxy parameters
+        proxy_url = self.state.osdu_proxy_url if hasattr(self.state, 'osdu_proxy_url') else None
+        proxy_token = self.state.osdu_proxy_token if hasattr(self.state, 'osdu_proxy_token') else None
+        proxy_token_type = self.state.osdu_proxy_token_type if hasattr(self.state, 'osdu_proxy_token_type') else "Bearer"
+
+        # Call the controller to establish ETP connection
+        self.controller.connect_to_etp(
+            etp_url=etp_url,
+            data_partition=data_partition,
+            token=token,
+            token_type=token_type,
+            proxy_url=proxy_url,
+            proxy_token=proxy_token,
+            proxy_token_type=proxy_token_type
+        )
 
     def render(self):
         with vuetify3.VDialog(

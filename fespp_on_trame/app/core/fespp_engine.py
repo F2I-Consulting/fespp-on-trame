@@ -5,6 +5,7 @@ from pathlib import Path
 from fespp_on_trame.app.core.fespp_tree import Tree
 from fespp_on_trame.app.core.reservoir.fespp_ijkgrid import IjkGrid
 from fespp_on_trame.app.core.sources.collector import Collector
+from fespp_on_trame.app.core.sources.etp_connector import ETPConnector
 from fespp_on_trame.app.core.fespp_selection import Selector
 import fespp_on_trame.app.core.fespp_active as fespp_active
 
@@ -30,8 +31,9 @@ def initialize_fespp_engine(
     _tree = Tree(None)
 
     _collector = Collector()                     # SOURCE: Collects and loads data (e.g., from an EPC file)
+    _etp_connector = ETPConnector()              # SOURCE: Connects to ETP/OSDU servers
     _ijkGrid = IjkGrid(_collector, _tree)        # SOURCE: Handles IJK grid manipulation (slicing, volume)
-    
+
     # FESPP engine components for selection and activation
     _selector = Selector(_ijkGrid, _tree)
     fespp_active.Activator(_tree)
@@ -45,7 +47,11 @@ def initialize_fespp_engine(
     state.setdefault("animation_delay", 0.1)
     
     # State variable to hold the list of node paths selected for FESPP loading
-    state.setdefault("fespp_data_selectors", []) 
+    state.setdefault("fespp_data_selectors", [])
+
+    # State variables for ETP/OSDU connection
+    state.setdefault("etp_dataspaces", [])  # List of available dataspaces
+    state.setdefault("etp_selected_dataspace", None)  # Currently selected dataspace
 
     # Flag to track if data has been loaded at least once (used for camera reset logic)
     state.setdefault("has_data_loaded_once", False)
@@ -70,13 +76,68 @@ def initialize_fespp_engine(
         # Update state variable 'file_loaded' based on the success of adding the file
         state.file_loaded = _collector.add_file(epc_file_path)
 
+    # Define controller action to connect to ETP/OSDU server
+    @controller.set("connect_to_etp")
+    def connect_to_etp(etp_url: str, data_partition: str, token: str, token_type: str = "Bearer",
+                       proxy_url: str = None, proxy_token: str = None, proxy_token_type: str = "Bearer"):
+        """Establish connection to an ETP/OSDU server.
+
+        Args:
+            etp_url: ETP server URL
+            data_partition: OSDU data partition ID
+            token: Authentication token
+            token_type: Token type ("Bearer" or "Basic")
+            proxy_url: Optional proxy URL
+            proxy_token: Optional proxy token
+            proxy_token_type: Proxy token type ("Bearer" or "Basic")
+        """
+        success = _etp_connector.connect(
+            etp_url=etp_url,
+            data_partition=data_partition,
+            token=token,
+            token_type=token_type,
+            proxy_url=proxy_url,
+            proxy_token=proxy_token,
+            proxy_token_type=proxy_token_type
+        )
+
+        if success:
+            print(f"Successfully connected to ETP server: {etp_url}")
+            # Get available dataspaces and store them in state for UI
+            dataspaces = _etp_connector.get_dataspaces()
+            print(f"Available dataspaces: {dataspaces}")
+            state.etp_dataspaces = dataspaces
+            # Don't auto-select, let user choose via UI
+        else:
+            print(f"Failed to connect to ETP server: {etp_url}")
+            state.etp_dataspaces = []
+
+    # Define controller action to select a dataspace
+    @controller.set("select_etp_dataspace")
+    def select_etp_dataspace(dataspace: str):
+        """Select a specific dataspace after ETP connection.
+
+        Args:
+            dataspace: Dataspace identifier to select (e.g., "eml:///")
+        """
+        if _etp_connector.is_connected:
+            print(f"Selecting dataspace: {dataspace}")
+            _etp_connector.set_dataspace(dataspace)
+        else:
+            print("Error: Not connected to ETP server")
+
     # Define controller action to update data information and build the tree structure
     # Create the treeview structure from the FESPP vtkdatasembly
     @controller.set("update_data_information")
     def update_data_information():
-        # Get the underlying source object (the EPC collector)
-        collector = _collector.get_source() #get_epc_collector()
-        client_side_object = collector.GetClientSideObject()
+        # Get the underlying source object (EPC collector or ETP connector)
+        # Check if ETP is connected first, otherwise use EPC collector
+        if _etp_connector.is_connected:
+            source = _etp_connector.get_source()
+        else:
+            source = _collector.get_source()
+
+        client_side_object = source.GetClientSideObject()
         if hasattr(client_side_object, "GetOutput"):
             output = client_side_object.GetOutput()
             if hasattr(output, "GetDataAssembly"):
@@ -87,24 +148,31 @@ def initialize_fespp_engine(
     # Handler for changes to the selected FESPP data nodes (Trame state variable)
     @state.change("fespp_data_selectors")
     def on_change_fespp_data_selectors( **kwargs):
-        if _collector is None:
+        # Determine which source is active (ETP or EPC)
+        if _etp_connector.is_connected:
+            active_source = _etp_connector
+        else:
+            active_source = _collector
+
+        if active_source is None:
             return
-        
+
         # Set the 'Selectors' property on the ParaView source to load selected data
-        _collector.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
-        _collector.get_source().UpdatePipelineInformation()
-        _collector.show()
+        active_source.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
+        active_source.get_source().UpdatePipelineInformation()
+        active_source.show()
 
         pvsimple.Render(view=_view)
-        
+
+
         # Configure representation for partitioned dataset (e.g., show assembly structure)
         # Hide objects in vtkPartitionedDataSet: extracted object
-        representation = _collector.get_representation()
+        representation = active_source.get_representation()
         representation.Assembly='Assembly'
         representation.BlockSelectors = ['/data']
-        #_collector.show()
+        #active_source.show()
         #pvsimple.Render(view=_view)
-        
+
         # Update IJK Grid visibility if a reservoir node is selected
         if len(state.ui_select_node_reservoir) > 0:
             # Iterate over all selected reservoir nodes to find the first valid match.
@@ -114,7 +182,7 @@ def initialize_fespp_engine(
                 # This determines if the selected reservoir node is relevant to the IJK visualization logic.
                     if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
                         _ijkGrid.set_node_id(reservoir_node_id)
-                        break 
+                        break
         _ijkGrid.update_block_visibility()
 
         # Trigger Trame view replacement and general update
@@ -122,19 +190,19 @@ def initialize_fespp_engine(
         state.view_update = True
 
         # Show the data source and set it as active
-        _collector.show()
-        pvsimple.SetActiveSource(_collector.get_source())
+        active_source.show()
+        pvsimple.SetActiveSource(active_source.get_source())
         # Notify Trame components (like TimeControl and ColorBy) that data has loaded
         server.controller.on_data_loaded() # for ptc.TimeControl()
         server.controller.on_active_proxy_change() # for ptc.RepresentBy() / ptc.ColorBy
         
         # CAMERA RESET LOGIC (ONLY ON FIRST LOAD)
         if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
-            state.view_reset_camera = True 
-            state.has_data_loaded_once = True  
+            state.view_reset_camera = True
+            state.has_data_loaded_once = True
         # Final render to display the scene with the new camera
         state.view_update = True
-        _collector.show()
+        active_source.show()
         pvsimple.Render(view=_view)
         # ----------------------------------------------------
 
