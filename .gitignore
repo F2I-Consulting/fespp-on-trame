@@ -35,3 +35,9 @@
 /fespp_on_trame/__pycache__
 fespp_on_trame/app/core/fespp_engine copy.py
 /tests/__pycache__
+
+# FESPP local source (for local build mode)
+/fespp-src-local/
+doc/elba.md
+doc/elba.pdf
+.claude/settings.local.json

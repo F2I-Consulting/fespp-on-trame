@@ -18,11 +18,19 @@ RUN apt update && apt install -y libboost-all-dev sqlite3 libxml2-dev libfreetyp
 
 COPY ./fespp/build_scripts/build-fesapi-dependencies.sh /root/build-fesapi-dependencies.sh
 COPY ./fespp/build_scripts/build-fesapi.sh /root/build-fesapi.sh
+COPY ./fespp/build_scripts/build-fetpapi-dependencies.sh /root/build-fetpapi-dependencies.sh
+COPY ./fespp/build_scripts/build-fetpapi.sh /root/build-fetpapi.sh
 COPY ./fespp/build_scripts/build-fespp.sh /root/build-fespp.sh
 
-RUN bash /root/build-fesapi-dependencies.sh && \
-    bash /root/build-fesapi.sh && \
-    bash /root/build-fespp.sh
+RUN bash /root/build-fesapi-dependencies.sh
+RUN bash /root/build-fesapi.sh
+RUN bash /root/build-fetpapi-dependencies.sh
+RUN bash /root/build-fetpapi.sh
+
+# Build mode: local (copy from host) or github (git clone)
+COPY fespp-src-local* ${FESPP_BUILD_ROOT_DIR}/fespp/
+
+RUN bash /root/build-fespp.sh
 
 # ============================================================================
 # Runtime stage
