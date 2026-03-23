@@ -1,13 +1,106 @@
+import contextlib
+import os
+import re
+import sys
+import threading
+import time
+
 from paraview import simple as pvsimple
 from trame_server import Server
 from pathlib import Path
 
 from fespp_on_trame.app.core.fespp_tree import Tree
-from fespp_on_trame.app.core.reservoir.fespp_ijkgrid import IjkGrid
+from fespp_on_trame.app.core.sources.ijkgrid import IjkGrid
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.sources.etp_connector import ETPConnector
 from fespp_on_trame.app.core.fespp_selection import Selector
 import fespp_on_trame.app.core.fespp_active as fespp_active
+from fespp_on_trame.app.io.drop_files import on_client_connected, on_client_exited
+
+# ---------------------------------------------------------------------------
+# Per-session VTK message capture via stderr tee
+# ---------------------------------------------------------------------------
+# VTK/ParaView writes messages to C-level fd 2 (stderr) via vtkLogger.
+# We insert a pipe: fd 2 → pipe-write → reader thread → original fd 2 (tee).
+# The reader also parses and queues VTK-formatted lines.
+# capture_vtk_messages() slices the queue by index (before/after the op)
+# so each session only sees its own messages.
+# ---------------------------------------------------------------------------
+
+_vtk_log_queue: list = []           # global growing list of {"text", "level"}
+_vtk_stderr_tee_done = False
+
+# Strip ANSI colour codes written by vtkLogger to terminals
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHJA-Z]")
+# Match vtkLogger line format: "(  29.2s) [thread]    file.cxx:67     ERR| message"
+_VTK_LINE_RE = re.compile(r"\([\d. ]+s\)\s*\[.*?\].*?\b([A-Z]{3,})\|\s*(.*)")
+
+
+def _setup_stderr_tee() -> None:
+    """Insert a tee on C-level stderr so VTK output reaches both docker logs
+    and our in-memory queue — without touching vtkOutputWindow.
+    Must be called after ParaView is initialised."""
+    global _vtk_stderr_tee_done
+    if _vtk_stderr_tee_done:
+        return
+    try:
+        read_fd, write_fd = os.pipe()
+        orig_fd = os.dup(2)          # save original stderr
+        os.dup2(write_fd, 2)         # redirect fd 2 → pipe write-end
+        os.close(write_fd)
+
+        def _reader():
+            buf = b""
+            with os.fdopen(read_fd, "rb", buffering=0) as src, \
+                 os.fdopen(orig_fd,  "wb", buffering=0) as dst:
+                while True:
+                    chunk = src.read(1024)
+                    if not chunk:
+                        break
+                    dst.write(chunk)   # tee: forward to original stderr
+                    dst.flush()
+                    buf += chunk
+                    while b"\n" in buf:
+                        raw_line, buf = buf.split(b"\n", 1)
+                        line = _ANSI_RE.sub(
+                            "", raw_line.decode("utf-8", errors="replace")
+                        ).strip()
+                        if not line:
+                            continue
+                        m = _VTK_LINE_RE.search(line)
+                        if not m:       # not a VTK-formatted line — skip queue
+                            continue
+                        level_tag = m.group(1)
+                        text = m.group(2).strip()
+                        if not text:
+                            continue
+                        level = ("error"   if "ERR"  in level_tag else
+                                 "warning" if "WARN" in level_tag else
+                                 "info")
+                        _vtk_log_queue.append({"text": text, "level": level})
+
+        threading.Thread(target=_reader, daemon=True).start()
+        _vtk_stderr_tee_done = True
+        sys.stdout.write("[VTK log] stderr tee installed\n")
+        sys.stdout.flush()
+    except Exception as exc:
+        sys.stdout.write(f"[VTK log] stderr tee failed: {exc}\n")
+        sys.stdout.flush()
+
+
+@contextlib.contextmanager
+def capture_vtk_messages(state, max_messages: int = 500):
+    """Capture VTK messages emitted during this block into state.vtk_log_messages."""
+    start_seq = len(_vtk_log_queue)
+    try:
+        yield
+    finally:
+        # Give the reader thread a moment to flush any bytes already in the pipe
+        time.sleep(0.05)
+        new_messages = list(_vtk_log_queue[start_seq:])
+        if new_messages:
+            current = list(state.vtk_log_messages or [])
+            state.vtk_log_messages = (current + new_messages)[-max_messages:]
 
 def initialize_fespp_engine(
     server: Server, *, fespp_plugin_path: Path
@@ -27,6 +120,10 @@ def initialize_fespp_engine(
     _view.Location = 'Bottom Left'
     _view.OrientationAxesVisibility = 0
 
+    # Insert stderr tee for per-session VTK message capture
+    # (after ParaView init so startup noise doesn't flood the queue)
+    _setup_stderr_tee()
+
     # Initialize FESPP core components
     _tree = Tree(None)
 
@@ -36,7 +133,7 @@ def initialize_fespp_engine(
 
     # FESPP engine components for selection and activation
     _selector = Selector(_ijkGrid, _tree)
-    fespp_active.Activator(_tree)
+    _activator = fespp_active.Activator(_tree)
     
     #=> Initialize UI state variables <=
     # Initialize Trame state variables for UI selection (TreeView selections)
@@ -61,7 +158,11 @@ def initialize_fespp_engine(
     state.setdefault("view_reset_camera", False)
     
     state.setdefault("view_loading_message", "Loading... Please wait.")
-    
+
+    # Per-session VTK log state
+    state.setdefault("vtk_log_messages", [])   # list of {text, level}
+    state.setdefault("vtk_log_visible", False)  # controls log panel visibility
+
     # Ensure all state changes are synchronized
     state.flush()
 
@@ -73,8 +174,9 @@ def initialize_fespp_engine(
     # Define controller action to load an EPC file
     @controller.set("load_epc_file")
     def load_epc_file(epc_file_path: str):
-        # Update state variable 'file_loaded' based on the success of adding the file
-        state.file_loaded = _collector.add_file(epc_file_path)
+        with capture_vtk_messages(state):
+            # Update state variable 'file_loaded' based on the success of adding the file
+            state.file_loaded = _collector.add_file(epc_file_path)
 
     # Define controller action to connect to ETP/OSDU server
     @controller.set("connect_to_etp")
@@ -91,26 +193,24 @@ def initialize_fespp_engine(
             proxy_token: Optional proxy token
             proxy_token_type: Proxy token type ("Bearer" or "Basic")
         """
-        success = _etp_connector.connect(
-            etp_url=etp_url,
-            data_partition=data_partition,
-            token=token,
-            token_type=token_type,
-            proxy_url=proxy_url,
-            proxy_token=proxy_token,
-            proxy_token_type=proxy_token_type
-        )
+        with capture_vtk_messages(state):
+            success = _etp_connector.connect(
+                etp_url=etp_url,
+                data_partition=data_partition,
+                token=token,
+                token_type=token_type,
+                proxy_url=proxy_url,
+                proxy_token=proxy_token,
+                proxy_token_type=proxy_token_type
+            )
 
-        if success:
-            print(f"Successfully connected to ETP server: {etp_url}")
-            # Get available dataspaces and store them in state for UI
-            dataspaces = _etp_connector.get_dataspaces()
-            print(f"Available dataspaces: {dataspaces}")
-            state.etp_dataspaces = dataspaces
-            # Don't auto-select, let user choose via UI
-        else:
-            print(f"Failed to connect to ETP server: {etp_url}")
-            state.etp_dataspaces = []
+            if success:
+                print(f"Connected to ETP server: {etp_url}")
+                dataspaces = _etp_connector.get_dataspaces()
+                state.etp_dataspaces = dataspaces
+            else:
+                print(f"Failed to connect to ETP server: {etp_url}")
+                state.etp_dataspaces = []
 
     # Define controller action to select a dataspace
     @controller.set("select_etp_dataspace")
@@ -121,33 +221,142 @@ def initialize_fespp_engine(
             dataspace: Dataspace identifier to select (e.g., "eml:///")
         """
         if _etp_connector.is_connected:
-            print(f"Selecting dataspace: {dataspace}")
             _etp_connector.set_dataspace(dataspace)
         else:
             print("Error: Not connected to ETP server")
+
+    # Define controller action to force ETP data refresh
+    @controller.set("force_etp_refresh")
+    def force_etp_refresh():
+        """Force refresh of ETP data."""
+        import time
+        with capture_vtk_messages(state):
+            if _etp_connector.is_connected:
+                etp_source = _etp_connector.get_source()
+                etp_source.UpdatePipelineInformation()
+                time.sleep(0.5)
+                etp_source.UpdatePipelineInformation()
+                update_data_information()
+            else:
+                print("Error: Not connected to ETP server")
 
     # Define controller action to update data information and build the tree structure
     # Create the treeview structure from the FESPP vtkdatasembly
     @controller.set("update_data_information")
     def update_data_information():
-        # Get the underlying source object (EPC collector or ETP connector)
-        # Check if ETP is connected first, otherwise use EPC collector
-        if _etp_connector.is_connected:
-            source = _etp_connector.get_source()
-        else:
-            source = _collector.get_source()
+        with capture_vtk_messages(state):
+            # Get the underlying source object (EPC collector or ETP connector)
+            # Check if ETP is connected first, otherwise use EPC collector
+            if _etp_connector.is_connected:
+                source = _etp_connector.get_source()
+            else:
+                source = _collector.get_source()
 
-        client_side_object = source.GetClientSideObject()
-        if hasattr(client_side_object, "GetOutput"):
-            output = client_side_object.GetOutput()
-            if hasattr(output, "GetDataAssembly"):
-                # Extract the DataAssembly structure and set up the FESPP Tree
-                assembly = output.GetDataAssembly()
-        _tree.set_tree(assembly)
-        
+            client_side_object = source.GetClientSideObject()
+
+            if hasattr(client_side_object, "GetOutput"):
+                output = client_side_object.GetOutput()
+                if hasattr(output, "GetDataAssembly"):
+                    assembly = output.GetDataAssembly()
+
+            _tree.set_tree(assembly)
+
+    # Controller: Select a specific realization by index
+    @controller.set("select_realization")
+    def select_realization(index):
+        """Select and activate a specific realization by index (0-based)."""
+        if not state.realization_list or index >= len(state.realization_list):
+            return
+
+        state.realization_play = False
+        state.realization_selected_index = index
+        state.ui_slices_real = index  # Sync slider value (0-based)
+        realization_child = state.realization_list[index]
+        _selector.update_realization_selector(realization_child["path"])
+        # _activate_realization is called by _on_change_fespp_data_selectors_impl
+        # after the data has actually been reloaded
+
+    # Controller: Next realization (for animation)
+    @controller.set("next_realization")
+    def next_realization():
+        """Move to next realization (wraps around)."""
+        if not state.realization_list:
+            return
+        current_index = state.realization_selected_index
+        next_index = (current_index + 1) % len(state.realization_list)
+        controller.select_realization(next_index)
+
+    # Controller: Previous realization
+    @controller.set("previous_realization")
+    def previous_realization():
+        """Move to previous realization (wraps around)."""
+        if not state.realization_list:
+            return
+        current_index = state.realization_selected_index
+        prev_index = (current_index - 1) % len(state.realization_list)
+        controller.select_realization(prev_index)
+
+    # Controller: Set realization by label (number)
+    @controller.set("set_realization_by_label")
+    def set_realization_by_label(label):
+        """Set realization by its label/number (extracted from title)."""
+        if not state.realization_labels:
+            return
+
+        # Find the index of the label in realization_labels
+        try:
+            index = state.realization_labels.index(str(label))
+            controller.select_realization(index)
+        except (ValueError, IndexError):
+            # Label not found, ignore
+            pass
+
+    # Controller: Set slider value (for IJK sliders) — met à jour le premier élément de la liste
+    @controller.set("set_slider_value")
+    def set_slider_value(index, value):
+        """Set the first slice position for the given axis (i, j, or k)."""
+        try:
+            value = int(value)
+            list_var = f"ui_slices_{index}_list"
+            current = list(getattr(state, list_var, [0]))
+            if current:
+                current[0] = value
+            else:
+                current = [value]
+            setattr(state, list_var, current)
+        except (ValueError, TypeError):
+            pass
+
+    # Controller: Play/pause realization animation
+    @controller.set("toggle_realization_play")
+    def toggle_realization_play():
+        """Toggle play/pause for realization animation."""
+        state.realization_play = not state.realization_play
+        if state.realization_play:
+            server.schedule_task(play_realization_animation)
+
+    # Async animation function
+    async def play_realization_animation():
+        """Auto-cycle through realizations (async pattern from CustomTimeControl)."""
+        import asyncio
+        play_delay = state.animation_delay if hasattr(state, 'animation_delay') else 1.0
+
+        while state.realization_play:
+            controller.next_realization()
+            await asyncio.sleep(play_delay)
+
+            if not state.realization_list or state.realization_parent_node_id is None:
+                state.realization_play = False
+                break
+
     # Handler for changes to the selected FESPP data nodes (Trame state variable)
     @state.change("fespp_data_selectors")
     def on_change_fespp_data_selectors( **kwargs):
+        with capture_vtk_messages(state):
+            _on_change_fespp_data_selectors_impl()
+
+    def _on_change_fespp_data_selectors_impl():
+        print("FESPP data selectors changed:", state.fespp_data_selectors)
         # Determine which source is active (ETP or EPC)
         if _etp_connector.is_connected:
             active_source = _etp_connector
@@ -195,11 +404,28 @@ def initialize_fespp_engine(
         # Notify Trame components (like TimeControl and ColorBy) that data has loaded
         server.controller.on_data_loaded() # for ptc.TimeControl()
         server.controller.on_active_proxy_change() # for ptc.RepresentBy() / ptc.ColorBy
-        
+
         # CAMERA RESET LOGIC (ONLY ON FIRST LOAD)
         if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
             state.view_reset_camera = True
             state.has_data_loaded_once = True
+
+        # If a realization is active, apply coloring now that data is loaded.
+        # Use ui_select_node_reservoir as fallback in case realization_parent_node_id
+        # is not yet set (handlers may fire in any order).
+        _realization_node_id = state.realization_parent_node_id
+        if _realization_node_id is None and state.ui_select_node_reservoir:
+            candidate = state.ui_select_node_reservoir[0]
+            if _tree.find_type(candidate) == "Realization":
+                _realization_node_id = candidate
+
+        if _realization_node_id is not None:
+            realization_children = _tree.get_realization_children(_realization_node_id)
+            if realization_children:
+                idx = state.realization_selected_index or 0
+                if 0 <= idx < len(realization_children):
+                    _activator._activate_realization(realization_children[idx])
+
         # Final render to display the scene with the new camera
         state.view_update = True
         active_source.show()
@@ -248,11 +474,15 @@ def initialize_fespp_engine(
         #controller.view_update()
 
     #======================= UI: change Slicer
-    # Handler for IJK slices position changes
-    @state.change("ui_slices_i", "ui_slices_j", "ui_slices_k")
-    def update_slice(ui_slices_i, ui_slices_j, ui_slices_k, **kwargs):
+    # Handler for IJK slices position changes (liste multi-slice)
+    @state.change("ui_slices_i_list", "ui_slices_j_list", "ui_slices_k_list")
+    def update_slice(ui_slices_i_list, ui_slices_j_list, ui_slices_k_list, **kwargs):
         if _ijkGrid is not None:
-            _ijkGrid.update_slices(ui_slices_i, ui_slices_j, ui_slices_k)
+            _ijkGrid.update_slices(
+                ui_slices_i_list or [0],
+                ui_slices_j_list or [0],
+                ui_slices_k_list or [0],
+            )
             _ijkGrid.show()
         pvsimple.Render(view=_view)
         controller.view_update()
@@ -273,6 +503,34 @@ def initialize_fespp_engine(
             _ijkGrid.show()
         pvsimple.Render(view=_view)
         controller.view_update()
+
+    # Handler for realization slider changes
+    @state.change("ui_slices_real")
+    def update_realization_slider(ui_slices_real, **kwargs):
+        # Avoid infinite loop by checking if value actually changed
+        if ui_slices_real != state.realization_selected_index:
+            controller.select_realization(ui_slices_real)
+        # Keep locked value in sync with current slider position
+        if state.ui_slices_real_locked:
+            state.ui_slices_real_locked_value = ui_slices_real
+
+    # Handlers for slice visibility changes
+    @state.change("ui_slices_i_visible", "ui_slices_j_visible", "ui_slices_k_visible")
+    def update_slices_visibility(**kwargs):
+        if _ijkGrid is not None:
+            _ijkGrid.show()
+        pvsimple.Render(view=_view)
+        controller.view_update()
+
+    # Handler for realization lock state (store locked value)
+    @state.change("ui_slices_real_locked")
+    def update_real_lock(ui_slices_real_locked, **kwargs):
+        if ui_slices_real_locked:
+            # Store current realization value when locking
+            state.ui_slices_real_locked_value = state.ui_slices_real
+        else:
+            # Clear locked value when unlocking
+            state.ui_slices_real_locked_value = None
 
     #======================= UI: change time
     # Handler for time step index changes
@@ -332,3 +590,15 @@ def initialize_fespp_engine(
             # Reset the flag after the action is performed
             state.view_update = False
             state.flush()
+
+    #======================= Session lifecycle - cleanup temp files
+    # Register client connect/disconnect hooks to track active sessions.
+    # When the last client disconnects, the shared temp directory is cleaned up.
+    # Falls back to atexit-only cleanup if the hooks are not available in this
+    # version of trame_server.
+    try:
+        server.controller.on_client_connected.add(on_client_connected)
+        server.controller.on_client_exited.add(on_client_exited)
+        print("[Session] Hooks de cycle de vie client enregistrés.", flush=True)
+    except AttributeError:
+        print("[Session] Hooks client non disponibles dans cette version de trame - nettoyage via atexit uniquement.", flush=True)

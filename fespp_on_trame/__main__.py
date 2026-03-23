@@ -1,7 +1,7 @@
 import base64
 import contextlib
 from pathlib import Path
-from tempfile import mkdtemp
+from tempfile import TemporaryDirectory
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -95,14 +95,12 @@ if __name__ == "__main__":
             remote_epc_file_location=args.remote_epc_file_location if args.remote_epc_file_location != r"${remote_epc_file_location}" else None,
         )
 
-        # Needed to define paraview view
-        ui(app.server)
-
         epc_file_path = None
 
         if app.mode == "remote_file":
             with contextlib.ExitStack() as stack:
-                temp_dir = mkdtemp()
+                # TemporaryDirectory auto-cleans on context exit
+                tmp = stack.enter_context(TemporaryDirectory())
 
                 epc_file_name = urlparse(app.remote_epc_file_location).path.split("/")[
                     -1
@@ -118,10 +116,10 @@ if __name__ == "__main__":
                     h5_file_name = f"{h5_file_name}.h5"
 
                 epc_file_handle = stack.enter_context(
-                    open(f"{temp_dir}/{epc_file_name}", "wb+")
+                    open(f"{tmp}/{epc_file_name}", "wb+")
                 )
                 h5_file_handle = stack.enter_context(
-                    open(f"{temp_dir}/{h5_file_name}", "wb+")
+                    open(f"{tmp}/{h5_file_name}", "wb+")
                 )
 
                 download_file_from_url(app.remote_epc_file_location, epc_file_handle)
