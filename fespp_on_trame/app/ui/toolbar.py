@@ -1,7 +1,12 @@
 from trame.widgets import vuetify3 as vuetify3, html
 import ptc
+from trame.app import get_server
 
 from fespp_on_trame.app.ui.import_dialog import ImportDialog
+
+server = get_server()
+state = server.state
+controller = server.controller
 
 
 class Toolbar:
@@ -20,11 +25,9 @@ class Toolbar:
         with vuetify3.VContainer(classes="fill-height"):
             vuetify3.VSpacer()
 
-            vuetify3.VSpacer()
-
-            with html.Div(style="width: 15%;", classes="d-flex align-center"):
+            with html.Div(style="width: 15%;", classes="d-flex align-center gap-2"):
                 vuetify3.VBtn(
-                    "Import files",
+                    "Import data",
                     variant="tonal",
                     color="blue",
                     click="dialog_visible = true",

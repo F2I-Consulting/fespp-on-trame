@@ -13,7 +13,6 @@ class TimeSeries:
         self._source = None
         self._tree = tree
 
-        state.ptc_show_vcr = True
         title = tree.find_title(node_id)
         min_value = tree.find_attribute_value(node_id, "minvalue")
         max_value = tree.find_attribute_value(node_id, "maxvalue")
@@ -30,7 +29,6 @@ class TimeSeries:
                 state.ui_time_label = f"time{pvsimple.GetTimeKeeper().TimestepValues[index]:.6f}"
                     
     def delete(self):
-        state.ptc_show_vcr = False
         state.ui_time_label = ""
 
 

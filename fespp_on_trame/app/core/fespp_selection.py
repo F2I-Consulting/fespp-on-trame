@@ -1,6 +1,6 @@
 from trame.app import get_server
 
-from fespp_on_trame.app.core.reservoir.fespp_ijkgrid import IjkGrid
+from fespp_on_trame.app.core.sources.ijkgrid import IjkGrid
 from fespp_on_trame.app.core.well.fespp_wellhead import Wellhead
 from fespp_on_trame.app.core.common.timeseries import TimeSeries
 from fespp_on_trame.app.core.fespp_tree import Tree
@@ -178,10 +178,28 @@ class Selector:
                     self._selection_path_reservoir = []
                     state.fespp_data_selectors = self._selection_path_surface + self._selection_path_well
             else:
-                self._selection_path_reservoir = [self._tree.find_path(state.ui_select_node_reservoir[0])]
+                node_id = state.ui_select_node_reservoir[0]
+                node_type = self._tree.find_type(node_id)
+                if node_type == "Realization":
+                    # Use the specific child realization path instead of the parent
+                    children = self._tree.get_realization_children(node_id)
+                    index = getattr(state, 'realization_selected_index', 0) or 0
+                    if children and 0 <= index < len(children):
+                        self._selection_path_reservoir = [children[index]["path"]]
+                    elif children:
+                        self._selection_path_reservoir = [children[0]["path"]]
+                    else:
+                        self._selection_path_reservoir = [self._tree.find_path(node_id)]
+                else:
+                    self._selection_path_reservoir = [self._tree.find_path(node_id)]
                 state.fespp_data_selectors = self._selection_path_reservoir + self._selection_path_surface + self._selection_path_well
         if state.first_selection == True:
             state.first_selection = False
         state.view_update = True
+
+    def update_realization_selector(self, child_path: str):
+        """Update fespp_data_selectors to point to a specific realization child path."""
+        self._selection_path_reservoir = [child_path]
+        state.fespp_data_selectors = self._selection_path_reservoir + self._selection_path_surface + self._selection_path_well
 
 

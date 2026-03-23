@@ -1,5 +1,9 @@
+import atexit
 import os
 import gc
+import shutil
+import signal
+import sys
 from pathlib import Path
 from tempfile import mkdtemp
 import base64
@@ -12,6 +16,45 @@ state = server.state
 # Configuration
 temp_dir = mkdtemp()
 CHUNK_SIZE = 32 * 1024 * 1024  # 32MB chunks
+
+_active_clients = 0
+
+def cleanup_temp_dir():
+    """Supprime le répertoire temporaire partagé."""
+    if temp_dir and os.path.exists(temp_dir):
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            print(f"[Cleanup] Répertoire temporaire supprimé : {temp_dir}", flush=True)
+        except Exception as e:
+            print(f"[Cleanup] Erreur suppression {temp_dir}: {e}", flush=True)
+
+def on_client_connected(**kwargs):
+    """Appelé à chaque connexion d'un client."""
+    global _active_clients
+    _active_clients += 1
+    print(f"[Session] Client connecté. Sessions actives : {_active_clients}", flush=True)
+
+def on_client_exited(**kwargs):
+    """Appelé à chaque déconnexion d'un client (beforeunload). Nettoie si plus aucun client actif."""
+    global _active_clients
+    _active_clients = max(0, _active_clients - 1)
+    print(f"[Session] Client déconnecté. Sessions actives : {_active_clients}", flush=True)
+    if _active_clients == 0:
+        print("[Session] Plus aucun client actif. Nettoyage des fichiers temporaires...", flush=True)
+        cleanup_temp_dir()
+
+def _signal_handler(sig, frame):
+    """Gestionnaire de signaux (SIGTERM/SIGINT) pour nettoyage avant fermeture."""
+    print(f"[Cleanup] Signal {sig} reçu, nettoyage en cours...", flush=True)
+    cleanup_temp_dir()
+    sys.exit(0)
+
+# Nettoyage de sécurité à la fin du processus (sortie normale)
+atexit.register(cleanup_temp_dir)
+
+# Nettoyage sur SIGTERM (Docker stop, Kubernetes, systemd...) et SIGINT (Ctrl+C)
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
 
 def setup_for_large_files():
     os.environ['PYTHONUNBUFFERED'] = '1'

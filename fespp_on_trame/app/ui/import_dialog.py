@@ -34,6 +34,25 @@ class ImportDialog:
         # tab default
         if not hasattr(self.state, "import_tab"):
             self.state.import_tab = "files"
+        # Track import button state
+        self.state.import_button_disabled = False
+        # Watch for changes that affect import button state
+        self.state.change("import_tab", "etp_selected_dataspace")(self._update_import_button_state)
+        # Watch for dataspace selection to trigger the ETP connection
+        self.state.change("etp_selected_dataspace")(self._on_dataspace_selected)
+
+    def _update_import_button_state(self, **kwargs):
+        """Update the import button disabled state based on current tab and dataspace selection."""
+        # Disable import button if on OSDU tab and no dataspace is selected
+        if self.state.import_tab == "osdu":
+            self.state.import_button_disabled = not bool(self.state.etp_selected_dataspace)
+        else:
+            self.state.import_button_disabled = False
+
+    def _on_dataspace_selected(self, etp_selected_dataspace, **kwargs):
+        """Handle dataspace selection change."""
+        if etp_selected_dataspace:
+            self.controller.select_etp_dataspace(etp_selected_dataspace)
 
     def _on_execute_action(self, execute_action, **kwargs):
         """Handle file import logic when execute_action changes to True.
@@ -81,8 +100,8 @@ class ImportDialog:
         # Ensure the execution flag is reset regardless of the path taken
         self.state.execute_action = False
 
-    def _handle_osdu_import(self):
-        """Handle OSDU/ETP connection and data import."""
+    def _handle_osdu_connect(self):
+        """Handle OSDU/ETP connection (does not close dialog)."""
         # Validate required fields
         if not self.state.osdu_etp_url:
             print("Error: ETP URL is required")
@@ -117,6 +136,12 @@ class ImportDialog:
             proxy_token=proxy_token,
             proxy_token_type=proxy_token_type
         )
+        # Dialog remains open so user can select dataspace
+
+    def _handle_osdu_import(self):
+        """Handle OSDU/ETP data import (called when Import button is clicked)."""
+        self.controller.force_etp_refresh()
+        self.state.has_data_loaded_once = True
 
     def render(self):
         with vuetify3.VDialog(
@@ -267,7 +292,38 @@ class ImportDialog:
                                                                 clearable=True,
                                                                 color="blue",
                                                             )
-                                                
+
+                                # Connect button
+                                with vuetify3.VRow(classes="ma-0 mt-4"):
+                                    with vuetify3.VCol(cols="12", classes="pa-0"):
+                                        vuetify3.VBtn(
+                                            "Connect to Server",
+                                            color="blue",
+                                            variant="tonal",
+                                            block=True,
+                                            prepend_icon="mdi-connection",
+                                            click=(self._handle_osdu_connect,),
+                                        )
+
+                                # Dataspace selector (shown after successful connection)
+                                with vuetify3.VCard(
+                                    v_show="etp_dataspaces && etp_dataspaces.length > 0",
+                                    classes="mt-4",
+                                    outlined=True,
+                                    elevation=1,
+                                    style="border-color: #2196F3;"
+                                ):
+                                    with vuetify3.VCardText(classes="pa-3"):
+                                        vuetify3.VSelect(
+                                            v_model=("etp_selected_dataspace", None),
+                                            items=("etp_dataspaces", []),
+                                            label="Select Dataspace",
+                                            variant="outlined",
+                                            density="comfortable",
+                                            color="blue",
+                                            base_color="blue",
+                                            messages="Choose a dataspace to explore",
+                                        )
 
                 # Actions
                 with vuetify3.VCardActions(classes="pa-4 bg-blue-grey-lighten-5"):
@@ -285,4 +341,5 @@ class ImportDialog:
                         variant="elevated",
                         click="dialog_visible = false; execute_action = true",
                         prepend_icon="mdi-check-circle",
+                        disabled=("import_button_disabled",),
                     )

@@ -82,8 +82,6 @@ class ETPConnector:
                 'Dataspaces': '',  # Initialize empty, will be populated after connection
             }
 
-            print(f"Connecting with: URL={etp_url}, Partition={data_partition}, TokenType={etp_token_type_value}")
-
             # Set proxy connection if provided
             if proxy_url:
                 props['ProxyUrl'] = proxy_url
@@ -97,21 +95,8 @@ class ETPConnector:
             # Push properties to the VTK object
             self._etp_source.UpdateVTKObjects()
 
-            # Try different methods to invoke the Connect command
-            print("Debug: Available methods on proxy:")
-            print([m for m in dir(self._etp_source) if 'Connect' in m or 'connect' in m.lower()])
-
-            # Method 1: Try to find and call a generated Python method
-            if hasattr(self._etp_source, 'Connect'):
-                print("Method 1: Calling .Connect() method")
-                self._etp_source.Connect()
-            elif hasattr(self._etp_source, 'InvokeEvent'):
-                print("Method 2: Using InvokeEvent")
-                self._etp_source.InvokeEvent('Connect')
-            else:
-                # Method 3: Use SMProxy InvokeCommand
-                print("Method 3: Using SMProxy.InvokeCommand")
-                self._etp_source.SMProxy.InvokeCommand("confirmConnectionClicked")
+            # Invoke the Connect command
+            self._etp_source.Connect()
 
             # Update VTK objects and pipeline
             self._etp_source.UpdateVTKObjects()
@@ -119,7 +104,6 @@ class ETPConnector:
 
             # Wait for connection to be established by monitoring ConnectionTag
             # ConnectionTag = 1 means not connected, ConnectionTag = 0 means connected
-            print("Waiting for connection to establish...")
             max_wait = 30  # Maximum wait time in seconds
             start_time = time.time()
 
@@ -129,11 +113,9 @@ class ETPConnector:
 
                 # Get ConnectionTag value
                 connection_tag = self._etp_source.GetProperty("ConnectionTag").GetElement(0)
-                print(f"ConnectionTag: {connection_tag}")
 
                 if connection_tag == 0:
                     # Connection established
-                    print("Connection established successfully")
                     self._is_connected = True
                     return True
 
@@ -141,7 +123,7 @@ class ETPConnector:
                 time.sleep(0.5)
 
             # Timeout - connection not established
-            print(f"Connection timeout after {max_wait} seconds")
+            print(f"Error: Connection timeout after {max_wait} seconds")
             self._is_connected = False
             return False
 
@@ -154,8 +136,6 @@ class ETPConnector:
         """Disconnect from the ETP server."""
         if self._is_connected:
             try:
-                # Invoke the disconnectionClicked command directly on the SMProxy
-                print("Invoking disconnectionClicked command...")
                 self._etp_source.SMProxy.InvokeCommand("disconnectionClicked")
                 self._etp_source.UpdateVTKObjects()
                 self._etp_source.UpdatePipelineInformation()
@@ -174,13 +154,40 @@ class ETPConnector:
             return
 
         try:
-            # Set the Dataspaces property using .Set() method
+            # Set the Dataspaces property
             self._etp_source.Set(Dataspaces=dataspace)
+
+            # Try to call SetDataspaces directly on the client side object
+            # This triggers repository.addDataspace() in C++
+            try:
+                client_obj = self._etp_source.GetClientSideObject()
+                if hasattr(client_obj, 'SetDataspaces'):
+                    client_obj.SetDataspaces(dataspace)
+            except Exception as e:
+                print(f"Warning: Could not call SetDataspaces: {e}")
+
+            # Push properties to VTK and trigger pipeline update
+            self._etp_source.UpdateVTKObjects()
+            self._etp_source.MarkModified(self._etp_source)
+            self._etp_source.UpdatePropertyInformation()
+
+            # SetDataspaces() runs in a detached thread - wait for async data retrieval
+            for _ in range(10):
+                time.sleep(1)
+                self._etp_source.UpdatePropertyInformation()
+                data_assembly = self._etp_source.GetDataInformation().GetDataAssembly()
+                if data_assembly and data_assembly.GetNumberOfChildren(0) > 0:
+                    break
+
+            self._etp_source.UpdateVTKObjects()
             self._etp_source.UpdatePipelineInformation()
+
             # Update the tree after selecting a dataspace
             controller.update_data_information()
         except Exception as e:
             print(f"Error setting dataspace: {e}")
+            import traceback
+            traceback.print_exc()
 
     def get_dataspaces(self):
         """Get available dataspaces from the connected ETP server.
@@ -193,26 +200,31 @@ class ETPConnector:
 
         try:
             # Wait a bit for dataspaces to be populated after connection
-            time.sleep(0.5)
+            time.sleep(1.0)
 
-            # Update to get the latest information
+            # Force update from server to get latest information
             self._etp_source.UpdatePropertyInformation()
 
-            # Get the DataspacesInfo property (information_only property)
-            dataspaces_info = self._etp_source.GetProperty("DataspacesInfo")
-            print(f"Debug: DataspacesInfo property: {dataspaces_info}")
+            # Use the new AllDataspaceNames StringVectorProperty exposed in FESPP
+            dataspaces_prop = self._etp_source.GetProperty("AllDataspaceNames")
+            if not dataspaces_prop:
+                print("Error: AllDataspaceNames property not found")
+                return []
 
-            if dataspaces_info:
-                num_elements = dataspaces_info.GetNumberOfElements()
-                print(f"Debug: Number of dataspace elements: {num_elements}")
+            # Read all dataspace names from the StringVectorProperty
+            num_elements = dataspaces_prop.GetNumberOfElements()
 
-                dataspaces = []
-                for i in range(num_elements):
-                    dataspace = dataspaces_info.GetElement(i)
-                    print(f"Debug: Dataspace {i}: {dataspace}")
+            if num_elements == 0:
+                return []
+
+            dataspaces = []
+            for i in range(num_elements):
+                dataspace = dataspaces_prop.GetElement(i)
+                if dataspace:
                     dataspaces.append(dataspace)
 
-                return dataspaces
+            return dataspaces
+
         except Exception as e:
             print(f"Error getting dataspaces: {e}")
             import traceback

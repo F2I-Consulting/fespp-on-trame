@@ -59,11 +59,12 @@ class Tree():
         data["treeview"]["type"] = node_type
         data["treeview"]["icon"] = get_icon_for_type(node_type)
         if disabled: data["treeview"]["disabled"] = True
-            
+
         data["treeview_type"] = treeview_type
 
         children_count = self._data_assembly.GetNumberOfChildren(node_id)
-        if children_count > 0:
+        # If node type is "Realization", do NOT add children to tree (children accessed programmatically)
+        if children_count > 0 and node_type != "Realization":
             data["treeview"]["children"]=[]
             for i in range(children_count):
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
@@ -121,9 +122,10 @@ class Tree():
                 treeview["icon"] = get_icon_for_type(node_type)
                 treeview["parent_id"] = 0
                 if disabled: treeview["disabled"] = True
-            
+
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
-                if children_count > 0:
+                # If node type is "Realization", do NOT add children to tree
+                if children_count > 0 and node_type != "Realization":
                     treeview["children"]=[]
                     for i in range(children_count):
                         subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
@@ -211,7 +213,7 @@ class Tree():
     # -----------------------------------------------------------------------------
     def find_type(self, node_id) -> None:
         if node_id == 0 or self._data_assembly is None:
-            return            
+            return
         label = None
         label = self._data_assembly.GetAttributeOrDefault(node_id, "label", label)
         if label:
@@ -303,5 +305,46 @@ class Tree():
             
         if attribute_value is not None:
             return attribute_value
-        
+
         return self.find_parent_attribute_value(self._data_assembly.GetParent(node_id),attribute_name)
+
+    # -----------------------------------------------------------------------------
+    # Get realization children for a Realization node
+    # -----------------------------------------------------------------------------
+    def get_realization_children(self, node_id) -> list:
+        """
+        Returns a list of realization child information for a Realization node.
+
+        Args:
+            node_id: The ID of the Realization node
+
+        Returns:
+            List of dicts: [{"id", "label", "title", "path", "index"}, ...]
+        """
+        if node_id is None or self._data_assembly is None:
+            return []
+
+        node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", None)
+        if not node_label:
+            return []
+
+        node_type = node_label[:node_label.find("_")]
+        if node_type != "Realization":
+            return []
+
+        children = []
+        children_count = self._data_assembly.GetNumberOfChildren(node_id)
+        for i in range(children_count):
+            child_id = self._data_assembly.GetChild(node_id, i)
+            child_label = self._data_assembly.GetAttributeOrDefault(child_id, "label", None)
+            if child_label:
+                child_title = child_label[child_label.find("_") + 1:]
+                children.append({
+                    "id": child_id,
+                    "label": child_label,
+                    "title": child_title,
+                    "path": self._data_assembly.GetNodePath(child_id),
+                    "index": i
+                })
+
+        return children

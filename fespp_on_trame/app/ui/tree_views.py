@@ -71,6 +71,7 @@ class TreeViews:
             line="connected",
             item_value="id",
             items=("ui_subtree_reservoir", []),  # All grids at once
+            activated=("ui_active_node_reservoir", []),
             activatable=True,
             active_strategy="single-independent",
             update_activated="ui_active_node_reservoir = $event",
@@ -80,7 +81,7 @@ class TreeViews:
             selectable=True,
             select_strategy="single-leaf",
             item_props=True,
-            update_selected="ui_select_node_reservoir = $event",
+            update_selected="ui_select_node_reservoir = $event; ui_active_node_reservoir = $event",
             indent_lines="default",
             separate_roots=True,
         ):
@@ -104,7 +105,7 @@ class TreeViews:
             selected=("ui_select_node_surface", []),
             selectable=True,
             select_strategy="classic",
-            update_selected="ui_select_node_surface = $event",
+            update_selected="ui_select_node_surface = $event; ui_active_node_surface = $event",
             indent_lines="default",
             separate_roots=True,
         ):
@@ -130,7 +131,7 @@ class TreeViews:
             select_strategy="classic",
             indent_lines="default",
             separate_roots=True,
-            update_selected="ui_select_node_well = $event",
+            update_selected="ui_select_node_well = $event; ui_active_node_well = $event",
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
