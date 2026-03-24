@@ -2,7 +2,50 @@ from trame.widgets import vuetify3 as vuetify3, html
 from tempfile import mkdtemp
 
 from fespp_on_trame.app.io.http import download_file_from_url
-from fespp_on_trame.app.io.drop_files import save_uploaded_files
+
+
+# Appelé au clic Import.
+# Onglet "files" : XHR multipart inline — évite toute dépendance à une fonction globale
+#   - accède à window via ownerDocument.defaultView (contourne la whitelist Vue 3)
+#   - filtre les fichiers selon upload_file_names (pour la suppression individuelle)
+#   - envoie POST /upload en streaming binary (pas de base64)
+# Onglet "osdu" : déclenche execute_action côté serveur Python
+_IMPORT_CLICK_JS = (
+    "upload_debug='start';"
+    "if (import_tab === 'files') {"
+    "  try {"
+    "    var _doc=($event&&$event.target)?$event.target.ownerDocument:document;"
+    "    var _inp=_doc&&_doc.getElementById('fesppFileInput');"
+    "    var _f=_inp&&_inp.files;"
+    "    upload_debug='files:'+((_f&&_f.length)||0);"
+    "    if (_f&&_f.length) {"
+    "      var _win=_doc.defaultView;"
+    "      var _keep=upload_file_names&&upload_file_names.length?Array.from(upload_file_names):null;"
+    "      var _fd=new _win.FormData();"
+    "      var _sz=0;"
+    "      Array.from(_f).forEach(function(f){"
+    "        if(!_keep||_keep.indexOf(f.name)>=0){_fd.append('files',f);_sz+=f.size;}"
+    "      });"
+    "      if (_sz>0) {"
+    "        var _url=upload_session_id?'/api/'+upload_session_id+'/upload':'/upload';"
+    "        upload_debug='url:'+_url;"
+    "        var _xhr=new _win.XMLHttpRequest();"
+    "        _xhr.open('POST',_url);"
+    "        _xhr.setRequestHeader('X-File-Size',_sz);"
+    "        _xhr.onload=function(){ upload_debug='xhr:'+_xhr.status; if(_xhr.status<300){upload_uploading=false;upload_progress=100;} };"
+    "        _xhr.onerror=function(){ upload_debug='xhr_error'; upload_uploading=false; };"
+    "        _xhr.send(_fd);"
+    "        upload_debug='sent:'+_url;"
+    "        upload_uploading=true; upload_progress=0;"
+    "        upload_file_names=[]; upload_file_count=0;"
+    "      }"
+    "    }"
+    "  } catch(e) { upload_debug='err:'+e.message; }"
+    "  dialog_visible=false;"
+    "} else {"
+    "  dialog_visible=false; execute_action=true;"
+    "}"
+)
 
 
 class ImportDialog:
@@ -90,12 +133,8 @@ class ImportDialog:
             # Reset state variables after action completion
             self.state.remote_files_location = None
 
-        elif self.state.files:
-            # Case 2: Import from local file uploads
-            epc_paths = save_uploaded_files(self.state.files)
-            for epc_path in epc_paths:
-                self.controller.load_epc_file(epc_path)
-            self.state.files = None
+        # Case 2 (local file upload) est géré directement par l'endpoint /upload
+        # via XHR — pas besoin de traiter state.files ici
 
         # Ensure the execution flag is reset regardless of the path taken
         self.state.execute_action = False
@@ -189,22 +228,108 @@ class ImportDialog:
 
                             vuetify3.VDivider(classes="mb-4")
 
-                            # Local file upload
+                            # Local file upload (HTTP multipart — pas de base64 WebSocket)
                             with vuetify3.VRow(classes="ma-0"):
                                 with vuetify3.VCol(cols="12", classes="pa-0"):
                                     with html.Div(classes="d-flex align-center mb-3"):
                                         vuetify3.VIcon(icon="mdi-folder-upload", class_="mr-0", color="blue-grey-darken-2")
                                         html.Span("Upload Local Files", classes="text-h6 font-weight-regular pl-4")
 
-                                    vuetify3.VFileUpload(
-                                        v_model=("files", None),
-                                        density="comfortable",
-                                        clearable=True,
-                                        multiple=True,
-                                        prepend_icon="mdi-upload-multiple",
-                                        label="Drag and drop or click to select files",
-                                        classes="pa-3",
-                                    )
+                                    # Zone drag & drop / clic
+                                    # L'input file invisible recouvre toute la zone :
+                                    # - clic → ouvre nativement le sélecteur de fichiers (0 JS)
+                                    # - drag & drop → accepté nativement par l'input (0 JS custom)
+                                    with html.Div(
+                                        style="position: relative; border: 2px dashed #90a4ae; border-radius: 8px; padding: 32px 16px; text-align: center;",
+                                    ):
+                                        # Contenu visuel (derrière)
+                                        vuetify3.VIcon(icon="mdi-upload-multiple", size="48", color="blue-grey-lighten-1")
+                                        html.P(
+                                            "Glisser-déposer ou cliquer pour sélectionner (.epc, .h5)",
+                                            style="margin: 8px 0 0; color: #607d8b; font-size: 0.9rem; pointer-events: none;",
+                                        )
+
+                                        # Input invisible superposé (devant) — gère clic ET drop nativement
+                                        # change = enregistre les noms dans un tableau (upload au clic Import)
+                                        html.Input(
+                                            id="fesppFileInput",
+                                            type="file",
+                                            multiple=True,
+                                            accept=".epc,.h5",
+                                            title="",
+                                            style=(
+                                                "position: absolute; inset: 0; width: 100%; height: 100%;"
+                                                " opacity: 0; cursor: pointer; z-index: 1;"
+                                            ),
+                                            change=(
+                                                "upload_file_names=Array.from($event.target.files)"
+                                                ".map(function(f){return f.name;});"
+                                                " upload_file_count=upload_file_names.length;"
+                                            ),
+                                        )
+
+                                    # Liste des fichiers sélectionnés (un par ligne, suppression individuelle)
+                                    with html.Div(
+                                        v_show="upload_file_count > 0 && !upload_uploading",
+                                        style="margin-top: 8px; border-radius: 4px; overflow: hidden;",
+                                    ):
+                                        with html.Div(
+                                            style="padding: 6px 10px; background: #e8f5e9; border-bottom: 1px solid #c8e6c9;",
+                                        ):
+                                            html.Span(
+                                                "{{ upload_file_count }} fichier(s) sélectionné(s)",
+                                                style="color: #2e7d32; font-size: 0.82rem; font-weight: 600;",
+                                            )
+                                        with html.Div(
+                                            style="background: #f1f8e9; max-height: 160px; overflow-y: auto;",
+                                        ):
+                                            with html.Div(
+                                                v_for="(name, idx) in upload_file_names",
+                                                key=("idx",),
+                                                style=(
+                                                    "display: flex; align-items: center; justify-content: space-between;"
+                                                    " padding: 4px 10px; border-bottom: 1px solid #dcedc8;"
+                                                ),
+                                            ):
+                                                html.Span(
+                                                    "{{ name }}",
+                                                    style="font-size: 0.83rem; color: #33691e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;",
+                                                )
+                                                vuetify3.VBtn(
+                                                    icon="mdi-close",
+                                                    variant="text",
+                                                    size="x-small",
+                                                    color="red-lighten-2",
+                                                    click=(
+                                                        "upload_file_names = upload_file_names.filter(function(_, i){ return i !== idx; });"
+                                                        " upload_file_count = upload_file_names.length;"
+                                                    ),
+                                                    style="flex-shrink: 0; margin-left: 4px;",
+                                                )
+
+                                    # Barre de progression (visible pendant l'upload)
+                                    with html.Div(
+                                        v_show="upload_uploading",
+                                        style="margin-top: 16px;",
+                                    ):
+                                        vuetify3.VProgressLinear(
+                                            model_value=("upload_progress", 0),
+                                            color="blue",
+                                            height=8,
+                                            rounded=True,
+                                            indeterminate=("upload_progress === 0",),
+                                        )
+                                        html.P(
+                                            "{{ upload_progress > 0 ? 'Upload en cours… ' + upload_progress + '%' : 'Transfert en cours…' }}",
+                                            style="text-align: center; color: #607d8b; font-size: 0.85rem; margin-top: 4px;",
+                                        )
+
+                                    # Debug (temporaire) — montre où le JS s'arrête
+                                    with html.Div(
+                                        v_show="upload_debug !== ''",
+                                        style="margin-top: 8px; padding: 6px 10px; background: #fff3e0; border-radius: 4px; font-family: monospace; font-size: 0.8rem; color: #e65100;",
+                                    ):
+                                        html.Span("debug: {{ upload_debug }}")
 
                         # --- From OSDU tab ---
                         with vuetify3.VWindowItem(value="osdu"):
@@ -339,7 +464,7 @@ class ImportDialog:
                         "Import",
                         color="blue",
                         variant="elevated",
-                        click="dialog_visible = false; execute_action = true",
+                        click=_IMPORT_CLICK_JS,
                         prepend_icon="mdi-check-circle",
                         disabled=("import_button_disabled",),
                     )

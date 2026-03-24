@@ -16,6 +16,7 @@ from fespp_on_trame.app.core.sources.etp_connector import ETPConnector
 from fespp_on_trame.app.core.fespp_selection import Selector
 import fespp_on_trame.app.core.fespp_active as fespp_active
 from fespp_on_trame.app.io.drop_files import on_client_connected, on_client_exited
+from fespp_on_trame.app.io.upload_endpoint import register_upload_route
 
 # ---------------------------------------------------------------------------
 # Per-session VTK message capture via stderr tee
@@ -163,8 +164,44 @@ def initialize_fespp_engine(
     state.setdefault("vtk_log_messages", [])   # list of {text, level}
     state.setdefault("vtk_log_visible", False)  # controls log panel visibility
 
+    # Upload HTTP state
+    state.setdefault("upload_uploading", False)
+    state.setdefault("upload_progress", 0)
+    state.setdefault("upload_file_count", 0)
+    state.setdefault("upload_file_names", [])
+    state.setdefault("upload_debug", "")
+
+    # Session ID pour construire l'URL d'upload (/api/{sessionId}/upload)
+    # Défini dans on_server_ready une fois le port connu (chaque processus
+    # cherche l'entrée qui correspond à son propre port dans proxy-mapping.txt)
+    state.setdefault("upload_session_id", "")
+
+    @controller.add("on_server_ready")
+    def _set_upload_session_id(**kwargs):
+        port = getattr(server, "_running_port", None) or getattr(server, "port", None)
+        sid = ""
+        try:
+            with open("/opt/trame/proxy-mapping.txt") as _f:
+                for _ln in _f:
+                    parts = _ln.strip().split()
+                    if len(parts) == 2 and parts[1].endswith(f":{port}"):
+                        sid = parts[0]
+                        break
+        except Exception:
+            pass
+        state.upload_session_id = sid
+        print(f"[Upload] session_id={sid!r} (port={port})", flush=True)
+
     # Ensure all state changes are synchronized
     state.flush()
+
+    # Enregistrement de l'endpoint /upload (HTTP multipart)
+    # Première tentative immédiate (peut échouer si le serveur aiohttp n'est pas encore créé)
+    if not register_upload_route(server):
+        # Seconde tentative une fois le serveur démarré
+        @controller.add("on_server_ready")
+        def _register_upload_on_ready(**kwargs):
+            register_upload_route(server)
 
     # Define controller action to trigger a view update
     @controller.add("on_data_change")
