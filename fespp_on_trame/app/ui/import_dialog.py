@@ -324,13 +324,6 @@ class ImportDialog:
                                             style="text-align: center; color: #607d8b; font-size: 0.85rem; margin-top: 4px;",
                                         )
 
-                                    # Debug (temporaire) — montre où le JS s'arrête
-                                    with html.Div(
-                                        v_show="upload_debug !== ''",
-                                        style="margin-top: 8px; padding: 6px 10px; background: #fff3e0; border-radius: 4px; font-family: monospace; font-size: 0.8rem; color: #e65100;",
-                                    ):
-                                        html.Span("debug: {{ upload_debug }}")
-
                         # --- From OSDU tab ---
                         with vuetify3.VWindowItem(value="osdu"):
                             with vuetify3.VContainer(fluid=True, classes="pa-0"):

@@ -250,6 +250,7 @@ class IjkGrid:
             blockSelectors = state.fespp_data_selectors.copy()
             blockSelectors.remove(self._property_path)
             self._collector.get_representation().BlockSelectors = blockSelectors
+            print(f"Updated block selectors for {self._property_path}: {blockSelectors}")
 
     def update_slices(self, slices_i_list, slices_j_list, slices_k_list):
         if self._node_id is None:

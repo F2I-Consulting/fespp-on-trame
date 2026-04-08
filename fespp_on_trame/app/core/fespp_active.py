@@ -282,6 +282,7 @@ class Activator:
                         lut = pvsimple.GetColorTransferFunction(property_title)
                         if lut:
                             lut.NanOpacity = 0.2
+                            lut.EnableOpacityMapping = 0
                             if self._realization_locked_range is None:
                                 # First realization: rescale to data range and lock it
                                 display.RescaleTransferFunctionToDataRange(False)
@@ -294,6 +295,14 @@ class Activator:
                                     self._realization_locked_range[0],
                                     self._realization_locked_range[1]
                                 )
+                            # Force PWF to full opacity so that if EnableOpacityMapping
+                            # is re-enabled externally (e.g. by on_active_proxy_change),
+                            # no cell becomes transparent
+                            pwf = pvsimple.GetOpacityTransferFunction(property_title)
+                            if pwf and len(pwf.Points) >= 8:
+                                min_x = pwf.Points[0]
+                                max_x = pwf.Points[-4]
+                                pwf.Points = [min_x, 1.0, 0.5, 0.0, max_x, 1.0, 0.5, 0.0]
                             color_bar = pvsimple.GetScalarBar(lut, active_view)
                             if color_bar:
                                 color_bar.Visibility = 1

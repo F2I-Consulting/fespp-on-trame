@@ -45,7 +45,7 @@ state.execute_action = False     # Flag to trigger the file processing function 
 state.ui_time_label = ""         # Label for displaying current time step in the UI
 state.drawer_width = 500         # Initial drawer width (set once; resize is handled via pure JS)
 
-state.init_height_dataexplorer = "600px"      # Initial height for the data explorer card
+state.init_height_dataexplorer = "50vh"        # Initial height for the data explorer card
 state.init_height_attribute = "600px"         # Initial height for the attribute card
 
 # NOTE: Tree opened-nodes initialization is now handled by TreeViews class
@@ -108,6 +108,28 @@ def ui(server: Server, **kwargs) -> None:
 
         # Side Drawer (Navigation/Control Panel)
         with layout.drawer as drawer:
+            # Upload progress overlay — covers the full drawer while uploading
+            with html.Div(
+                v_show="upload_uploading",
+                style=(
+                    "position: absolute; inset: 0; z-index: 1001;"
+                    " background: rgba(0,0,0,0.55);"
+                    " display: flex; flex-direction: column;"
+                    " align-items: center; justify-content: center; gap: 16px;"
+                ),
+            ):
+                vuetify3.VProgressCircular(
+                    indeterminate=("upload_progress === 0",),
+                    model_value=("upload_progress", 0),
+                    color="blue",
+                    size=64,
+                    width=6,
+                )
+                html.P(
+                    "{{ upload_progress > 0 ? 'Upload… ' + upload_progress + '%' : 'Transfert en cours…' }}",
+                    style="color: white; font-size: 0.95rem; margin: 0;",
+                )
+
             # Resizing Handle (VDivider or VSheet)
             # Position the handle on the right edge and give it a 'resize' cursor style
             with vuetify3.VSheet(
@@ -125,63 +147,61 @@ def ui(server: Server, **kwargs) -> None:
                             density="comfortable",
                             grow=True,
                             selected_class="font-weight-bold text-blue"): 
-                    vuetify3.VTab("Reservoir", value="reservoir")
-                    vuetify3.VTab("Surface", value="surface")
-                    vuetify3.VTab("Well", value="well")
+                    vuetify3.VTab("Reservoir ({{ ui_subtree_reservoir ? ui_subtree_reservoir.length : 0 }})", value="reservoir")
+                    vuetify3.VTab("Surface ({{ ui_subtree_surface ? ui_subtree_surface.length : 0 }})", value="surface")
+                    vuetify3.VTab("Well ({{ ui_subtree_well ? ui_subtree_well.length : 0 }})", value="well")
                 
-                # --- 2. Tab Content (VWindow) ---
-                with vuetify3.VWindow(v_model=("tab",), classes="pa-4"): 
-            
+                # --- 2. Tab Content (always-rendered, visibility via v_show) ---
+                with html.Div(classes="pa-4"):
+
                     # ------------------------------------
                     # Reservoir Tab Content
                     # ------------------------------------
-                    with vuetify3.VWindowItem(value="reservoir"):
-                        with html.Div(v_show="tab === 'reservoir'"):
-                            # Data Explorer Treeview CARD
-                            with create_card(
-                                "Data Explorer",
-                                "mdi-file-tree",
-                                "init_height_dataexplorer",
-                            ):
-                                # Treeview for displaying reservoir data hierarchy (extracted)
-                                with vuetify3.VSheet(classes="pa-2"):
-                                    tv.reservoir_tree()
-                            # Node Attribute CARD
-                            with create_card(
-                                "Attributes",
-                                "mdi-information",
-                                "init_height_attribute",
-                            ):
-                                with vuetify3.VSheet(classes="pa-2"):
-                                    # Show attribute controls only when a reservoir node is active
-                                    with html.Div(v_if="ui_active_node_reservoir && ui_active_node_reservoir.length > 0"):
-                                        with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
-                                            panel_slicers.SlicerControls()
+                    with html.Div(v_show="tab === 'reservoir'"):
+                        # Data Explorer Treeview CARD
+                        with create_card(
+                            "Data Explorer",
+                            "mdi-file-tree",
+                            "init_height_dataexplorer",
+                        ):
+                            # Treeview for displaying reservoir data hierarchy (extracted)
+                            with vuetify3.VSheet(classes="pa-2"):
+                                tv.reservoir_tree()
+                        # Node Attribute CARD
+                        with create_card(
+                            "Attributes",
+                            "mdi-information",
+                            "init_height_attribute",
+                        ):
+                            with vuetify3.VSheet(classes="pa-2"):
+                                # Show attribute controls only when a reservoir node is active
+                                with html.Div(v_if="ui_active_node_reservoir && ui_active_node_reservoir.length > 0"):
+                                    with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
+                                        panel_slicers.SlicerControls()
 
                                         # Color/Opacity editor for Property nodes (has its own v_if)
                                         ColorEditor()
 
                     # Surface Tab Content
-                    with vuetify3.VWindowItem(value="surface"):
-                        with html.Div(v_show="tab === 'surface'"):
-                            # Data Explorer Treeview CARD for surface data
-                            with create_card(
-                                "Data Explorer",
-                                "mdi-file-tree",
-                                "init_height_dataexplorer"
-                            ):
-                                with vuetify3.VSheet(classes="pa-2"):
-                                    tv.surface_tree()
-                            # Node Attribute CARD
-                            with create_card(
-                                "Attributes",
-                                "mdi-information",
-                                "init_height_attribute"
-                            ):
-                                with vuetify3.VSheet(classes="pa-2"):
-                                    # Only show attributes if active node is also selected
-                                    with html.Div(v_if="ui_active_node_surface.length > 0 && ui_select_node_surface.includes(ui_active_node_surface[0])"):
-                                        vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
+                    with html.Div(v_show="tab === 'surface'"):
+                        # Data Explorer Treeview CARD for surface data
+                        with create_card(
+                            "Data Explorer",
+                            "mdi-file-tree",
+                            "init_height_dataexplorer"
+                        ):
+                            with vuetify3.VSheet(classes="pa-2"):
+                                tv.surface_tree()
+                        # Node Attribute CARD
+                        with create_card(
+                            "Attributes",
+                            "mdi-information",
+                            "init_height_attribute"
+                        ):
+                            with vuetify3.VSheet(classes="pa-2"):
+                                # Only show attributes if active node is also selected
+                                with html.Div(v_if="ui_active_node_surface.length > 0 && ui_select_node_surface.includes(ui_active_node_surface[0])"):
+                                    vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
 
                     # Well Tab Content
                     with vuetify3.VWindowItem(value="well"):
@@ -371,14 +391,6 @@ def ui(server: Server, **kwargs) -> None:
                             color="grey-darken-1",
                             prepend_icon="mdi-delete-outline",
                             click="vtk_log_messages = []; $event.stopPropagation()",
-                        )
-                        vuetify3.VBtn(
-                            "Copy",
-                            size="x-small",
-                            variant="tonal",
-                            color="grey-darken-1",
-                            prepend_icon="mdi-content-copy",
-                            click="navigator.clipboard.writeText((vtk_log_messages||[]).map(function(m){return m.text}).join('\\n')); $event.stopPropagation()",
                         )
 
                     # Expandable log zone — collapsed by default, title shows live counts
