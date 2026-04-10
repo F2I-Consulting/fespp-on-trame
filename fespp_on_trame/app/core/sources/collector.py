@@ -60,6 +60,11 @@ class Collector:
         self._collector.SetPropertyWithName('extractMode', 2)
         self._collector.SetPropertyWithName('objecttoextract', blockname)
 
+    def set_realization_index(self, index: int):
+        """Set the active realization index for RealizationTimeSeries nodes and trigger a pipeline update."""
+        self._collector.RealizationIndex = index
+        self._collector.UpdatePipeline()
+
     #==
     def show(self):
 #        self.update_representation()

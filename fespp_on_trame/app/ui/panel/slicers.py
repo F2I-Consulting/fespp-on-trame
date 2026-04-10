@@ -28,10 +28,10 @@ class SlicerControls(html.Div):
         state.setdefault("ui_range_real", [0, 0])
         state.setdefault("ui_slices_real", 0)
 
-        # Visibility states for slices
-        state.setdefault("ui_slices_i_visible", True)
-        state.setdefault("ui_slices_j_visible", True)
-        state.setdefault("ui_slices_k_visible", True)
+        # Per-slicer visibility lists (one bool per slicer row)
+        state.setdefault("ui_slices_i_visible_list", [True])
+        state.setdefault("ui_slices_j_visible_list", [True])
+        state.setdefault("ui_slices_k_visible_list", [True])
         state.setdefault("ui_slices_volume_visible", True)
 
         # Lock state for realization
@@ -135,27 +135,23 @@ class SlicerControls(html.Div):
                 )
 
     def MultiSlider(self, index: Literal["i", "j", "k"]):
-        """Slider multi-position pour le mode slice (1 à N slices par axe)."""
+        """Slider multi-position pour le mode slice (0 à N slices par axe)."""
         range_var = f"ui_range_{index}"
         list_var = f"ui_slices_{index}_list"
-        visible_var = f"ui_slices_{index}_visible"
+        vis_list_var = f"ui_slices_{index}_visible_list"
         label = index.upper()
 
         with html.Div(v_if=f"{self._mode_var} === 'slice'", classes="mb-1"):
-            # En-tête : label + bouton visibilité + bouton ajout
+            # En-tête : label + bouton ajout
             with html.Div(style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;"):
                 html.Div(label, classes="text-caption font-weight-bold",
                          style="width: 16px; text-align: center; font-size: 0.75rem;")
                 vuetify3.VBtn(
-                    icon=(f"{visible_var} ? 'mdi-eye' : 'mdi-eye-off'",),
-                    click=f"{visible_var} = !{visible_var}",
-                    variant="text", density="compact", size="x-small",
-                    color=(f"{visible_var} ? 'primary' : 'grey'",),
-                    style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
-                )
-                vuetify3.VBtn(
                     icon="mdi-plus",
-                    click=f"{list_var} = {list_var}.concat([Math.round(({range_var}[0]+{range_var}[1])/2)])",
+                    click=(
+                        f"{list_var} = {list_var}.concat([Math.round(({range_var}[0]+{range_var}[1])/2)]); "
+                        f"{vis_list_var} = {vis_list_var}.concat([true])"
+                    ),
                     variant="text", density="compact", size="x-small",
                     color="primary",
                     style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
@@ -188,13 +184,23 @@ class SlicerControls(html.Div):
                     type="number",
                     single_line=True,
                 )
-                # Bouton suppression — caché quand il ne reste qu'un seul slice
+                # Oeil de visibilité par slicer
+                vuetify3.VBtn(
+                    icon=(f"{vis_list_var}[idx] !== false ? 'mdi-eye' : 'mdi-eye-off'",),
+                    click=f"{vis_list_var} = {vis_list_var}.map(function(v, i) {{ return i === idx ? !v : v; }})",
+                    variant="text", density="compact", size="x-small",
+                    color=(f"{vis_list_var}[idx] !== false ? 'primary' : 'grey'",),
+                    style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px; flex-shrink: 0;",
+                )
+                # Bouton suppression — toujours visible, autorise 0 slicers
                 vuetify3.VBtn(
                     icon="mdi-close",
-                    click=f"if ({list_var}.length > 1) {{ {list_var} = {list_var}.filter(function(_, i) {{ return i !== idx; }}); }}",
+                    click=(
+                        f"{list_var} = {list_var}.filter(function(_, i) {{ return i !== idx; }}); "
+                        f"{vis_list_var} = {vis_list_var}.filter(function(_, i) {{ return i !== idx; }})"
+                    ),
                     variant="text", density="compact", size="x-small",
                     color="grey",
-                    v_show=f"{list_var}.length > 1",
                     style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px; flex-shrink: 0;",
                 )
 

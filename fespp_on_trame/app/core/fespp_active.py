@@ -9,6 +9,16 @@ server = get_server()
 state = server.state
 controller = server.controller
 
+def _nan_opacity_from_state():
+    """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""
+    try:
+        hex_val = (state.nan_color or "").lstrip("#")
+        if len(hex_val) >= 8:
+            return int(hex_val[6:8], 16) / 255
+    except (ValueError, IndexError):
+        pass
+    return 0.2
+
 class Activator:
     def __init__(self, tree: Tree):
         self._tree = tree
@@ -22,6 +32,7 @@ class Activator:
         state.setdefault("realization_selected_index", 0)
         state.setdefault("realization_play", False)
         state.setdefault("realization_parent_node_id", None)
+        state.setdefault("realization_ts_node_id", None)  # Set when a RealizationTimeSeries node is active
 
         # Locked LUT range for consistent legend across realizations: (min, max) or None
         self._realization_locked_range = None
@@ -49,6 +60,21 @@ class Activator:
                     "coe_panels": [] if not is_property else state.coe_panels,
                 })
 
+                # Sync active node path to representation BlockSelectors.
+                # Use the Representation ancestor node (UnstructuredGrid, TriangulatedSet…)
+                # because only that node has AddDataSetIndex — leaf nodes (TimeSeries,
+                # Properties…) have no dataset index and would show nothing.
+                # IjkGrid is excluded: its slicers (ExplicitStructuredGridCrop) manage
+                # visibility independently; setting BlockSelectors here would conflict
+                # with update_block_visibility() which intentionally removes IjkGrid.
+                rep_node_id = self._tree.find_representation_node(node_id)
+                if rep_node_id is not None:
+                    rep_type = self._tree.find_type(rep_node_id)
+                    if rep_type != 'IjkGrid':
+                        block_path = self._tree.find_path(rep_node_id)
+                        if block_path:
+                            self._set_active_block_selector(block_path)
+
                 # Handle Realization node activation
                 if type_node == "Realization":
                     state.realization_play = False  # Stop any animation
@@ -62,9 +88,15 @@ class Activator:
                             self._realization_locked_range = None
                     else:
                         self._realization_locked_range = None  # Will be set on first activation
+                    state.realization_ts_node_id = None  # Pure Realization, not TimeSeries
                     children = self._tree.get_realization_children(node_id)
                     state.realization_list = children
                     state.realization_parent_node_id = node_id
+
+                    # Enable VCR if children are TimeSeries (Realization+TimeSeries case)
+                    has_ts_children = any(c.get("prop_title") is not None for c in children)
+                    if has_ts_children:
+                        state.ptc_show_vcr = True
 
                     if len(children) > 0:
                         state.ui_range_real = [0, len(children) - 1]  # 0-based indices
@@ -98,6 +130,43 @@ class Activator:
                         state.ui_range_real = [0, 0]
                         state.ui_slices_real = 0
                         state.realization_labels = []
+
+                elif type_node == "RealizationTimeSeries":
+                    # Leaf node combining Realization + TimeSeries.
+                    # The C++ layer loads (currentRealizationIndex, currentTimesStepIndex).
+                    # Python only needs to set up the realization slider.
+                    state.realization_play = False
+                    state.realization_list = []  # No children — slider drives RealizationIndex
+                    state.realization_parent_node_id = node_id
+                    state.realization_ts_node_id = node_id  # Track for slider updates
+
+                    range_min = self._tree.find_attribute_value(node_id, "minvalue")
+                    range_max = self._tree.find_attribute_value(node_id, "maxvalue")
+                    if range_min is not None and range_max is not None:
+                        try:
+                            self._realization_locked_range = (float(range_min), float(range_max))
+                        except (ValueError, TypeError):
+                            self._realization_locked_range = None
+                    else:
+                        self._realization_locked_range = None
+
+                    # Read realization count stored as an assembly attribute
+                    realization_count_str = self._tree.find_attribute_value(node_id, "realization_count")
+                    try:
+                        realization_count = int(realization_count_str) if realization_count_str else 1
+                    except (ValueError, TypeError):
+                        realization_count = 1
+
+                    state.ui_range_real = [0, max(0, realization_count - 1)]
+                    initial_index = 0
+                    if state.ui_slices_real_locked and hasattr(state, 'ui_slices_real_locked_value') and state.ui_slices_real_locked_value is not None:
+                        locked_value = state.ui_slices_real_locked_value
+                        if 0 <= locked_value < realization_count:
+                            initial_index = locked_value
+                    state.realization_selected_index = initial_index
+                    state.ui_slices_real = initial_index
+                    state.realization_labels = [str(i) for i in range(realization_count)]
+
                 else:
                     # Clear realization state for non-Realization nodes
                     state.realization_list = []
@@ -107,6 +176,7 @@ class Activator:
                     state.ui_range_real = [0, 0]
                     state.ui_slices_real = 0
                     state.realization_labels = []
+                    state.realization_ts_node_id = None
 
                 # If a Property node is selected, configure color mapping
                 if type_node and "Property" in type_node and title_node:
@@ -159,7 +229,7 @@ class Activator:
                                 if array_type:
                                     lut = pvsimple.GetColorTransferFunction(title_node)
                                     if lut:
-                                        lut.NanOpacity = 0.2
+                                        lut.NanOpacity = _nan_opacity_from_state()
                                         display.RescaleTransferFunctionToDataRange(True)
                                         color_bar = pvsimple.GetScalarBar(lut, active_view)
                                         if color_bar:
@@ -211,17 +281,33 @@ class Activator:
                     "ui_active_node_well_type": "",
                 })
 
+    def _set_active_block_selector(self, path: str):
+        """Set BlockSelectors on the active representation to the given assembly path."""
+        try:
+            view = pvsimple.GetActiveView()
+            source = pvsimple.GetActiveSource()
+            if view and source:
+                display = pvsimple.GetDisplayProperties(source, view=view)
+                if display:
+                    display.BlockSelectors = [path]
+        except Exception:
+            pass
+
     def _activate_realization(self, realization_child):
         """Apply property coloring for a specific realization child."""
         if not realization_child:
             return
 
-        # The VTK array name is the full label (e.g. "MultiRealizationsProp_real0"), not just the title
-        property_title = realization_child["label"]
+        # For pure Realization, label IS the VTK array name (e.g. "SOIL_real0").
+        # For Realization+TimeSeries, vtk_array_name holds the actual array (e.g. "SOIL_real23")
+        # while label is just "Realization_23".
+        property_title = realization_child.get("vtk_array_name") or realization_child["label"]
 
+        print(f"[DEBUG _activate_realization] property_title='{property_title}'")
         try:
             active_view = pvsimple.GetActiveView()
             all_sources = pvsimple.GetSources()
+            print(f"[DEBUG _activate_realization] sources: {list(k[0] for k in all_sources.keys())}")
 
             # Find visible source (priority: slicervolume > slicers > IjkGrid_*)
             target_source = None
@@ -258,6 +344,7 @@ class Activator:
                             target_source = source
                             break
 
+            print(f"[DEBUG _activate_realization] target_source={getattr(target_source, 'GetGlobalIDAsString', lambda: None)() if target_source else None}")
             if target_source and active_view:
                 pvsimple.SetActiveSource(target_source)
                 display = pvsimple.GetDisplayProperties(target_source, view=active_view)
@@ -269,6 +356,8 @@ class Activator:
                     # Try CELLS, then POINTS
                     cell_info = target_source.GetCellDataInformation()
                     point_info = target_source.GetPointDataInformation()
+                    cell_arrays = [cell_info.GetArray(i).Name for i in range(cell_info.GetNumberOfArrays())] if cell_info else []
+                    print(f"[DEBUG _activate_realization] cell arrays: {cell_arrays}")
 
                     array_type = None
                     if cell_info and cell_info.GetArray(property_title):
@@ -281,7 +370,7 @@ class Activator:
                     if array_type:
                         lut = pvsimple.GetColorTransferFunction(property_title)
                         if lut:
-                            lut.NanOpacity = 0.2
+                            lut.NanOpacity = _nan_opacity_from_state()
                             lut.EnableOpacityMapping = 0
                             if self._realization_locked_range is None:
                                 # First realization: rescale to data range and lock it
@@ -308,6 +397,21 @@ class Activator:
                                 color_bar.Visibility = 1
                                 color_bar.RangeLabelFormat = '%-#6.3g'
                                 color_bar.Resizable = 1
+
+                    # Sync BlockSelectors to the block that has the actual dataset.
+                    # For Realization+TimeSeries, the dataset is on the Representation node
+                    # (2 levels up: TimeSeries → Realization folder → Representation).
+                    # Using the TimeSeries leaf path would select a node with no dataset index.
+                    child_path = realization_child.get("path")
+                    if child_path:
+                        if realization_child.get("vtk_array_name") is not None:
+                            # Realization+TimeSeries: go up 2 levels to the Representation path
+                            # e.g. /data/_uuid/_realization_X/_tsUuidrealts_N_X  →  /data/_uuid
+                            parts = child_path.rsplit("/", 2)
+                            block_path = parts[0] if len(parts) == 3 else child_path
+                        else:
+                            block_path = child_path
+                        self._set_active_block_selector(block_path)
 
                     pvsimple.Render(view=active_view)
                     controller.on_active_proxy_change()

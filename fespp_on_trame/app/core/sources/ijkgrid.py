@@ -134,9 +134,17 @@ class IjkGrid:
                 self._delete_all_sources()
 
             self._node_id = ijkgrid_node_id
-            self._collector.extract_block(self._tree.find_label(self._node_id))
+            label = self._tree.find_label(self._node_id)
+            print(f"[DEBUG ijkgrid.set_node_id] extract_block label='{label}'")
+            self._collector.extract_block(label)
             self._property_path = self._tree.find_path(node_id)
-            self._src_extract_init = pvsimple.FindSource(self._tree.find_label(self._node_id))
+            self._src_extract_init = pvsimple.FindSource(label)
+            print(f"[DEBUG ijkgrid.set_node_id] FindSource('{label}') = {self._src_extract_init}")
+
+            if self._src_extract_init is None:
+                print(f"[DEBUG ijkgrid.set_node_id] ERROR: source '{label}' not found — aborting IjkGrid setup")
+                self._node_id = None  # reset so next call retries
+                return
 
             view = pvsimple.GetActiveView()
             for axis in ('i', 'j', 'k'):
@@ -181,6 +189,9 @@ class IjkGrid:
             state.ui_slices_i_list = [mid_i]
             state.ui_slices_j_list = [mid_j]
             state.ui_slices_k_list = [mid_k]
+            state.ui_slices_i_visible_list = [True]
+            state.ui_slices_j_visible_list = [True]
+            state.ui_slices_k_visible_list = [True]
             state.ui_slices_range_i = [extent[0], extent[1]]
             state.ui_slices_range_j = [extent[2], extent[3]]
             state.ui_slices_range_k = [extent[4], extent[5]]
@@ -213,22 +224,38 @@ class IjkGrid:
         view = pvsimple.GetActiveView()
         if state.ui_slices_range_mode == 'slice':
             pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
-            for src in self._src_slicers_i:
-                (pvsimple.Show if state.ui_slices_i_visible else pvsimple.Hide)(proxy=src, view=view)
-            for src in self._src_slicers_j:
-                (pvsimple.Show if state.ui_slices_j_visible else pvsimple.Hide)(proxy=src, view=view)
-            for src in self._src_slicers_k:
-                (pvsimple.Show if state.ui_slices_k_visible else pvsimple.Hide)(proxy=src, view=view)
+            vis_i = list(state.ui_slices_i_visible_list or [])
+            vis_j = list(state.ui_slices_j_visible_list or [])
+            vis_k = list(state.ui_slices_k_visible_list or [])
+            for idx, src in enumerate(self._src_slicers_i):
+                visible = vis_i[idx] if idx < len(vis_i) else True
+                (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
+            for idx, src in enumerate(self._src_slicers_j):
+                visible = vis_j[idx] if idx < len(vis_j) else True
+                (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
+            for idx, src in enumerate(self._src_slicers_k):
+                visible = vis_k[idx] if idx < len(vis_k) else True
+                (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
         else:
             pvsimple.Show(proxy=self._src_slicer_volume, view=view)
             for src in self._all_slice_sources():
                 pvsimple.Hide(proxy=src, view=view)
 
+    def _nan_opacity_from_state(self):
+        """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""
+        try:
+            hex_val = (state.nan_color or "").lstrip("#")
+            if len(hex_val) >= 8:
+                return int(hex_val[6:8], 16) / 255
+        except (ValueError, IndexError):
+            pass
+        return 0.2
+
     def update_colors(self, src, array_type, property_title, property_type):
         representation = pvsimple.GetRepresentation(proxy=src, view=pvsimple.GetActiveView())
         representation.ColorArrayName = [array_type, property_title]
         lut = pvsimple.GetColorTransferFunction(property_title)
-        lut.NanOpacity = 0.2
+        lut.NanOpacity = self._nan_opacity_from_state()
         representation.LookupTable = lut
         representation.RescaleTransferFunctionToDataRange(True)
         bar = pvsimple.GetScalarBar(ctf=lut, view=pvsimple.GetActiveView())

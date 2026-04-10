@@ -63,8 +63,8 @@ class Tree():
         data["treeview_type"] = treeview_type
 
         children_count = self._data_assembly.GetNumberOfChildren(node_id)
-        # If node type is "Realization", do NOT add children to tree (children accessed programmatically)
-        if children_count > 0 and node_type != "Realization":
+        # If node type is "Realization" or "RealizationTimeSeries", do NOT add children to tree
+        if children_count > 0 and node_type not in ("Realization", "RealizationTimeSeries"):
             data["treeview"]["children"]=[]
             for i in range(children_count):
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
@@ -339,12 +339,22 @@ class Tree():
             child_label = self._data_assembly.GetAttributeOrDefault(child_id, "label", None)
             if child_label:
                 child_title = child_label[child_label.find("_") + 1:]
+                # For Realization+TimeSeries children, the C++ stores the original property
+                # title as "propTitle" attribute and names the VTK array "<propTitle>_real<N>"
+                prop_title = self._data_assembly.GetAttributeOrDefault(child_id, "propTitle", None)
+                # Derive the actual VTK array name: "<propTitle>_real<realIdx>"
+                vtk_array_name = None
+                if prop_title is not None:
+                    # child_title is the realization index string (e.g. "0", "1", ...)
+                    vtk_array_name = f"{prop_title}_real{child_title}"
                 children.append({
                     "id": child_id,
                     "label": child_label,
                     "title": child_title,
                     "path": self._data_assembly.GetNodePath(child_id),
-                    "index": i
+                    "index": i,
+                    "prop_title": prop_title,        # original property title (None for pure Realization)
+                    "vtk_array_name": vtk_array_name, # actual VTK array name (None for pure Realization)
                 })
 
         return children

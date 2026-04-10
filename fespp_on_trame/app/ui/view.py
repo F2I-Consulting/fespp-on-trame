@@ -204,26 +204,25 @@ def ui(server: Server, **kwargs) -> None:
                                     vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
 
                     # Well Tab Content
-                    with vuetify3.VWindowItem(value="well"):
-                        with html.Div(v_show="tab === 'well'"):
-                            # Data Explorer Treeview CARD for well data
-                            with create_card(
-                                "Data Explorer",
-                                "mdi-file-tree",
-                                "init_height_dataexplorer"
-                            ):
-                                with vuetify3.VSheet(classes="pa-2"):
-                                    tv.well_tree()
-                            # Node Attribute CARD
-                            with create_card(
-                                "Attributes",
-                                "mdi-information",
-                                "init_height_attribute"
-                            ):
-                                with vuetify3.VSheet(classes="pa-2"):
-                                    # Only show attributes if active node is also selected
-                                    with html.Div(v_if="ui_active_node_well.length > 0 && ui_select_node_well.includes(ui_active_node_well[0])"):
-                                        vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
+                    with html.Div(v_show="tab === 'well'"):
+                        # Data Explorer Treeview CARD for well data
+                        with create_card(
+                            "Data Explorer",
+                            "mdi-file-tree",
+                            "init_height_dataexplorer"
+                        ):
+                            with vuetify3.VSheet(classes="pa-2"):
+                                tv.well_tree()
+                        # Node Attribute CARD
+                        with create_card(
+                            "Attributes",
+                            "mdi-information",
+                            "init_height_attribute"
+                        ):
+                            with vuetify3.VSheet(classes="pa-2"):
+                                # Only show attributes if active node is also selected
+                                with html.Div(v_if="ui_active_node_well.length > 0 && ui_select_node_well.includes(ui_active_node_well[0])"):
+                                    vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
                             
                 # General parameters CARD
                 # On utilise la fonction d'aide 'create_card' pour avoir le même look and feel

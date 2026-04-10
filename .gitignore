@@ -38,6 +38,8 @@ fespp_on_trame/app/core/fespp_engine copy.py
 
 # FESPP local source (for local build mode)
 /fespp-src-local/
+# ParaView Trame Components reference sources (not part of the project)
+/paraview-trame-components/
 doc/elba.md
 doc/elba.pdf
 .claude/settings.local.json

@@ -420,15 +420,18 @@ def initialize_fespp_engine(
         #pvsimple.Render(view=_view)
 
         # Update IJK Grid visibility if a reservoir node is selected
+        print(f"[DEBUG engine] post-render, ui_select_node_reservoir={state.ui_select_node_reservoir}")
         if len(state.ui_select_node_reservoir) > 0:
-            # Iterate over all selected reservoir nodes to find the first valid match.
-            # We only update the IJK grid configuration once, with the first relevant node found.
             for reservoir_node_id in state.ui_select_node_reservoir:
-                # Check if the current node is itself an 'IjkGrid' node or has an 'IjkGrid' parent.
-                # This determines if the selected reservoir node is relevant to the IJK visualization logic.
-                    if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
+                if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
+                    print(f"[DEBUG engine] calling set_node_id({reservoir_node_id})")
+                    try:
                         _ijkGrid.set_node_id(reservoir_node_id)
-                        break
+                    except Exception as e:
+                        import traceback
+                        print(f"[WARNING] _ijkGrid.set_node_id failed: {e}")
+                        traceback.print_exc()
+                    break
         _ijkGrid.update_block_visibility()
 
         # Trigger Trame view replacement and general update
@@ -456,12 +459,16 @@ def initialize_fespp_engine(
             if _tree.find_type(candidate) == "Realization":
                 _realization_node_id = candidate
 
+        print(f"[DEBUG engine] realization_node_id={_realization_node_id}, realization_selected_index={state.realization_selected_index}")
         if _realization_node_id is not None:
             realization_children = _tree.get_realization_children(_realization_node_id)
+            print(f"[DEBUG engine] realization_children count={len(realization_children)}")
             if realization_children:
                 idx = state.realization_selected_index or 0
                 if 0 <= idx < len(realization_children):
-                    _activator._activate_realization(realization_children[idx])
+                    child = realization_children[idx]
+                    print(f"[DEBUG engine] calling _activate_realization with label='{child.get('label')}' vtk_array_name='{child.get('vtk_array_name')}'")
+                    _activator._activate_realization(child)
 
         # Final render to display the scene with the new camera
         state.view_update = True
@@ -514,11 +521,22 @@ def initialize_fespp_engine(
     # Handler for IJK slices position changes (liste multi-slice)
     @state.change("ui_slices_i_list", "ui_slices_j_list", "ui_slices_k_list")
     def update_slice(ui_slices_i_list, ui_slices_j_list, ui_slices_k_list, **kwargs):
+        # Sync visibility lists to match slice list lengths (new slicers default to visible)
+        for axis, lst in (('i', ui_slices_i_list), ('j', ui_slices_j_list), ('k', ui_slices_k_list)):
+            vis_var = f"ui_slices_{axis}_visible_list"
+            lst = lst or []
+            vis_list = list(getattr(state, vis_var, []) or [])
+            while len(vis_list) < len(lst):
+                vis_list.append(True)
+            while len(vis_list) > len(lst):
+                vis_list.pop()
+            setattr(state, vis_var, vis_list)
+
         if _ijkGrid is not None:
             _ijkGrid.update_slices(
-                ui_slices_i_list or [0],
-                ui_slices_j_list or [0],
-                ui_slices_k_list or [0],
+                ui_slices_i_list or [],
+                ui_slices_j_list or [],
+                ui_slices_k_list or [],
             )
             _ijkGrid.show()
         pvsimple.Render(view=_view)
@@ -546,13 +564,19 @@ def initialize_fespp_engine(
     def update_realization_slider(ui_slices_real, **kwargs):
         # Avoid infinite loop by checking if value actually changed
         if ui_slices_real != state.realization_selected_index:
-            controller.select_realization(ui_slices_real)
+            # RealizationTimeSeries: drive via VTK RealizationIndex property
+            ts_node_id = getattr(state, 'realization_ts_node_id', None)
+            if ts_node_id is not None and _tree.find_type(ts_node_id) == "RealizationTimeSeries":
+                state.realization_selected_index = ui_slices_real
+                _collector.set_realization_index(ui_slices_real)
+            else:
+                controller.select_realization(ui_slices_real)
         # Keep locked value in sync with current slider position
         if state.ui_slices_real_locked:
             state.ui_slices_real_locked_value = ui_slices_real
 
-    # Handlers for slice visibility changes
-    @state.change("ui_slices_i_visible", "ui_slices_j_visible", "ui_slices_k_visible")
+    # Handlers for per-slicer visibility changes
+    @state.change("ui_slices_i_visible_list", "ui_slices_j_visible_list", "ui_slices_k_visible_list")
     def update_slices_visibility(**kwargs):
         if _ijkGrid is not None:
             _ijkGrid.show()
