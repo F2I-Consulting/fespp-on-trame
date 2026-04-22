@@ -20,12 +20,16 @@ def _nan_opacity_from_state():
     return 0.2
 
 class Activator:
-    def __init__(self, tree: Tree):
+    def __init__(self, tree: Tree, rep_sources=None):
         self._tree = tree
+        self._rep_sources = rep_sources
         
         state.setdefault("ui_active_node_reservoir", [])
         state.setdefault("ui_active_node_surface", [])
         state.setdefault("ui_active_node_well", [])
+        state.setdefault("ui_active_node_reservoir_type_rep", "")
+        state.setdefault("ui_active_node_reservoir_type", "")
+        state.setdefault("ui_active_node_reservoir_title", "")
 
         # Realization widget state
         state.setdefault("realization_list", [])
@@ -37,12 +41,16 @@ class Activator:
         # Locked LUT range for consistent legend across realizations: (min, max) or None
         self._realization_locked_range = None
 
+        state.setdefault("active_representation_has_properties", False)
+
         @state.change("ui_active_node_reservoir")
         def on_ui_active_node_reservoir_change(ui_active_node_reservoir, **kwargs):
             if not ui_active_node_reservoir or len(ui_active_node_reservoir) == 0:
                 state.ptc_show_vcr = False
                 state.active_color_array_name = ""
                 state.coe_panels = []
+                state.active_representation_path = ""
+                state.active_representation_has_properties = False
                 return
             if ui_active_node_reservoir and len(ui_active_node_reservoir) > 0:
                 node_id = ui_active_node_reservoir[0]
@@ -51,29 +59,45 @@ class Activator:
                 title_node = self._tree.find_title(node_id)
 
                 is_property = bool(type_node and "Property" in type_node)
+                ts_ancestor_id = self._tree.find_parent_node_id_with_type(node_id, "TimeSeries")
+                is_ts_property = is_property and ts_ancestor_id is not None
                 state.update({
                     "ui_active_node_reservoir_type_rep": type_node_rep,
                     "ui_active_node_reservoir_type": type_node,
                     "ui_active_node_reservoir_title": title_node,
-                    "ptc_show_vcr": type_node == "TimeSeries",
+                    "ptc_show_vcr": is_ts_property,
                     "active_color_array_name": "" if not is_property else state.active_color_array_name,
                     "coe_panels": [] if not is_property else state.coe_panels,
                 })
 
-                # Sync active node path to representation BlockSelectors.
-                # Use the Representation ancestor node (UnstructuredGrid, TriangulatedSet…)
-                # because only that node has AddDataSetIndex — leaf nodes (TimeSeries,
-                # Properties…) have no dataset index and would show nothing.
-                # IjkGrid is excluded: its slicers (ExplicitStructuredGridCrop) manage
-                # visibility independently; setting BlockSelectors here would conflict
-                # with update_block_visibility() which intentionally removes IjkGrid.
+                # Resolve the active representation (UnstructuredGrid, TriangulatedSet, …)
+                # and, for non-IjkGrid representations, switch the ParaView active source
+                # to its dedicated ExtractBlock proxy. IjkGrid keeps its slicer-based flow.
                 rep_node_id = self._tree.find_representation_node(node_id)
+                rep_block_path = ""
+                rep_type = None
+                rep_source = None
+                rep_has_properties = False
                 if rep_node_id is not None:
                     rep_type = self._tree.find_type(rep_node_id)
-                    if rep_type != 'IjkGrid':
-                        block_path = self._tree.find_path(rep_node_id)
-                        if block_path:
-                            self._set_active_block_selector(block_path)
+                    rep_has_properties = self._tree.has_property_descendant(rep_node_id)
+                    block_path = self._tree.find_path(rep_node_id)
+                    if block_path:
+                        rep_block_path = block_path
+                        if rep_type != 'IjkGrid' and self._rep_sources is not None:
+                            rep_source = self._rep_sources.get(block_path)
+                            print(f"[DEBUG RepresentBy] reservoir activate: path={block_path!r} rep_type={rep_type!r} rep_source={rep_source}")
+                            if rep_source is not None:
+                                pvsimple.SetActiveSource(rep_source)
+                                print(f"[DEBUG RepresentBy] SetActiveSource OK; current active={pvsimple.GetActiveSource()}")
+                                try:
+                                    controller.on_active_proxy_change()
+                                except Exception as _e:
+                                    print(f"[DEBUG RepresentBy] on_active_proxy_change failed: {_e}")
+                            else:
+                                print(f"[DEBUG RepresentBy] no extracted source for {block_path!r} — RepresentBy will stay on previous proxy")
+                state.active_representation_has_properties = rep_has_properties
+                state.active_representation_path = rep_block_path
 
                 # Handle Realization node activation
                 if type_node == "Realization":
@@ -181,34 +205,38 @@ class Activator:
                 # If a Property node is selected, configure color mapping
                 if type_node and "Property" in type_node and title_node:
                     try:
-                        all_sources = pvsimple.GetSources()
                         active_view = pvsimple.GetActiveView()
 
-                        # Find the visible source (priority: slicervolume > slicers > IjkGrid_*)
-                        target_source = None
+                        # Non-IjkGrid: the extracted rep source IS the target. No lookup.
+                        target_source = rep_source if (rep_type and rep_type != 'IjkGrid') else None
 
-                        for source_id, source in all_sources.items():
-                            if source_id[0] == 'slicervolume':
-                                display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                if display and display.Visibility:
-                                    target_source = source
-                                    break
+                        if target_source is None:
+                            all_sources = pvsimple.GetSources()
 
-                        if not target_source:
+                            # IjkGrid path — find the visible source
+                            # (priority: slicervolume > slicers > IjkGrid_*)
                             for source_id, source in all_sources.items():
-                                if source_id[0].startswith(('sliceri_', 'slicerj_', 'slicerk_')):
+                                if source_id[0] == 'slicervolume':
                                     display = pvsimple.GetDisplayProperties(source, view=active_view)
                                     if display and display.Visibility:
                                         target_source = source
                                         break
 
-                        if not target_source:
-                            for source_id, source in all_sources.items():
-                                if source_id[0].startswith('IjkGrid_'):
-                                    display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                    if display and display.Visibility:
-                                        target_source = source
-                                        break
+                            if not target_source:
+                                for source_id, source in all_sources.items():
+                                    if source_id[0].startswith(('sliceri_', 'slicerj_', 'slicerk_')):
+                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
+                                        if display and display.Visibility:
+                                            target_source = source
+                                            break
+
+                            if not target_source:
+                                for source_id, source in all_sources.items():
+                                    if source_id[0].startswith('IjkGrid_'):
+                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
+                                        if display and display.Visibility:
+                                            target_source = source
+                                            break
 
                         if target_source and active_view:
                             pvsimple.SetActiveSource(target_source)
@@ -258,28 +286,34 @@ class Activator:
             if ui_active_node_surface and len(ui_active_node_surface) > 0:
                 node_id = ui_active_node_surface[0]
                 type_node = self._tree.find_type(node_id)
-                
+
                 state.update({
                     "ui_active_node_surface_type": type_node,
                 })
+                self._activate_rep_source(node_id)
             else:
                 state.update({
                     "ui_active_node_surface_type": "",
                 })
-    
+                state.active_representation_path = ""
+                state.active_representation_has_properties = False
+
         @state.change("ui_active_node_well")
         def on_ui_active_node_well_change(ui_active_node_well, **kwargs):
             if ui_active_node_well and len(ui_active_node_well) > 0:
                 node_id = ui_active_node_well[0]
                 type_node = self._tree.find_type(node_id)
-                
+
                 state.update({
                     "ui_active_node_well_type": type_node,
                 })
+                self._activate_rep_source(node_id)
             else:
                 state.update({
                     "ui_active_node_well_type": "",
                 })
+                state.active_representation_path = ""
+                state.active_representation_has_properties = False
 
     def _set_active_block_selector(self, path: str):
         """Set BlockSelectors on the active representation to the given assembly path."""
@@ -292,6 +326,35 @@ class Activator:
                     display.BlockSelectors = [path]
         except Exception:
             pass
+
+    def _activate_rep_source(self, node_id):
+        """Set active_representation_path and activate the matching extracted
+        source for a surface/well tree node. IjkGrid is never expected here."""
+        rep_node_id = self._tree.find_representation_node(node_id)
+        if rep_node_id is None:
+            state.active_representation_path = ""
+            state.active_representation_has_properties = False
+            return
+        block_path = self._tree.find_path(rep_node_id)
+        state.active_representation_has_properties = self._tree.has_property_descendant(rep_node_id)
+        state.active_representation_path = block_path or ""
+        if not block_path or self._rep_sources is None:
+            print(f"[DEBUG RepresentBy] _activate_rep_source: no block_path or no rep_sources (path={block_path!r})")
+            return
+        rep_source = self._rep_sources.get(block_path)
+        print(f"[DEBUG RepresentBy] _activate_rep_source: path={block_path!r} rep_source={rep_source}")
+        if rep_source is not None:
+            try:
+                pvsimple.SetActiveSource(rep_source)
+                print(f"[DEBUG RepresentBy] _activate_rep_source: SetActiveSource OK; active={pvsimple.GetActiveSource()}")
+                try:
+                    controller.on_active_proxy_change()
+                except Exception as _e:
+                    print(f"[DEBUG RepresentBy] _activate_rep_source: on_active_proxy_change failed: {_e}")
+            except Exception as e:
+                print(f"[DEBUG RepresentBy] _activate_rep_source: SetActiveSource failed: {e}")
+        else:
+            print(f"[DEBUG RepresentBy] _activate_rep_source: no extracted source for {block_path!r}")
 
     def _activate_realization(self, realization_child):
         """Apply property coloring for a specific realization child."""
@@ -311,13 +374,36 @@ class Activator:
 
             # Find visible source (priority: slicervolume > slicers > IjkGrid_*)
             target_source = None
+            used_extract_block = False
 
-            for source_id, source in all_sources.items():
-                if source_id[0] == 'slicervolume':
-                    display = pvsimple.GetDisplayProperties(source, view=active_view)
-                    if display and display.Visibility:
-                        target_source = source
-                        break
+            # NEW: prefer the per-representation ExtractBlock for the active rep
+            # when we have one (UnstructuredGrid / Grid2d / etc. case). This is
+            # the proxy that's actually visible on screen — and it's what
+            # ptc.RepresentBy and SolidColorPanel target via SetActiveSource /
+            # controller.get_rep_source. Coloring its display is what makes the
+            # rendering, the type toggle and the Solid/Property switch coherent.
+            if self._rep_sources is not None:
+                active_rep_path = state.active_representation_path or ""
+                if active_rep_path:
+                    rs = self._rep_sources.get(active_rep_path)
+                    if rs is not None:
+                        # Make sure the extract block has propagated the latest
+                        # array data from its upstream collector.
+                        try:
+                            rs.UpdatePipeline()
+                        except Exception:
+                            pass
+                        target_source = rs
+                        used_extract_block = True
+                        print(f"[DEBUG _activate_realization] using rep_source ExtractBlock for path={active_rep_path!r}")
+
+            if not target_source:
+                for source_id, source in all_sources.items():
+                    if source_id[0] == 'slicervolume':
+                        display = pvsimple.GetDisplayProperties(source, view=active_view)
+                        if display and display.Visibility:
+                            target_source = source
+                            break
 
             if not target_source:
                 for source_id, source in all_sources.items():
@@ -344,7 +430,7 @@ class Activator:
                             target_source = source
                             break
 
-            print(f"[DEBUG _activate_realization] target_source={getattr(target_source, 'GetGlobalIDAsString', lambda: None)() if target_source else None}")
+            print(f"[DEBUG _activate_realization] target_source={getattr(target_source, 'GetGlobalIDAsString', lambda: None)() if target_source else None} used_extract_block={used_extract_block}")
             if target_source and active_view:
                 pvsimple.SetActiveSource(target_source)
                 display = pvsimple.GetDisplayProperties(target_source, view=active_view)
@@ -399,24 +485,30 @@ class Activator:
                                 color_bar.Resizable = 1
 
                     # Sync BlockSelectors to the block that has the actual dataset.
-                    # For Realization+TimeSeries, the dataset is on the Representation node
-                    # (2 levels up: TimeSeries → Realization folder → Representation).
-                    # Using the TimeSeries leaf path would select a node with no dataset index.
-                    child_path = realization_child.get("path")
-                    if child_path:
-                        if realization_child.get("vtk_array_name") is not None:
-                            # Realization+TimeSeries: go up 2 levels to the Representation path
-                            # e.g. /data/_uuid/_realization_X/_tsUuidrealts_N_X  →  /data/_uuid
-                            parts = child_path.rsplit("/", 2)
-                            block_path = parts[0] if len(parts) == 3 else child_path
-                        else:
-                            block_path = child_path
-                        self._set_active_block_selector(block_path)
+                    # Only meaningful when coloring the parent multiblock display —
+                    # the ExtractBlock proxy is already constrained to its single
+                    # rep block via its own Selectors property.
+                    if not used_extract_block:
+                        child_path = realization_child.get("path")
+                        if child_path:
+                            if realization_child.get("vtk_array_name") is not None:
+                                # Realization+TimeSeries: go up 2 levels to the Representation path
+                                # e.g. /data/_uuid/_realization_X/_tsUuidrealts_N_X  →  /data/_uuid
+                                parts = child_path.rsplit("/", 2)
+                                block_path = parts[0] if len(parts) == 3 else child_path
+                            else:
+                                block_path = child_path
+                            self._set_active_block_selector(block_path)
 
                     pvsimple.Render(view=active_view)
                     controller.on_active_proxy_change()
                     controller.on_data_loaded()
                     controller.update_color_editor(property_title)
+                    # If the user had toggled Solid for this rep before switching
+                    # realization, the ColorBy() above just reverted the render
+                    # to property — re-assert solid as the final state.
+                    if hasattr(controller, "reapply_active_solid_mode"):
+                        controller.reapply_active_solid_mode()
 
         except Exception as e:
             import traceback

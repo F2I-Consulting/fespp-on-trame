@@ -9,7 +9,7 @@ vuetify3.enable_lab()
 
 class SlicerControls(html.Div):
     def __init__(self):
-        super().__init__(style="display: flex; align-items: center; width: auto;")
+        super().__init__()
         
         state.setdefault("ui_range_i", [0, 0])
         state.setdefault("ui_range_j", [0, 0])
@@ -42,39 +42,59 @@ class SlicerControls(html.Div):
         self._slices_range_active_var = f"ui_slices_range_active"
         
         with self:
-            with vuetify3.VExpansionPanel(
-                title="Slicer"
-            ):
-                with vuetify3.VExpansionPanelText(classes="pa-2"):
-                    # IJK/Volume slicers - only for IjkGrid representations
-                    with html.Div(v_if=("ui_active_node_reservoir_type_rep === 'IjkGrid'",)):
-                        vuetify3.VSwitch(
-                            v_model=(self._mode_var, "range",),
-                            style="margin-left: 0.5rem;",
-                            label=(self._mode_var,),
-                            false_value="range",
-                            true_value="slice",
-                        )
+          with vuetify3.VExpansionPanels(v_model=("slc_panels", [0]), multiple=True, elevation=0):
+            with vuetify3.VExpansionPanel(elevation=0, value=0):
+              with vuetify3.VExpansionPanelTitle(classes="pa-2"):
+                html.Span("Slicer", classes="text-body-2 font-weight-medium")
+                vuetify3.VSpacer()
+                # IJK mode chip — Range or Slice
+                vuetify3.VChip(
+                    "{{ ui_slices_range_mode === 'slice' ? 'Slice' : 'Range' }}",
+                    size="x-small",
+                    variant="tonal",
+                    color="blue",
+                    classes="font-italic mr-1",
+                    v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'",
+                )
+                # Realization chip — current realization label (e.g. "Real 23")
+                vuetify3.VChip(
+                    "Real {{ realization_labels && realization_labels[ui_slices_real] }}",
+                    size="x-small",
+                    variant="tonal",
+                    color="purple",
+                    classes="font-italic mr-2",
+                    v_if="realization_list && realization_list.length > 0",
+                )
+              with vuetify3.VExpansionPanelText(classes="pa-2"):
+                # IJK/Volume slicers - only for IjkGrid representations
+                with html.Div(v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'"):
+                    vuetify3.VSwitch(
+                        v_model=(self._mode_var, "range",),
+                        style="margin-left: 0.5rem;",
+                        label=(self._mode_var,),
+                        false_value="range",
+                        true_value="slice",
+                    )
 
-                        self.RangeSlider("i")
-                        self.RangeSlider("j")
-                        self.RangeSlider("k")
+                    self.RangeSlider("i")
+                    self.RangeSlider("j")
+                    self.RangeSlider("k")
 
-                        self.MultiSlider("i")
-                        self.MultiSlider("j")
-                        self.MultiSlider("k")
+                    self.MultiSlider("i")
+                    self.MultiSlider("j")
+                    self.MultiSlider("k")
 
-                    # Realization slider section
-                    with html.Div(
-                        v_if="realization_list && realization_list.length > 0",
-                        classes="mt-2"
-                    ):
-                        # Divider visible only if IJK sliders are shown above
-                        vuetify3.VDivider(
-                            v_if=("ui_active_node_reservoir_type_rep === 'IjkGrid'",),
-                            classes="mb-2"
-                        )
-                        self.Slider("real")
+                # Realization slider section
+                with html.Div(
+                    v_if="realization_list && realization_list.length > 0",
+                    classes="mt-2"
+                ):
+                    # Divider visible only if IJK sliders are shown above
+                    vuetify3.VDivider(
+                        v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'",
+                        classes="mb-2"
+                    )
+                    self.Slider("real")
 
     def RangeSlider(self, index: Literal["i", "j", "k"]):
         range_var = f"ui_range_{index}"

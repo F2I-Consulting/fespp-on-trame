@@ -13,6 +13,7 @@ from fespp_on_trame.app.core.fespp_tree import Tree
 from fespp_on_trame.app.core.sources.ijkgrid import IjkGrid
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.sources.etp_connector import ETPConnector
+from fespp_on_trame.app.core.sources.rep_sources import RepSources
 from fespp_on_trame.app.core.fespp_selection import Selector
 import fespp_on_trame.app.core.fespp_active as fespp_active
 from fespp_on_trame.app.io.drop_files import on_client_connected, on_client_exited
@@ -131,10 +132,11 @@ def initialize_fespp_engine(
     _collector = Collector()                     # SOURCE: Collects and loads data (e.g., from an EPC file)
     _etp_connector = ETPConnector()              # SOURCE: Connects to ETP/OSDU servers
     _ijkGrid = IjkGrid(_collector, _tree)        # SOURCE: Handles IJK grid manipulation (slicing, volume)
+    _rep_sources = RepSources(_collector, _tree) # SOURCE: One ExtractBlock per non-IjkGrid representation
 
     # FESPP engine components for selection and activation
     _selector = Selector(_ijkGrid, _tree)
-    _activator = fespp_active.Activator(_tree)
+    _activator = fespp_active.Activator(_tree, _rep_sources)
     
     #=> Initialize UI state variables <=
     # Initialize Trame state variables for UI selection (TreeView selections)
@@ -434,6 +436,13 @@ def initialize_fespp_engine(
                     break
         _ijkGrid.update_block_visibility()
 
+        # Sync per-representation ExtractBlock sources with current selection.
+        # Non-IjkGrid representations are rendered from their own extracted proxy;
+        # the parent multiblock stops rendering (Visibility forced to 0 below — empty
+        # BlockSelectors falls back to "show all" in Assembly mode and would cause
+        # double rendering on top of the extracts).
+        _rep_sources.sync(state.fespp_data_selectors)
+
         # Trigger Trame view replacement and general update
         controller.view_replace
         state.view_update = True
@@ -473,49 +482,44 @@ def initialize_fespp_engine(
         # Final render to display the scene with the new camera
         state.view_update = True
         active_source.show()
+        # Force-hide the parent multiblock display: every visible block is now
+        # rendered through its own extracted proxy (or via IjkGrid slicers).
+        representation.Visibility = 0
         pvsimple.Render(view=_view)
         # ----------------------------------------------------
 
     #======================= Main Properties
-    # Handler for Z-scaling changes
-#    @state.change("ui_scale_z")
-#    def ui_scale_z_update(ui_scale_z, **kwargs):
-#        scale = [1.0,1.0, float(ui_scale_z)]
-#        if _collector is not None:
-#            _collector.scale_z = scale
-#            _collector.show()
-#        if _ijkGrid is not None:
-#            _ijkGrid.scale = scale
-#            _ijkGrid.show()
-#        pvsimple.Render(view=_view)
-#        controller.view_update()
-        
-    # Handler for representation type changes (e.g., Surface, Wireframe)
-    @state.change("representation_active")
-    def update_ui_representation(representation_active, **kwargs):
-        print("Updating representation to:", representation_active)
-        view = pvsimple.GetActiveViewOrCreate("RenderView")
-        for sourceId, source in pvsimple.GetSources().items():
-            display_representation = pvsimple.GetRepresentation(source, view=_view)
-            print("Source:", sourceId, "Representation:", display_representation)
-            if display_representation is not None:
-                print(" - Updated representation for source:", sourceId)
-                try:
-                    display_representation.Representation = representation_active
-                    print("   New representation type:", display_representation.Representation)
-                except AttributeError:
-                    print("   Source does not support Representation attribute.")
-                    continue
-        pvsimple.Render()
-        server.controller.view_update()
-        #if _collector is not None:
-        #    _collector.representationType = representation_active
-        #    _collector.show()
-        #if _ijkGrid is not None:
-        #    _ijkGrid.representationType = representation_active
-        #    _ijkGrid.show()
-        #pvsimple.Render(view=_view)
-        #controller.view_update()
+    # Handler for Z-scaling changes — broadcast to every extracted rep source
+    # (and to IjkGrid slicer sources) so the global vertical exaggeration stays
+    # coherent across all representations.
+    state.setdefault("ui_scale_z", 1.0)
+
+    @state.change("ui_scale_z")
+    def ui_scale_z_update(ui_scale_z, **kwargs):
+        try:
+            zscale = float(ui_scale_z or 1.0)
+        except (TypeError, ValueError):
+            zscale = 1.0
+        _rep_sources.apply_z_scale(zscale)
+        ijk_srcs = list(_ijkGrid._all_slice_sources())
+        if _ijkGrid._src_slicer_volume is not None:
+            ijk_srcs.append(_ijkGrid._src_slicer_volume)
+        for src in ijk_srcs:
+            rep = pvsimple.GetRepresentation(proxy=src, view=_view)
+            if rep is not None:
+                rep.Scale = [1.0, 1.0, zscale]
+        pvsimple.Render(view=_view)
+        controller.view_update()
+
+    # Accessor so UI panels (SolidColorPanel, ColorEditor) can resolve a rep
+    # path to its extracted ParaView source.
+    @controller.set("get_rep_source")
+    def get_rep_source(rep_path):
+        return _rep_sources.get(rep_path)
+
+    # Representation type per-source: handled natively by ptc.RepresentBy inside
+    # RepresentationTypePanel. It targets the ParaView active source and re-syncs
+    # via controller.on_active_proxy_change — no global broadcast needed.
 
     #======================= UI: change Slicer
     # Handler for IJK slices position changes (liste multi-slice)

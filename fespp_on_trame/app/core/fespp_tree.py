@@ -284,6 +284,22 @@ class Tree():
         return
     
     # -----------------------------------------------------------------------------
+    # True if any descendant node has a Property type (any "*Property*" label)
+    # -----------------------------------------------------------------------------
+    def has_property_descendant(self, node_id) -> bool:
+        if node_id is None or self._data_assembly is None:
+            return False
+        children_count = self._data_assembly.GetNumberOfChildren(node_id)
+        for i in range(children_count):
+            child_id = self._data_assembly.GetChild(node_id, i)
+            child_type = self.find_type(child_id) or ""
+            if "Property" in child_type:
+                return True
+            if self.has_property_descendant(child_id):
+                return True
+        return False
+
+    # -----------------------------------------------------------------------------
     # find attribute value by node_id/attribute name
     # -----------------------------------------------------------------------------
     def find_attribute_value(self, node_id, attribute_name) -> None:

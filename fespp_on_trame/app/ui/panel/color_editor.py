@@ -16,19 +16,14 @@ def _apply_nan_color_to_lut(lut):
     nan_color = state.nan_color or ""
     hex_val = nan_color.lstrip("#")
     if len(hex_val) < 6:
-        print(f"[DEBUG apply_nan] skip: nan_color too short ({nan_color!r})")
         return
     try:
         rgb = ColorOpacityEditorConvertor.convert_hex_to_rgb(hex_val)
         lut.NanColor = [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255]
         if len(hex_val) >= 8:
-            nan_op = int(hex_val[6:8], 16) / 255
-            lut.NanOpacity = nan_op
-            print(f"[DEBUG apply_nan] NanColor={lut.NanColor}, NanOpacity={nan_op}, EnableOpacityMapping={lut.EnableOpacityMapping}")
-        else:
-            print(f"[DEBUG apply_nan] NanColor set but no alpha, EnableOpacityMapping={lut.EnableOpacityMapping}")
-    except (ValueError, IndexError) as e:
-        print(f"[DEBUG apply_nan] exception: {e}")
+            lut.NanOpacity = int(hex_val[6:8], 16) / 255
+    except (ValueError, IndexError):
+        pass
 
 
 class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
@@ -145,86 +140,22 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
     def on_nan_color_changed(self, *args, **kwargs) -> None:
         """Surcharge : applique NanColor + NanOpacity sur le LUT actif."""
         nan_color = self.state.nan_color
-        print(f"[DEBUG on_nan_color] nan_color={nan_color!r}")
         if not nan_color or len(nan_color) < 7:
             return
         [_, array_name] = self.get_representation_color_array_name()
         if not array_name:
-            print(f"[DEBUG on_nan_color] no array_name, skip")
             return
         lut = pvsimple.GetColorTransferFunction(array_name)
         if not lut:
-            print(f"[DEBUG on_nan_color] no lut for {array_name!r}, skip")
             return
-
-        print(f"[DEBUG on_nan_color] BEFORE: EnableOpacityMapping={lut.EnableOpacityMapping}, NanOpacity={lut.NanOpacity}")
         _apply_nan_color_to_lut(lut)
-        # Forcer la synchro proxy→VTK puis la reconstruction de la LUT texture
-        try:
-            lut.UpdateVTKObjects()
-            lut.SMProxy.MarkAllPropertiesAsModified()
-        except Exception as e:
-            print(f"[DEBUG on_nan_color] lut update exception: {e}")
-        # Forcer toutes les représentations visibles à se re-mapper
-        try:
-            active_view = pvsimple.GetActiveView()
-            for src in pvsimple.GetSources().values():
-                rep = pvsimple.GetRepresentation(src, active_view)
-                if rep and rep.Visibility:
-                    rep.UpdateVTKObjects()
-                    rep.SMProxy.MarkAllPropertiesAsModified()
-        except Exception as e:
-            print(f"[DEBUG on_nan_color] rep refresh exception: {e}")
-        print(f"[DEBUG on_nan_color] AFTER force-refresh: NanOpacity={lut.NanOpacity}, calling Render()")
         pvsimple.Render()
         self.ctrl.view_update()
 
 
-class ColorEditor(html.Div):
-    """Color & Opacity editor panel for Property nodes."""
+# NOTE: the standalone ColorEditor panel class has been merged into
+# SolidColorPanel (see solid_color_panel.py). _FesppColorOpacityEditor and
+# _apply_nan_color_to_lut remain here as shared utilities, imported by the
+# merged panel.
 
-    def __init__(self):
-        super().__init__(v_if="active_color_array_name && active_color_array_name.length > 0")
-
-        state.setdefault("active_color_array_name", "")
-
-        with self:
-            with vuetify3.VExpansionPanels(v_model=("coe_panels", [0]), multiple=True, elevation=0):
-                with vuetify3.VExpansionPanel(title="Colors & Opacity", elevation=0, value=0):
-                    with vuetify3.VExpansionPanelText(classes="pa-0"):
-                        coe = _FesppColorOpacityEditor()
-
-        # --- Override array-name lookup to use state instead of active source ---
-        _original_get_array_name = coe.get_representation_color_array_name
-
-        def _get_array_name_from_state():
-            name = state.active_color_array_name
-            if name:
-                return ["CELLS", name]
-            return _original_get_array_name()
-
-        coe.get_representation_color_array_name = _get_array_name_from_state
-
-        # --- Public controller hook ---
-        def _update_color_editor(array_name):
-            print(f"[DEBUG _update_color_editor] ENTER array_name={array_name!r}")
-            state.active_color_array_name = array_name
-            try:
-                coe.update_scalar_range()
-            except Exception:
-                pass
-            lut = pvsimple.GetColorTransferFunction(array_name)
-            if lut:
-                print(f"[DEBUG _update_color_editor] BEFORE apply_nan: EnableOpacityMapping={lut.EnableOpacityMapping}, NanOpacity={lut.NanOpacity}")
-                _apply_nan_color_to_lut(lut)
-                print(f"[DEBUG _update_color_editor] AFTER apply_nan: EnableOpacityMapping={lut.EnableOpacityMapping}, NanOpacity={lut.NanOpacity}")
-                if len(lut.RGBPoints) >= 4:
-                    smin = lut.RGBPoints[0]
-                    smax = lut.RGBPoints[-4]
-                    all_opaque = [smin, 1.0, 0.5, 0.0, smax, 1.0, 0.5, 0.0]
-                    coe.update_colors(lut.RGBPoints)
-                    print(f"[DEBUG _update_color_editor] calling update_opacities(all_opaque={all_opaque})")
-                    coe.update_opacities(all_opaque)
-                    print(f"[DEBUG _update_color_editor] AFTER update_opacities: EnableOpacityMapping={lut.EnableOpacityMapping}, NanOpacity={lut.NanOpacity}")
-
-        controller.update_color_editor = _update_color_editor
+state.setdefault("active_color_array_name", "")

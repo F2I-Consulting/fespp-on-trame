@@ -12,7 +12,8 @@ from trame.assets.local import LocalFileManager
 
 import fespp_on_trame.app.core.fespp_engine as fespp_engine
 import fespp_on_trame.app.ui.panel.slicers as panel_slicers
-from fespp_on_trame.app.ui.panel.color_editor import ColorEditor
+from fespp_on_trame.app.ui.panel.solid_color_panel import SolidColorPanel
+from fespp_on_trame.app.ui.panel.representation_type_panel import RepresentationTypePanel
 from fespp_on_trame.app.ui.config.tree_selection import get_item_props_js
 
 # new modular imports
@@ -179,8 +180,12 @@ def ui(server: Server, **kwargs) -> None:
                                     with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
                                         panel_slicers.SlicerControls()
 
-                                        # Color/Opacity editor for Property nodes (has its own v_if)
-                                        ColorEditor()
+                                        # Display type per representation (Surface / Wireframe / …)
+                                        RepresentationTypePanel()
+
+                                        # Merged Colors & Opacity panel — Property/Solid toggle,
+                                        # color picker (Solid) and LUT/PWF editor (Property)
+                                        SolidColorPanel()
 
                     # Surface Tab Content
                     with html.Div(v_show="tab === 'surface'"):
@@ -202,6 +207,9 @@ def ui(server: Server, **kwargs) -> None:
                                 # Only show attributes if active node is also selected
                                 with html.Div(v_if="ui_active_node_surface.length > 0 && ui_select_node_surface.includes(ui_active_node_surface[0])"):
                                     vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
+                                    with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
+                                        RepresentationTypePanel()
+                                        SolidColorPanel()
 
                     # Well Tab Content
                     with html.Div(v_show="tab === 'well'"):
@@ -223,6 +231,9 @@ def ui(server: Server, **kwargs) -> None:
                                 # Only show attributes if active node is also selected
                                 with html.Div(v_if="ui_active_node_well.length > 0 && ui_select_node_well.includes(ui_active_node_well[0])"):
                                     vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
+                                    with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
+                                        RepresentationTypePanel()
+                                        SolidColorPanel()
                             
                 # General parameters CARD
                 # On utilise la fonction d'aide 'create_card' pour avoir le même look and feel
@@ -243,19 +254,12 @@ def ui(server: Server, **kwargs) -> None:
                         ) as expansion_panel:
                             # 💡 VExpansionPanelText est CRUCIAL pour que les composants aient un padding correct
                             with vuetify3.VExpansionPanelText(classes="pa-2"):
-                
-                                # 1. Représentation (Surface, Wireframe...)
-                                html.Div("Representation", classes="text-caption text-uppercase font-weight-bold mb-n1")
-                                ptc.RepresentBy(
-                                    color = "blue",
-                                    base_color="blue", 
-                                    item_color="blue",
-                                    flat=True,
-                                )
-                
-                                vuetify3.VDivider(classes="my-3")
-                
-                                # 2. Transformation (Scale Z only)
+
+                                # Display type (Surface / Wireframe / …) is now per-representation;
+                                # see RepresentationTypePanel inside each rep's attribute panel.
+
+                                # Transformation (Scale Z only) — stays global on purpose:
+                                # vertical exaggeration only makes sense across the whole scene.
                                 html.Div("Transformation", classes="text-caption text-uppercase font-weight-bold mb-n1")
                                 te = ptc.TransformEditor(
                                     show_translation=False,
@@ -340,7 +344,7 @@ def ui(server: Server, **kwargs) -> None:
                         classes="position-absolute top-0 w-100 pa-0 ma-0",
                     ):
                         with ptc.Div(
-                            v_show=("ptc_show_vcr", False),
+                            v_if=("ptc_show_vcr", False),
                             style="display: inline-block;",
                             classes="ma-2 d-flex align-center",
                         ):
