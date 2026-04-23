@@ -98,8 +98,8 @@ def _clear_color_array(display):
             sm_proxy.SetScalarColoring("", 0)  # 0 == vtkDataObject.POINT, ignored when name is empty
             sm_proxy.UpdateVTKObjects()
             return
-        except Exception as e:
-            print(f"[DEBUG SolidPanel] _clear_color_array: SetScalarColoring failed: {e}")
+        except Exception:
+            pass
     try:
         display.ColorArrayName = ['', '']
     except Exception:
@@ -108,9 +108,7 @@ def _clear_color_array(display):
 
 def _apply_solid(rep_path, color_hex):
     targets = _displays_for_rep(rep_path)
-    print(f"[DEBUG SolidPanel] _apply_solid path={rep_path!r} color={color_hex!r} targets={len(targets)}")
     if not targets:
-        print(f"[DEBUG SolidPanel] _apply_solid: no display — abort")
         return
     r, g, b = _hex_to_rgb01(color_hex)
     a = _hex_to_alpha(color_hex)
@@ -121,7 +119,6 @@ def _apply_solid(rep_path, color_hex):
         display.DiffuseColor = [r, g, b]
         display.AmbientColor = [r, g, b]
         display.Opacity = a
-        print(f"[DEBUG SolidPanel] _apply_solid:  → src={source} ColorArrayName={list(display.ColorArrayName)} Visibility={display.Visibility}")
     pvsimple.Render(view=last_view)
     controller.view_update()
 
@@ -138,9 +135,7 @@ def _apply_property(rep_path):
     # records it. Trust state.active_color_array_name as the live source of truth.
     if not array_name:
         array_name = state.active_color_array_name or None
-    print(f"[DEBUG SolidPanel] _apply_property path={rep_path!r} last_array={array_name!r} targets={len(targets)}")
     if not targets:
-        print(f"[DEBUG SolidPanel] _apply_property: no display — abort")
         return
     last_view = None
     for display, source, view in targets:
@@ -156,13 +151,11 @@ def _apply_property(rep_path):
                 elif point_info and point_info.GetArray(array_name):
                     pvsimple.ColorBy(display, ("POINTS", array_name))
                     applied = True
-            except Exception as e:
-                print(f"[DEBUG SolidPanel] _apply_property: ColorBy failed for {source}: {e}")
+            except Exception:
                 applied = False
         if not applied:
             _clear_color_array(display)
             display.Opacity = 1.0
-        print(f"[DEBUG SolidPanel] _apply_property:  → src={source} applied={applied} ColorArrayName={list(display.ColorArrayName)}")
     pvsimple.Render(view=last_view)
     controller.view_update()
 
@@ -245,7 +238,7 @@ class SolidColorPanel(html.Div):
 
         coe.get_representation_color_array_name = _get_array_name_from_state
 
-        # --- Public controller hook (called by _activate_realization & friends) ---
+        # --- Public controller hook ---
         def _update_color_editor(array_name):
             state.active_color_array_name = array_name
             try:
@@ -281,7 +274,6 @@ class SolidColorPanel(html.Div):
         @state.change("solid_color_mode")
         def _on_mode_change(solid_color_mode, **_):
             path = state.active_representation_path
-            print(f"[DEBUG SolidPanel] mode change → {solid_color_mode!r} (active_rep_path={path!r})")
             if not path:
                 return
             modes = dict(state.solid_color_mode_by_rep or {})
@@ -327,9 +319,8 @@ class SolidColorPanel(html.Div):
             _record_active_array_for_rep()
 
         def _reapply_active_solid():
-            """Re-assert Solid coloring for the active rep if the user toggled
-            Solid earlier. Called after _activate_realization, which always runs
-            ColorBy(...) and would otherwise revert the rendering to property."""
+            """Re-assert Solid coloring for the active rep after a ColorBy()
+            call (e.g. after a property switch) reverted the display."""
             path = state.active_representation_path
             if not path:
                 return

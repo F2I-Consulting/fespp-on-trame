@@ -135,14 +135,11 @@ class IjkGrid:
 
             self._node_id = ijkgrid_node_id
             label = self._tree.find_label(self._node_id)
-            print(f"[DEBUG ijkgrid.set_node_id] extract_block label='{label}'")
             self._collector.extract_block(label)
             self._property_path = self._tree.find_path(node_id)
             self._src_extract_init = pvsimple.FindSource(label)
-            print(f"[DEBUG ijkgrid.set_node_id] FindSource('{label}') = {self._src_extract_init}")
 
             if self._src_extract_init is None:
-                print(f"[DEBUG ijkgrid.set_node_id] ERROR: source '{label}' not found — aborting IjkGrid setup")
                 self._node_id = None  # reset so next call retries
                 return
 

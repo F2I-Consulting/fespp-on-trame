@@ -300,56 +300,6 @@ def initialize_fespp_engine(
 
             _tree.set_tree(assembly)
 
-    # Controller: Select a specific realization by index
-    @controller.set("select_realization")
-    def select_realization(index):
-        """Select and activate a specific realization by index (0-based)."""
-        if not state.realization_list or index >= len(state.realization_list):
-            return
-
-        state.realization_play = False
-        state.realization_selected_index = index
-        state.ui_slices_real = index  # Sync slider value (0-based)
-        realization_child = state.realization_list[index]
-        _selector.update_realization_selector(realization_child["path"])
-        # _activate_realization is called by _on_change_fespp_data_selectors_impl
-        # after the data has actually been reloaded
-
-    # Controller: Next realization (for animation)
-    @controller.set("next_realization")
-    def next_realization():
-        """Move to next realization (wraps around)."""
-        if not state.realization_list:
-            return
-        current_index = state.realization_selected_index
-        next_index = (current_index + 1) % len(state.realization_list)
-        controller.select_realization(next_index)
-
-    # Controller: Previous realization
-    @controller.set("previous_realization")
-    def previous_realization():
-        """Move to previous realization (wraps around)."""
-        if not state.realization_list:
-            return
-        current_index = state.realization_selected_index
-        prev_index = (current_index - 1) % len(state.realization_list)
-        controller.select_realization(prev_index)
-
-    # Controller: Set realization by label (number)
-    @controller.set("set_realization_by_label")
-    def set_realization_by_label(label):
-        """Set realization by its label/number (extracted from title)."""
-        if not state.realization_labels:
-            return
-
-        # Find the index of the label in realization_labels
-        try:
-            index = state.realization_labels.index(str(label))
-            controller.select_realization(index)
-        except (ValueError, IndexError):
-            # Label not found, ignore
-            pass
-
     # Controller: Set slider value (for IJK sliders) — met à jour le premier élément de la liste
     @controller.set("set_slider_value")
     def set_slider_value(index, value):
@@ -365,28 +315,6 @@ def initialize_fespp_engine(
             setattr(state, list_var, current)
         except (ValueError, TypeError):
             pass
-
-    # Controller: Play/pause realization animation
-    @controller.set("toggle_realization_play")
-    def toggle_realization_play():
-        """Toggle play/pause for realization animation."""
-        state.realization_play = not state.realization_play
-        if state.realization_play:
-            server.schedule_task(play_realization_animation)
-
-    # Async animation function
-    async def play_realization_animation():
-        """Auto-cycle through realizations (async pattern from CustomTimeControl)."""
-        import asyncio
-        play_delay = state.animation_delay if hasattr(state, 'animation_delay') else 1.0
-
-        while state.realization_play:
-            controller.next_realization()
-            await asyncio.sleep(play_delay)
-
-            if not state.realization_list or state.realization_parent_node_id is None:
-                state.realization_play = False
-                break
 
     # Handler for changes to the selected FESPP data nodes (Trame state variable)
     @state.change("fespp_data_selectors")
@@ -422,11 +350,9 @@ def initialize_fespp_engine(
         #pvsimple.Render(view=_view)
 
         # Update IJK Grid visibility if a reservoir node is selected
-        print(f"[DEBUG engine] post-render, ui_select_node_reservoir={state.ui_select_node_reservoir}")
         if len(state.ui_select_node_reservoir) > 0:
             for reservoir_node_id in state.ui_select_node_reservoir:
                 if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
-                    print(f"[DEBUG engine] calling set_node_id({reservoir_node_id})")
                     try:
                         _ijkGrid.set_node_id(reservoir_node_id)
                     except Exception as e:
@@ -459,25 +385,9 @@ def initialize_fespp_engine(
             state.view_reset_camera = True
             state.has_data_loaded_once = True
 
-        # If a realization is active, apply coloring now that data is loaded.
-        # Use ui_select_node_reservoir as fallback in case realization_parent_node_id
-        # is not yet set (handlers may fire in any order).
-        _realization_node_id = state.realization_parent_node_id
-        if _realization_node_id is None and state.ui_select_node_reservoir:
-            candidate = state.ui_select_node_reservoir[0]
-            if _tree.find_type(candidate) == "Realization":
-                _realization_node_id = candidate
-
-        print(f"[DEBUG engine] realization_node_id={_realization_node_id}, realization_selected_index={state.realization_selected_index}")
-        if _realization_node_id is not None:
-            realization_children = _tree.get_realization_children(_realization_node_id)
-            print(f"[DEBUG engine] realization_children count={len(realization_children)}")
-            if realization_children:
-                idx = state.realization_selected_index or 0
-                if 0 <= idx < len(realization_children):
-                    child = realization_children[idx]
-                    print(f"[DEBUG engine] calling _activate_realization with label='{child.get('label')}' vtk_array_name='{child.get('vtk_array_name')}'")
-                    _activator._activate_realization(child)
+        # Multi-realization is now driven by the collector's RealizationIndex
+        # (set on slider change). Color mapping follows automatically because
+        # the array name doesn't change between realizations.
 
         # Final render to display the scene with the new camera
         state.view_update = True
@@ -566,18 +476,25 @@ def initialize_fespp_engine(
     # Handler for realization slider changes
     @state.change("ui_slices_real")
     def update_realization_slider(ui_slices_real, **kwargs):
-        # Avoid infinite loop by checking if value actually changed
+        # Single multi-realization node per property: the slider drives the
+        # collector's RealizationIndex; the C++ layer swaps the property values
+        # under the same array name, so ParaView's color mapping follows.
+        # ui_slices_real is the slider position (0..N-1); the actual realization
+        # index lives in realization_labels[ui_slices_real] (e.g. "23").
+        labels = state.realization_labels or []
+        if not labels or ui_slices_real >= len(labels):
+            return
+        try:
+            real_index = int(labels[ui_slices_real])
+        except (ValueError, TypeError):
+            return
         if ui_slices_real != state.realization_selected_index:
-            # RealizationTimeSeries: drive via VTK RealizationIndex property
-            ts_node_id = getattr(state, 'realization_ts_node_id', None)
-            if ts_node_id is not None and _tree.find_type(ts_node_id) == "RealizationTimeSeries":
-                state.realization_selected_index = ui_slices_real
-                _collector.set_realization_index(ui_slices_real)
-            else:
-                controller.select_realization(ui_slices_real)
-        # Keep locked value in sync with current slider position
+            state.realization_selected_index = ui_slices_real
+            _collector.set_realization_index(real_index)
+            pvsimple.Render(view=_view)
+            controller.view_update()
         if state.ui_slices_real_locked:
-            state.ui_slices_real_locked_value = ui_slices_real
+            state.ui_slices_real_locked_value = labels[ui_slices_real]
 
     # Handlers for per-slicer visibility changes
     @state.change("ui_slices_i_visible_list", "ui_slices_j_visible_list", "ui_slices_k_visible_list")
@@ -591,8 +508,13 @@ def initialize_fespp_engine(
     @state.change("ui_slices_real_locked")
     def update_real_lock(ui_slices_real_locked, **kwargs):
         if ui_slices_real_locked:
-            # Store current realization value when locking
-            state.ui_slices_real_locked_value = state.ui_slices_real
+            # Store current realization *value* (e.g. "23") so the lock survives
+            # switches to a property whose index set differs.
+            labels = state.realization_labels or []
+            pos = state.ui_slices_real
+            state.ui_slices_real_locked_value = (
+                labels[pos] if 0 <= pos < len(labels) else None
+            )
         else:
             # Clear locked value when unlocking
             state.ui_slices_real_locked_value = None

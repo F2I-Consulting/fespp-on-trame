@@ -61,8 +61,13 @@ class Collector:
         self._collector.SetPropertyWithName('objecttoextract', blockname)
 
     def set_realization_index(self, index: int):
-        """Set the active realization index for RealizationTimeSeries nodes and trigger a pipeline update."""
-        self._collector.RealizationIndex = index
+        """Set the active realization index for RealizationTimeSeries nodes and trigger a pipeline update.
+        RealizationIndex is exposed as a StringVectorProperty (dropdown) on the
+        XML proxy so the user only sees indices that exist; the C++ setter
+        parses the string back to int. We use SetPropertyWithName because
+        ParaView aliases the Python attribute to the XML 'label' ('Realization'),
+        not the 'name' ('RealizationIndex')."""
+        self._collector.SetPropertyWithName("RealizationIndex", str(index))
         self._collector.UpdatePipeline()
 
     #==

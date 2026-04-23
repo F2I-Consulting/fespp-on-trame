@@ -5,7 +5,6 @@ Couvre :
   - set_tree : dispatch reservoir / surface / well
   - find_type : lecture du type d'un nœud
   - find_path : chemin d'un nœud
-  - get_realization_children : enfants d'un nœud Realization (pur + TimeSeries)
   - add_subtreeview_data : construction récursive, exclusion des enfants Realization
   - optimize_tree_selection : remontée optimisée de la sélection
 """
@@ -52,34 +51,6 @@ def _make_assembly_realization() -> tuple[FakeDataAssembly, dict]:
     child1 = asm.add_node_with_attrs(
         "_uuid-real1", real_node,
         label="Pressure_real1", type="4"
-    )
-    return asm, {"grid": grid, "real": real_node, "c0": child0, "c1": child1}
-
-
-def _make_assembly_realization_timeseries() -> tuple[FakeDataAssembly, dict]:
-    """
-    root
-      IjkGrid_MyGrid                  (node 1)
-        Realization_Pressure          (node 2, type=Realization)
-          _<tsUuid>realts_0_Pressure  (node 3, TimeSeries, propTitle=Pressure)
-          _<tsUuid>realts_1_Pressure  (node 4, TimeSeries, propTitle=Pressure)
-    """
-    asm = FakeDataAssembly()
-    ts_uuid = "a" * 36
-    grid = asm.add_node_with_attrs("_grid1", 0, label="IjkGrid_MyGrid", type="1")
-    real_node = asm.add_node_with_attrs(
-        "_realization_Pressure", grid,
-        label="Realization_Pressure", type="13"
-    )
-    child0 = asm.add_node_with_attrs(
-        f"_{ts_uuid}realts_0_Pressure", real_node,
-        label="Realization_0", type="12",
-        propTitle="Pressure"
-    )
-    child1 = asm.add_node_with_attrs(
-        f"_{ts_uuid}realts_1_Pressure", real_node,
-        label="Realization_1", type="12",
-        propTitle="Pressure"
     )
     return asm, {"grid": grid, "real": real_node, "c0": child0, "c1": child1}
 
@@ -168,55 +139,6 @@ class TestFindPath:
         path = tree.find_path(ids["prop"])
         assert "_grid1" in path
         assert "_prop1" in path
-
-
-# ---------------------------------------------------------------------------
-# Tests : get_realization_children
-# ---------------------------------------------------------------------------
-
-class TestGetRealizationChildren:
-    def test_pure_realization_returns_children(self):
-        asm, ids = _make_assembly_realization()
-        tree = Tree(asm)
-        children = tree.get_realization_children(ids["real"])
-        assert len(children) == 2
-        labels = {c["label"] for c in children}
-        assert "Pressure_real0" in labels
-        assert "Pressure_real1" in labels
-
-    def test_pure_realization_no_vtk_array_name(self):
-        """Pour Realization pur, vtk_array_name doit être None (pas de propTitle)."""
-        asm, ids = _make_assembly_realization()
-        tree = Tree(asm)
-        children = tree.get_realization_children(ids["real"])
-        for c in children:
-            assert c["vtk_array_name"] is None
-
-    def test_realization_timeseries_vtk_array_name(self):
-        """Pour Realization+TimeSeries, vtk_array_name = '<propTitle>_real<N>'."""
-        asm, ids = _make_assembly_realization_timeseries()
-        tree = Tree(asm)
-        children = tree.get_realization_children(ids["real"])
-        assert len(children) == 2
-        vtk_names = {c["vtk_array_name"] for c in children}
-        assert "Pressure_real0" in vtk_names
-        assert "Pressure_real1" in vtk_names
-
-    def test_non_realization_node_returns_empty(self):
-        asm, ids = _make_assembly_ijk_with_property()
-        tree = Tree(asm)
-        assert tree.get_realization_children(ids["grid"]) == []
-
-    def test_none_node_returns_empty(self):
-        tree = Tree(None)
-        assert tree.get_realization_children(None) == []
-
-    def test_children_have_path(self):
-        asm, ids = _make_assembly_realization()
-        tree = Tree(asm)
-        children = tree.get_realization_children(ids["real"])
-        for c in children:
-            assert c["path"] is not None and len(c["path"]) > 0
 
 
 # ---------------------------------------------------------------------------

@@ -63,7 +63,7 @@ class SlicerControls(html.Div):
                     variant="tonal",
                     color="purple",
                     classes="font-italic mr-2",
-                    v_if="realization_list && realization_list.length > 0",
+                    v_if="realization_labels && realization_labels.length > 0",
                 )
               with vuetify3.VExpansionPanelText(classes="pa-2"):
                 # IJK/Volume slicers - only for IjkGrid representations
@@ -86,7 +86,7 @@ class SlicerControls(html.Div):
 
                 # Realization slider section
                 with html.Div(
-                    v_if="realization_list && realization_list.length > 0",
+                    v_if="realization_labels && realization_labels.length > 0",
                     classes="mt-2"
                 ):
                     # Divider visible only if IJK sliders are shown above

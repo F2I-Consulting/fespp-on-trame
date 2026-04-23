@@ -13,6 +13,7 @@ TREE_ICONS = {
     "CategoricalProperty": "mdi-tag-multiple",
     "TimeSeries": "mdi-timeline-clock",
     "Realization": "mdi-layers-triple",
+    "RealizationTimeSeries": "mdi-animation",
 
     # Surface types
     "Grid2d": "mdi-grid-large",
