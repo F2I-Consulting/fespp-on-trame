@@ -112,6 +112,23 @@ def initialize_fespp_engine(
     state = server.state
     controller = server.controller
 
+    # Time the user-facing busy spinner: how long the UI is "blocked" between
+    # an interaction and the next idle. The busy state is bumped by Trame
+    # on every state mutation that triggers a flush; we log start → end
+    # transitions to see what's actually freezing the UI.
+    _busy_start = [None]
+
+    @state.change("trame__busy")
+    def _on_trame_busy(trame__busy=None, **_):
+        if trame__busy:
+            if _busy_start[0] is None:
+                _busy_start[0] = time.perf_counter()
+        else:
+            if _busy_start[0] is not None:
+                ms = int((time.perf_counter() - _busy_start[0]) * 1000)
+                print(f"[BUSY] {ms}ms")
+                _busy_start[0] = None
+
     # Load the custom FESPP ParaView plugin
     pvsimple.LoadPlugin(str(fespp_plugin_path))
     # Load the ExplicitStructuredGrid plugin for handling explicit grid slicing
@@ -440,11 +457,59 @@ def initialize_fespp_engine(
                 src.UpdatePipelineInformation()
             except Exception:
                 pass
+        # IjkGrid's rep_data filter (created via SetExtractRepPath inside
+        # IjkGrid.set_node_id) is NOT tracked by _rep_sources, so the loop
+        # above misses it. Bump it + the slicers chained on it so their
+        # caches invalidate and the next downstream Update sees the freshly
+        # loaded property arrays.
+        #
+        # ONLY bump if the IjkGrid is in the CURRENT selection — otherwise we
+        # risk poking at stale references (the previous IjkGrid's filter
+        # whose input is no longer being kept fresh by FESPP), which can
+        # hang or error. We use UpdatePipelineInformation (cheap, REQUEST_INFO
+        # only) — the actual RequestData re-execution happens lazily on the
+        # next render or on the active handler's UpdatePipeline.
+        _t_ijk = _time.perf_counter()
+        ijk_extract = getattr(_ijkGrid, '_src_extract_init', None)
+        ijk_node_id = getattr(_ijkGrid, '_node_id', None)
+        ijk_path = _tree.find_path(ijk_node_id) if ijk_node_id else None
+        ijk_in_selection = bool(
+            ijk_path
+            and any(s == ijk_path or s.startswith(ijk_path + '/') for s in (state.fespp_data_selectors or []))
+        )
+        if ijk_extract is not None and ijk_in_selection:
+            try:
+                ijk_extract.GetClientSideObject().Modified()
+                ijk_extract.UpdatePipelineInformation()
+            except Exception:
+                pass
+            try:
+                slicer_sources = list(_ijkGrid._all_slice_sources())
+                if _ijkGrid._src_slicer_volume is not None:
+                    slicer_sources.append(_ijkGrid._src_slicer_volume)
+                for slc in slicer_sources:
+                    try:
+                        slc.GetClientSideObject().Modified()
+                        slc.UpdatePipelineInformation()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        print(f"[PERF py] ijk bumps: {_ms(_t_ijk)}ms (in_selection={ijk_in_selection})")
         print(f"[PERF py] _rep_sources.sync: {_ms(_t)}ms")
-        try:
-            fespp_active._debug_dump_sources("engine.after_sync")
-        except Exception as _e:
-            print(f"[DUMP engine.after_sync] FATAL {_e}")
+
+        # Notify the activator about which reps are still actively displayed
+        # so it can hide stale color bars (e.g., switching between two
+        # IjkGrids — without this, the previous grid's color bar stays
+        # visible alongside the new grid's bar).
+        if _activator is not None:
+            present_paths = set(p for p, _ in _rep_sources.items())
+            if ijk_in_selection and ijk_path:
+                present_paths.add(ijk_path)
+            try:
+                _activator.notify_active_reps(present_paths)
+            except Exception as _e:
+                print(f"[WARNING] notify_active_reps failed: {_e}")
 
         # Trigger Trame view replacement and general update
         controller.view_replace
@@ -478,7 +543,6 @@ def initialize_fespp_engine(
         # Idempotent: if the active handler already ran successfully on its
         # own (rep already existed), this is a no-op. If it short-circuited
         # because rep_source was None, this is the catch-up.
-        print(f"[DEBUG engine] before refresh_active, _activator={'YES' if _activator else 'None'}")
         if _activator is not None:
             _activator.refresh_active()
 
@@ -632,36 +696,33 @@ def initialize_fespp_engine(
             state.ui_time_label = ""
 
     #======================= TreeView: change selection
-    # apply_mode: "auto" → every checkbox toggle pushes immediately to the
+    # show_mode: "auto" → every checkbox toggle pushes immediately to the
     # ParaView pipeline (the legacy behaviour). "manual" → checkbox toggles
     # only update the per-tab selection state; the user clicks the toolbar
-    # "Apply" button to push the aggregated selection in one shot.
-    state.setdefault("apply_mode", "auto")
+    # "Show" button to push the aggregated selection in one shot.
+    state.setdefault("show_mode", "auto")
 
     # Handler for surface node selection changes
     @state.change("ui_select_node_surface")
     def on_change_ui_select_node_surface(**kwargs):
-        print(f"[DEBUG select.surface] mode={state.apply_mode} sel={state.ui_select_node_surface!r}")
-        if _selector is not None and state.apply_mode == "auto":
+        if _selector is not None and state.show_mode == "auto":
             _selector.select_node_surface()
 
     # Handler for well node selection changes
     @state.change("ui_select_node_well")
     def on_change_ui_select_node_well(**kwargs):
-        print(f"[DEBUG select.well] mode={state.apply_mode} sel={state.ui_select_node_well!r}")
-        if _selector is not None and state.apply_mode == "auto":
+        if _selector is not None and state.show_mode == "auto":
             _selector.select_node_well()
 
     # Handler for reservoir node selection changes
     @state.change("ui_select_node_reservoir")
     def on_change_ui_select_node_reservoir(**kwargs):
-        print(f"[DEBUG select.reservoir] mode={state.apply_mode} sel={state.ui_select_node_reservoir!r}")
-        if _selector is not None and state.apply_mode == "auto":
+        if _selector is not None and state.show_mode == "auto":
             _selector.select_node_reservoir()
 
-    # Toolbar "Apply" button entry point — pushes the current (potentially
+    # Toolbar "Show" button entry point — pushes the current (potentially
     # accumulated) per-tab selections to the ParaView pipeline. Used only in
-    # apply_mode == "manual"; in "auto" mode the per-tab state.change handlers
+    # show_mode == "manual"; in "auto" mode the per-tab state.change handlers
     # above already push on every toggle.
     @controller.set("apply_pending_selection")
     def apply_pending_selection():
@@ -672,7 +733,7 @@ def initialize_fespp_engine(
         _selector.select_node_well()
         # Re-run the active-node handlers in fespp_active.py for any node
         # currently marked active. In manual mode the active change
-        # happened BEFORE the Apply (when the user checked the box) — the
+        # happened BEFORE the Show click (when the user checked the box) — the
         # rep didn't exist yet, so ColorBy / TimeControl wiring
         # short-circuited. Now that the rep exists we re-run the same
         # logic. We can't just bump the state vars (Trame batches the
@@ -684,9 +745,9 @@ def initialize_fespp_engine(
     # Switching from "manual" back to "auto" must flush any pending selection
     # the user staged while in manual mode — otherwise their already-checked
     # boxes would stay un-applied until the next checkbox toggle.
-    @state.change("apply_mode")
-    def on_apply_mode_change(apply_mode, **kwargs):
-        if apply_mode == "auto" and _selector is not None:
+    @state.change("show_mode")
+    def on_show_mode_change(show_mode, **kwargs):
+        if show_mode == "auto" and _selector is not None:
             apply_pending_selection()
         
     #======================= View Controls

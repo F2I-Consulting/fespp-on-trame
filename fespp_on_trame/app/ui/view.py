@@ -292,13 +292,13 @@ def ui(server: Server, **kwargs) -> None:
                 
                                 vuetify3.VDivider(classes="my-3")
 
-                                # Apply mode — toggle between auto-apply and manual.
+                                # Show mode — toggle between auto-show and manual.
                                 # Manual mode lets the user check several nodes across
                                 # tabs without paying the load cost on every click;
-                                # the toolbar "Apply" button pushes them all at once.
-                                html.Div("Apply Mode", classes="text-caption text-uppercase font-weight-bold mb-2")
+                                # the toolbar "Show" button pushes them all at once.
+                                html.Div("Show Mode", classes="text-caption text-uppercase font-weight-bold mb-2")
                                 with vuetify3.VBtnToggle(
-                                    v_model=("apply_mode", "auto"),
+                                    v_model=("show_mode", "auto"),
                                     mandatory=True,
                                     density="comfortable",
                                     color="blue",

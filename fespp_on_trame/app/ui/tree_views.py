@@ -163,6 +163,26 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Secondary badges for synthetic nodes (TimeSeries collapses
+                # multiple time-stamped properties under one leaf,
+                # MultiRealization the same for realizations,
+                # MultiRealizationTimeSeries combines both — up to 3 icons
+                # total: primary property kind + TS + MR).
+                vuetify3.VIcon(
+                    "mdi-timeline-clock",
+                    v_if="item.is_ts",
+                    size="x-small",
+                    color="purple",
+                    classes="ml-1",
+                )
+                vuetify3.VChip(
+                    "MR",
+                    v_if="item.is_mr",
+                    size="x-small",
+                    variant="tonal",
+                    color="purple",
+                    classes="ml-1",
+                )
                 _chip_slot()
 
     def surface_tree(self):
@@ -188,6 +208,26 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Secondary badges for synthetic nodes (TimeSeries collapses
+                # multiple time-stamped properties under one leaf,
+                # MultiRealization the same for realizations,
+                # MultiRealizationTimeSeries combines both — up to 3 icons
+                # total: primary property kind + TS + MR).
+                vuetify3.VIcon(
+                    "mdi-timeline-clock",
+                    v_if="item.is_ts",
+                    size="x-small",
+                    color="purple",
+                    classes="ml-1",
+                )
+                vuetify3.VChip(
+                    "MR",
+                    v_if="item.is_mr",
+                    size="x-small",
+                    variant="tonal",
+                    color="purple",
+                    classes="ml-1",
+                )
                 _chip_slot()
 
     def well_tree(self):
@@ -213,4 +253,24 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Secondary badges for synthetic nodes (TimeSeries collapses
+                # multiple time-stamped properties under one leaf,
+                # MultiRealization the same for realizations,
+                # MultiRealizationTimeSeries combines both — up to 3 icons
+                # total: primary property kind + TS + MR).
+                vuetify3.VIcon(
+                    "mdi-timeline-clock",
+                    v_if="item.is_ts",
+                    size="x-small",
+                    color="purple",
+                    classes="ml-1",
+                )
+                vuetify3.VChip(
+                    "MR",
+                    v_if="item.is_mr",
+                    size="x-small",
+                    variant="tonal",
+                    color="purple",
+                    classes="ml-1",
+                )
                 _chip_slot()

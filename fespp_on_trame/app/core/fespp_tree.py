@@ -1,6 +1,6 @@
 from trame.app import get_server
 
-from fespp_on_trame.app.ui.config.tree_icons import get_icon_for_type
+from fespp_on_trame.app.ui.config.tree_icons import get_icon_for_type, get_primary_icon
 
 server = get_server()
 state = server.state
@@ -25,6 +25,11 @@ class Tree():
         node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
         node_title = self._data_assembly.GetAttributeOrDefault(node_id, "title", None)
         node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
+        # propKind: underlying property type (Continuous/Discrete/Categorical)
+        # set by FESPP on synthetic TS/MR/MRTS leaves so we can show the
+        # right primary icon (the synthetic wrapper aspect is conveyed via
+        # secondary badges).
+        node_prop_kind = self._data_assembly.GetAttributeOrDefault(node_id, "propKind", None)
         node_path = self._data_assembly.GetNodePath(node_id)
 
         if treeview_type == "unknown":
@@ -57,7 +62,11 @@ class Tree():
         data["treeview"]["title"] = node_title
         data["treeview"]["path"] = node_path
         data["treeview"]["type"] = node_type
-        data["treeview"]["icon"] = get_icon_for_type(node_type)
+        data["treeview"]["icon"] = get_primary_icon(node_type, node_prop_kind)
+        # Flags read by tree_views to render TS/MR badges next to the
+        # primary icon. Set on synthetic nodes only.
+        data["treeview"]["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
+        data["treeview"]["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
         if disabled: data["treeview"]["disabled"] = True
 
         data["treeview_type"] = treeview_type
@@ -86,6 +95,7 @@ class Tree():
                 node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
                 node_title = self._data_assembly.GetAttributeOrDefault(node_id, "title", None)
                 node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
+                node_prop_kind = self._data_assembly.GetAttributeOrDefault(node_id, "propKind", None)
                 node_path = self._data_assembly.GetNodePath(node_id)
 
                 # dispatch on reservoir/surface/well
@@ -119,7 +129,9 @@ class Tree():
                 treeview["title"] = node_title
                 treeview["path"] = node_path
                 treeview["type"] = node_type
-                treeview["icon"] = get_icon_for_type(node_type)
+                treeview["icon"] = get_primary_icon(node_type, node_prop_kind)
+                treeview["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
+                treeview["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
                 treeview["parent_id"] = 0
                 if disabled: treeview["disabled"] = True
 

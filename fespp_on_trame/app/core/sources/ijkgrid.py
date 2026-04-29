@@ -179,15 +179,17 @@ class IjkGrid:
             # user picks a property. The IjkGrid grid_path is the same for
             # all its slicers (1 entry in solid_color_by_rep).
             grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
-            for src in self._all_slice_sources() + [self._src_slicer_volume]:
+            # Configure the rep_data filter's display too — for volume mode
+            # we display IT directly instead of slicervolume (PV6's
+            # vtkExplicitStructuredGridCrop produces a degenerate 1-cell
+            # output even with OutputWholeExtent set to the full grid).
+            for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
                 disp = pvsimple.GetRepresentation(proxy=src, view=view)
                 disp.Representation = rep_type
                 _apply_default_tint(disp, grid_color)
 
             self.update_block_visibility()
-            pvsimple.Show(proxy=self._src_extract_init, view=view)
             self.show()
-            pvsimple.Hide(proxy=self._src_extract_init)
 
             # Initialise ranges and list state from grid extent
             data_info = self._src_extract_init.GetDataInformation()
@@ -215,6 +217,18 @@ class IjkGrid:
 
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.OutputWholeExtent = extent
+            # The slicers ran their first RequestData via Show() above, but at
+            # that point OutputWholeExtent was still the default (often empty
+            # / invalid), producing an empty output. Now that we've set the
+            # real extent, force a re-execute so the cached output reflects
+            # the actual cropped grid (with CellData arrays propagated from
+            # the rep_data filter). Without this, the slicer's CellData stays
+            # empty until something else triggers UpdatePipeline downstream.
+            for src in self._all_slice_sources() + [self._src_slicer_volume]:
+                try:
+                    src.UpdatePipeline()
+                except Exception:
+                    pass
 
         # Property change within the same grid
         property_title = self._tree.find_title(node_id)
@@ -240,7 +254,13 @@ class IjkGrid:
             return
         view = pvsimple.GetActiveView()
         if state.ui_slices_range_mode == 'slice':
-            pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
+            # Slice mode: i/j/k crops are the visible sources. Hide the
+            # volume sources (rep_data + slicervolume) — actual slicing
+            # works via ExplicitStructuredGridCrop on each axis.
+            if self._src_extract_init is not None:
+                pvsimple.Hide(proxy=self._src_extract_init, view=view)
+            if self._src_slicer_volume is not None:
+                pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
             vis_i = list(state.ui_slices_i_visible_list or [])
             vis_j = list(state.ui_slices_j_visible_list or [])
             vis_k = list(state.ui_slices_k_visible_list or [])
@@ -254,9 +274,17 @@ class IjkGrid:
                 visible = vis_k[idx] if idx < len(vis_k) else True
                 (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
         else:
-            pvsimple.Show(proxy=self._src_slicer_volume, view=view)
+            # Volume mode: show the rep_data filter directly. Bypass
+            # slicervolume because PV6's vtkExplicitStructuredGridCrop
+            # produces a degenerate 1-cell output even with the correct
+            # OutputWholeExtent — see investigation in fespp_active.py
+            # (target.NumberOfCells=1 vs upstream.NumberOfCells=N).
+            if self._src_slicer_volume is not None:
+                pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
             for src in self._all_slice_sources():
                 pvsimple.Hide(proxy=src, view=view)
+            if self._src_extract_init is not None:
+                pvsimple.Show(proxy=self._src_extract_init, view=view)
 
     def _nan_opacity_from_state(self):
         """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""

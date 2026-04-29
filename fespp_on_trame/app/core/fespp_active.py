@@ -1,7 +1,39 @@
+import re
+import time
+
 from trame.app import get_server
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.fespp_tree import Tree
+
+
+# Mirror of FESPP's C++ MakeValidNodeName
+# (ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx). FESPP strips any
+# character outside [-.0-9A-Z_a-z] from property titles before using them as
+# VTK array names. The tree's `title` attribute keeps the original RESQML
+# title (with spaces, parentheses, etc.), so a direct GetArray(title) lookup
+# fails when the title contains stripped characters. This helper produces the
+# sanitized variant used to retry the lookup.
+_VTK_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
+
+
+def _make_valid_vtk_name(name: str) -> str:
+    if not name:
+        return ""
+    return _VTK_NAME_INVALID_RE.sub("", name)
+
+
+def _find_array_in_store(store, name):
+    """Look up a VTK array by name with fallback to the sanitized variant."""
+    if store is None or not name:
+        return None
+    arr = store.GetArray(name)
+    if arr is not None:
+        return arr
+    sanitized = _make_valid_vtk_name(name)
+    if sanitized != name:
+        return store.GetArray(sanitized)
+    return None
 
 server = get_server()
 state = server.state
@@ -19,10 +51,11 @@ def _nan_opacity_from_state():
 
 
 def _drill_to_inner(vtk_out):
-    """If vtk_out is a vtkPartitionedDataSetCollection (e.g. when dumping the
-    EPCCollector output, which is the global multiblock), drill down to the
-    first inner partition. Otherwise return as-is. Used by the dump helper
-    so it can read CellData/PointData uniformly across source types."""
+    """If vtk_out is a vtkPartitionedDataSetCollection (e.g. for sources
+    whose output is the global multiblock), drill down to the first inner
+    partition. Otherwise return as-is. Defensive helper: the rep_data
+    filter outputs single-piece so this is a no-op there, but kept in case
+    a downstream wrapping ever adds a composite layer."""
     if vtk_out is None:
         return None
     if hasattr(vtk_out, 'GetPartitionedDataSet'):
@@ -35,72 +68,48 @@ def _drill_to_inner(vtk_out):
     return vtk_out
 
 
-def _debug_dump_sources(label: str):
-    """Dump every ParaView source: its data arrays + the color config of its
-    display in the active view. Call at key moments in the active handler to
-    see what the pipeline actually has versus what we *think* it has."""
-    try:
-        view = pvsimple.GetActiveView()
-        sources = pvsimple.GetSources()
-        active = pvsimple.GetActiveSource()
-        active_name = ""
-        if active is not None:
-            for (sid, _), s in sources.items():
-                if s is active:
-                    active_name = sid
-                    break
-        print(f"[DUMP {label}] active_source={active_name!r} count={len(sources)}")
-        for (sid, _), src in sources.items():
-            try:
-                vtk_obj = src.GetClientSideObject()
-                vtk_out = vtk_obj.GetOutputDataObject(0) if vtk_obj is not None else None
-                vtk_inner = _drill_to_inner(vtk_out)
-                cd = vtk_inner.GetCellData() if vtk_inner is not None and hasattr(vtk_inner, 'GetCellData') else None
-                pd = vtk_inner.GetPointData() if vtk_inner is not None and hasattr(vtk_inner, 'GetPointData') else None
-                cell_arrays = []
-                if cd is not None:
-                    for i in range(cd.GetNumberOfArrays()):
-                        a = cd.GetArray(i)
-                        if a is not None:
-                            rng = a.GetRange()
-                            cell_arrays.append(f"{a.GetName()}[{rng[0]:.3g},{rng[1]:.3g}]")
-                pt_arrays = []
-                if pd is not None:
-                    for i in range(pd.GetNumberOfArrays()):
-                        a = pd.GetArray(i)
-                        if a is not None:
-                            rng = a.GetRange()
-                            pt_arrays.append(f"{a.GetName()}[{rng[0]:.3g},{rng[1]:.3g}]")
-                color_info = "no_view"
-                if view is not None:
-                    try:
-                        disp = pvsimple.GetDisplayProperties(src, view=view)
-                        if disp is not None:
-                            can = list(disp.ColorArrayName) if disp.ColorArrayName else []
-                            vis = bool(disp.Visibility)
-                            color_info = f"vis={vis} ColorArrayName={can}"
-                            if can and len(can) >= 2 and can[1]:
-                                lut = pvsimple.GetColorTransferFunction(can[1])
-                                if lut is not None:
-                                    try:
-                                        rgbpts = list(lut.RGBPoints)
-                                        if len(rgbpts) >= 8:
-                                            lut_range = [rgbpts[0], rgbpts[-4]]
-                                            color_info += f" LUTrange=[{lut_range[0]:.3g},{lut_range[1]:.3g}]"
-                                    except Exception:
-                                        pass
-                    except Exception as _de:
-                        color_info = f"display_err={_de}"
-                print(f"[DUMP {label}]   src={sid!r} cell={cell_arrays} point={pt_arrays} {color_info}")
-            except Exception as _e:
-                print(f"[DUMP {label}]   src={sid!r} ERR={_e}")
-    except Exception as e:
-        print(f"[DUMP {label}] FATAL {e}")
-
 class Activator:
     def __init__(self, tree: Tree, rep_sources=None):
         self._tree = tree
         self._rep_sources = rep_sources
+
+        # Track the array currently colorized per rep. ParaView keys color
+        # bars by LUT (one per array name globally), so when a rep switches
+        # property A → B we must hide A's color bar — otherwise it stacks
+        # on top of B's bar in the view. We only hide A's bar if NO other
+        # rep is still colored by A (multiple reps can share a LUT/bar).
+        self._current_array_by_rep = {}
+
+        # ----- Helper: validate that the active node belongs to a checked
+        # subtree before letting the activation proceed. Reuses tree paths
+        # rather than walking parents (cheap; assembly paths are cached on
+        # the C++ side). Catches both directions:
+        #   - node_id is/under a selected node (checked rep, click property)
+        #   - node_id is an ancestor of a selected node (checked property,
+        #     click parent rep — the rep loads as a side effect)
+        # Works in both auto and manual show modes since `select_list` is
+        # the raw checkbox state (`state.ui_select_node_*`), updated as soon
+        # as the user toggles a checkbox regardless of show_mode.
+        def _is_node_active_able(node_id, select_list):
+            if not select_list or node_id is None or node_id == 0:
+                return False
+            rep_node_id = self._tree.find_representation_node(node_id)
+            anchor = rep_node_id if rep_node_id is not None else node_id
+            anchor_path = self._tree.find_path(anchor)
+            if not anchor_path:
+                return False
+            for sel_id in select_list:
+                sel_path = self._tree.find_path(sel_id)
+                if not sel_path:
+                    continue
+                if sel_path == anchor_path:
+                    return True
+                if sel_path.startswith(anchor_path + "/"):
+                    return True
+                if anchor_path.startswith(sel_path + "/"):
+                    return True
+            return False
+        self._is_node_active_able = _is_node_active_able
         
         state.setdefault("ui_active_node_reservoir", [])
         state.setdefault("ui_active_node_surface", [])
@@ -108,6 +117,12 @@ class Activator:
         state.setdefault("ui_active_node_reservoir_type_rep", "")
         state.setdefault("ui_active_node_reservoir_type", "")
         state.setdefault("ui_active_node_reservoir_title", "")
+        # Underlying property kind of the active node — drives the editor
+        # switch in solid_color_panel (continuous LUT vs categorical list).
+        # Resolved directly for plain ContinuousProperty/DiscreteProperty/
+        # CategoricalProperty leaves, and via the C++-emitted `propKind`
+        # attribute for synthetic TS / MR / MRTS leaves.
+        state.setdefault("active_property_kind", "")
 
         # Realization widget state
         state.setdefault("realization_selected_index", 0)
@@ -131,20 +146,51 @@ class Activator:
         # the diff check.
         @state.change("ui_active_node_reservoir")
         def on_ui_active_node_reservoir_change(ui_active_node_reservoir, **kwargs):
-            print(f"[DEBUG active.reservoir] enter active={ui_active_node_reservoir}")
-            if not ui_active_node_reservoir or len(ui_active_node_reservoir) == 0:
-                state.ptc_show_vcr = False
-                state.active_color_array_name = ""
-                state.coe_panels = []
-                state.active_representation_path = ""
-                state.active_representation_has_properties = False
-                return
-            if ui_active_node_reservoir and len(ui_active_node_reservoir) > 0:
+            # Top-level timing — fires on EVERY active change (including
+            # resets and non-property activations) so we can see why a click
+            # feels slow even when the active branch below short-circuits.
+            _t_total = time.perf_counter()
+            _ms = lambda t: int((time.perf_counter() - t) * 1000)
+            _ms_tree_lookup = 0
+            _ms_pipeline_pre = 0
+            _ms_colorby = 0
+            _ms_pipeline_post = 0
+            _ms_on_active = 0
+            _ms_on_loaded = 0
+            _ms_update_coe = 0
+            _ms_render = 0
+            _branch = "unknown"
+            is_property = False
+            array_name = ""
+            try:
+                if not ui_active_node_reservoir or len(ui_active_node_reservoir) == 0:
+                    state.update({
+                        "ptc_show_vcr": False,
+                        "active_color_array_name": "",
+                        "active_property_kind": "",
+                        "coe_panels": [],
+                        "active_representation_path": "",
+                        "active_representation_has_properties": False,
+                        "ui_active_node_reservoir_type_rep": "",
+                        "ui_active_node_reservoir_type": "",
+                        "ui_active_node_reservoir_title": "",
+                    })
+                    _branch = "cleared"
+                    return
                 node_id = ui_active_node_reservoir[0]
+                # Reject activation of a node whose subtree isn't checked.
+                # Trame batches the mutation and re-fires this handler with
+                # the empty value on next flush, going through the reset
+                # branch above.
+                if not self._is_node_active_able(node_id, state.ui_select_node_reservoir):
+                    state.ui_active_node_reservoir = []
+                    _branch = "rejected"
+                    return
+                _t = time.perf_counter()
                 type_node_rep = self._tree.find_representation_type(node_id)
                 type_node = self._tree.find_type(node_id)
                 title_node = self._tree.find_title(node_id)
-                print(f"[DEBUG active.reservoir] node_id={node_id} type_node={type_node!r} title={title_node!r} type_rep={type_node_rep!r}")
+                _ms_tree_lookup = _ms(_t)
 
                 # Multi-realization synthetic nodes act as property leaves:
                 # the actual array name lives in the propTitle attribute
@@ -163,10 +209,22 @@ class Activator:
                 is_ts_property = is_property and (
                     ts_ancestor_id is not None or type_node == "MultiRealizationTimeSeries"
                 )
+                # Resolve the underlying property kind: directly for plain
+                # property nodes, via the C++-emitted `propKind` attribute for
+                # synthetic TS/MR/MRTS leaves. Drives the editor switch in
+                # solid_color_panel (continuous LUT vs categorical list).
+                property_kind = ""
+                if type_node in ("ContinuousProperty", "DiscreteProperty", "CategoricalProperty"):
+                    property_kind = type_node
+                elif type_node in ("TimeSeries", "MultiRealization", "MultiRealizationTimeSeries"):
+                    pk = self._tree.find_attribute_value(node_id, "propKind")
+                    if pk:
+                        property_kind = pk
                 state.update({
                     "ui_active_node_reservoir_type_rep": type_node_rep,
                     "ui_active_node_reservoir_type": type_node,
                     "ui_active_node_reservoir_title": title_node,
+                    "active_property_kind": property_kind,
                     "ptc_show_vcr": is_ts_property,
                     "active_color_array_name": "" if not is_property else state.active_color_array_name,
                     "coe_panels": [] if not is_property else state.coe_panels,
@@ -194,7 +252,6 @@ class Activator:
                                     controller.on_active_proxy_change()
                                 except Exception:
                                     pass
-                print(f"[DEBUG active.reservoir] rep_node_id={rep_node_id} rep_type={rep_type!r} rep_block_path={rep_block_path!r} rep_source={'YES' if rep_source else 'None'} has_props={rep_has_properties}")
                 state.active_representation_has_properties = rep_has_properties
                 state.active_representation_path = rep_block_path
 
@@ -265,7 +322,6 @@ class Activator:
                     prop_title = self._tree.find_attribute_value(node_id, "propTitle")
                     if prop_title:
                         array_name = prop_title
-                print(f"[DEBUG active.reservoir] is_property={is_property} is_multireal={is_multireal} array_name={array_name!r}")
                 if is_property and array_name:
                     # Selecting a property is the user's "I want property
                     # coloring on this rep" intent. Flip the chip mode now,
@@ -287,10 +343,22 @@ class Activator:
                         if target_source is None:
                             all_sources = pvsimple.GetSources()
 
-                            # IjkGrid path — find the visible source
-                            # (priority: slicervolume > slicers > IjkGrid_*)
+                            # IjkGrid path — find the visible source.
+                            # Priority:
+                            #   1. rep_data filter (used in volume mode now;
+                            #      we bypass slicervolume because PV6's
+                            #      vtkExplicitStructuredGridCrop produces
+                            #      degenerate output with the IjkGrid input).
+                            #   2. sliceri/j/k_* (slice mode, individual axis crops)
+                            #   3. slicervolume (legacy fallback if user reverted
+                            #      to the old volume slicer flow)
+                            #   4. IjkGrid_* (legacy)
+                            # The rep_data filter for the IjkGrid is registered
+                            # by SetExtractRepPath as `rep<sanitized_path>`
+                            # (slashes → underscores).
+                            expected_rep_data_name = "rep" + (rep_block_path or "").replace('/', '_')
                             for source_id, source in all_sources.items():
-                                if source_id[0] == 'slicervolume':
+                                if source_id[0] == expected_rep_data_name:
                                     display = pvsimple.GetDisplayProperties(source, view=active_view)
                                     if display and display.Visibility:
                                         target_source = source
@@ -306,15 +374,28 @@ class Activator:
 
                             if not target_source:
                                 for source_id, source in all_sources.items():
+                                    if source_id[0] == 'slicervolume':
+                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
+                                        if display and display.Visibility:
+                                            target_source = source
+                                            break
+
+                            if not target_source:
+                                for source_id, source in all_sources.items():
                                     if source_id[0].startswith('IjkGrid_'):
                                         display = pvsimple.GetDisplayProperties(source, view=active_view)
                                         if display and display.Visibility:
                                             target_source = source
                                             break
 
-                        print(f"[DEBUG active.reservoir] target_source={'YES' if target_source else 'None'} active_view={'YES' if active_view else 'None'}")
-                        _debug_dump_sources(f"reservoir.before_colorby({array_name})")
                         if target_source and active_view:
+                            target_name = ""
+                            for (sid, _), s in pvsimple.GetSources().items():
+                                if s is target_source:
+                                    target_name = sid
+                                    break
+                            print(f"[PERF active.reservoir] target={target_name!r} rep_type={rep_type!r}")
+                            _t = time.perf_counter()
                             pvsimple.SetActiveSource(target_source)
                             # Force the producer's MTime to advance so the proxy
                             # info cache (otherwise sticky on TrivialProducer when
@@ -326,6 +407,7 @@ class Activator:
                                 pass
                             target_source.UpdatePipelineInformation()
                             target_source.UpdatePipeline()
+                            _ms_pipeline_pre = _ms(_t)
                             display = pvsimple.GetDisplayProperties(target_source, view=active_view)
 
                             if display:
@@ -344,38 +426,121 @@ class Activator:
                                 vtk_inner = _drill_to_inner(vtk_out)
                                 vtk_cd = vtk_inner.GetCellData() if vtk_inner is not None and hasattr(vtk_inner, 'GetCellData') else None
                                 vtk_pd = vtk_inner.GetPointData() if vtk_inner is not None and hasattr(vtk_inner, 'GetPointData') else None
-                                cell_arrays = [vtk_cd.GetArrayName(i) for i in range(vtk_cd.GetNumberOfArrays())] if vtk_cd else []
-                                pt_arrays = [vtk_pd.GetArrayName(i) for i in range(vtk_pd.GetNumberOfArrays())] if vtk_pd else []
-                                print(f"[DEBUG active.reservoir] looking for array={array_name!r} CellData={cell_arrays} PointData={pt_arrays}")
-                                has_cell = vtk_cd is not None and vtk_cd.GetArray(array_name) is not None
-                                has_pt = vtk_pd is not None and vtk_pd.GetArray(array_name) is not None
+                                cell_arr = _find_array_in_store(vtk_cd, array_name)
+                                pt_arr = _find_array_in_store(vtk_pd, array_name)
+                                has_cell = cell_arr is not None
+                                has_pt = pt_arr is not None
+                                # If the array was found via the sanitized
+                                # name (spaces/specials stripped), use that
+                                # form for ColorBy / GetColorTransferFunction.
+                                if has_cell or has_pt:
+                                    found_arr = cell_arr if has_cell else pt_arr
+                                    if found_arr is not None:
+                                        actual_name = found_arr.GetName()
+                                        if actual_name and actual_name != array_name:
+                                            array_name = actual_name
+                                # When the slicer's CellData doesn't have the
+                                # array, dump everything we know to diagnose:
+                                # walk to the slicer's input (the rep_data
+                                # filter for IjkGrid) and check there too.
+                                if not has_cell and not has_pt:
+                                    cell_names = []
+                                    pt_names = []
+                                    if vtk_cd:
+                                        cell_names = [vtk_cd.GetArrayName(i) for i in range(vtk_cd.GetNumberOfArrays())]
+                                    if vtk_pd:
+                                        pt_names = [vtk_pd.GetArrayName(i) for i in range(vtk_pd.GetNumberOfArrays())]
+                                    target_ncells = vtk_inner.GetNumberOfCells() if vtk_inner is not None and hasattr(vtk_inner, 'GetNumberOfCells') else -1
+                                    target_extent = list(vtk_inner.GetExtent()) if vtk_inner is not None and hasattr(vtk_inner, 'GetExtent') else None
+                                    output_whole_extent = None
+                                    try:
+                                        output_whole_extent = list(target_source.OutputWholeExtent) if hasattr(target_source, 'OutputWholeExtent') else None
+                                    except Exception:
+                                        pass
+                                    print(f"[DEBUG active.reservoir] target.NumberOfCells={target_ncells} extent={target_extent} OutputWholeExtent={output_whole_extent}")
+                                    print(f"[DEBUG active.reservoir] target.CellData={cell_names} PointData={pt_names}")
+                                    try:
+                                        upstream = target_source.Input
+                                        if upstream is not None:
+                                            up_obj = upstream.GetClientSideObject() if hasattr(upstream, 'GetClientSideObject') else None
+                                            if up_obj is None and hasattr(upstream, 'GetProducer'):
+                                                # OutputPort wrapper case
+                                                up_obj = upstream.GetProducer().GetClientSideObject()
+                                            if up_obj is not None:
+                                                up_out = up_obj.GetOutputDataObject(getattr(upstream, 'Port', 0) if hasattr(upstream, 'Port') else 0)
+                                                up_inner = _drill_to_inner(up_out) if up_out is not None else None
+                                                up_cd = up_inner.GetCellData() if up_inner is not None and hasattr(up_inner, 'GetCellData') else None
+                                                up_cell_names = [up_cd.GetArrayName(i) for i in range(up_cd.GetNumberOfArrays())] if up_cd else []
+                                                up_ncells = up_inner.GetNumberOfCells() if up_inner is not None and hasattr(up_inner, 'GetNumberOfCells') else -1
+                                                up_extent = list(up_inner.GetExtent()) if up_inner is not None and hasattr(up_inner, 'GetExtent') else None
+                                                up_class = up_inner.GetClassName() if up_inner is not None else None
+                                                print(f"[DEBUG active.reservoir] upstream class={up_class} NumberOfCells={up_ncells} extent={up_extent}")
+                                                print(f"[DEBUG active.reservoir] upstream.CellData={up_cell_names}")
+                                    except Exception as _e:
+                                        print(f"[DEBUG active.reservoir] upstream inspect failed: {_e}")
+                                print(f"[PERF active.reservoir] array={array_name!r} has_cell={has_cell} has_pt={has_pt}")
                                 array_type = None
+                                _t = time.perf_counter()
                                 if has_cell:
                                     array_type = "CELLS"
                                     pvsimple.ColorBy(display, (array_type, array_name))
-                                    print(f"[DEBUG active.reservoir] ColorBy CELLS {array_name!r} OK")
                                 elif has_pt:
                                     array_type = "POINTS"
                                     pvsimple.ColorBy(display, (array_type, array_name))
-                                    print(f"[DEBUG active.reservoir] ColorBy POINTS {array_name!r} OK")
-                                if array_type is None:
-                                    print(f"[DEBUG active.reservoir] !! array {array_name!r} not found in CellData or PointData → no ColorBy")
+                                _ms_colorby = _ms(_t)
                                 lut = None
                                 if array_type:
+                                    # Hide the previous color bar for this rep
+                                    # unless another rep still references the
+                                    # same array.
+                                    prev_array = self._current_array_by_rep.get(rep_block_path)
+                                    if prev_array and prev_array != array_name:
+                                        still_used = any(
+                                            arr == prev_array
+                                            for r, arr in self._current_array_by_rep.items()
+                                            if r != rep_block_path
+                                        )
+                                        if not still_used:
+                                            try:
+                                                prev_lut = pvsimple.GetColorTransferFunction(prev_array)
+                                                if prev_lut:
+                                                    prev_bar = pvsimple.GetScalarBar(prev_lut, active_view)
+                                                    if prev_bar:
+                                                        prev_bar.Visibility = 0
+                                            except Exception:
+                                                pass
+                                    self._current_array_by_rep[rep_block_path] = array_name
+
                                     lut = pvsimple.GetColorTransferFunction(array_name)
                                     if lut:
                                         lut.NanOpacity = _nan_opacity_from_state()
                                         color_bar = pvsimple.GetScalarBar(lut, active_view)
                                         if color_bar:
+                                            color_bar.Title = array_name
                                             color_bar.Visibility = 1
                                             color_bar.RangeLabelFormat = '%-#6.3g'
                                             color_bar.Resizable = 1
 
+                                _t = time.perf_counter()
                                 target_source.UpdatePipeline()
-                                pvsimple.Render(view=active_view)
+                                _ms_pipeline_post = _ms(_t)
+
+                                _t = time.perf_counter()
                                 controller.on_active_proxy_change()
-                                controller.on_data_loaded()
+                                _ms_on_active = _ms(_t)
+                                # `on_data_loaded` is ParaView-Trame TimeControl's
+                                # refresh hook — only useful when activating a
+                                # time-series property (the time slider needs to
+                                # reset its range / labels). For non-TS property
+                                # activations it does heavy Vue work for nothing
+                                # (50-100ms in profiling), so skip it.
+                                _t = time.perf_counter()
+                                if is_ts_property:
+                                    controller.on_data_loaded()
+                                _ms_on_loaded = _ms(_t)
+                                _t = time.perf_counter()
                                 controller.update_color_editor(array_name)
+                                _ms_update_coe = _ms(_t)
 
                                 # Force the LUT range LAST, after every other
                                 # caller (ColorBy internal, on_active_proxy_change,
@@ -395,41 +560,43 @@ class Activator:
                                             rng = vtk_arr.GetRange()
                                             if rng[0] < rng[1]:
                                                 lut.RescaleTransferFunction(float(rng[0]), float(rng[1]))
-                                                print(f"[DEBUG active.reservoir] LUT range (final) = [{rng[0]}, {rng[1]}]")
-                                            else:
-                                                print(f"[DEBUG active.reservoir] LUT range degenerate {rng}, skip rescale")
-                                    except Exception as _e:
-                                        print(f"[DEBUG active.reservoir] LUT rescale fallback failed: {_e}")
-                                    # Verify the display's LookupTable points to the LUT we just rescaled
-                                    try:
-                                        disp_lut = display.LookupTable
-                                        same = disp_lut is lut or (disp_lut and lut and disp_lut.SMProxy == lut.SMProxy)
-                                        print(f"[DEBUG active.reservoir] display.LookupTable is same as rescaled lut: {same}")
-                                    except Exception as _e:
-                                        print(f"[DEBUG active.reservoir] LookupTable check failed: {_e}")
-                                    # Render AFTER the rescale so the frame uses the
-                                    # corrected range. The earlier Render() above ran
-                                    # while the LUT was still on its default [0,1]
-                                    # (post-ColorBy + on_active_proxy_change garbage),
-                                    # which mapped everything to the LUT extreme and
-                                    # looked like solid color.
-                                    pvsimple.Render(view=active_view)
-                                _debug_dump_sources(f"reservoir.after_all({array_name})")
+                                    except Exception:
+                                        pass
+
+                                # Single Render at the very end — after all
+                                # LUT/ColorBy/cache mutations have settled.
+                                _t = time.perf_counter()
+                                pvsimple.Render(view=active_view)
+                                _ms_render = _ms(_t)
                     except Exception as e:
                         print(f"[WARNING] Could not configure color mapping for property {array_name}: {e}")
                         import traceback
                         traceback.print_exc()
-            else:
-                state.update({
-                    "ui_active_node_reservoir_type_rep": "",
-                    "ui_active_node_reservoir_type": "",
-                    "ui_active_node_reservoir_title": "",
-                })
+                _branch = "property" if (is_property and array_name) else "non-property"
+            finally:
+                # Always print timing — fires for cleared/rejected/property/
+                # non-property paths so we can see the full activation cost.
+                _ms_total = _ms(_t_total)
+                print(
+                    f"[PERF active.reservoir] branch={_branch} "
+                    f"tree_lookup={_ms_tree_lookup}ms "
+                    f"pipeline_pre={_ms_pipeline_pre}ms "
+                    f"colorby={_ms_colorby}ms "
+                    f"pipeline_post={_ms_pipeline_post}ms "
+                    f"on_active={_ms_on_active}ms "
+                    f"on_loaded={_ms_on_loaded}ms "
+                    f"update_coe={_ms_update_coe}ms "
+                    f"render={_ms_render}ms "
+                    f">>> TOTAL={_ms_total}ms"
+                )
 
         @state.change("ui_active_node_surface")
         def on_ui_active_node_surface_change(ui_active_node_surface, **kwargs):
             if ui_active_node_surface and len(ui_active_node_surface) > 0:
                 node_id = ui_active_node_surface[0]
+                if not self._is_node_active_able(node_id, state.ui_select_node_surface):
+                    state.ui_active_node_surface = []
+                    return
                 type_node = self._tree.find_type(node_id)
 
                 state.update({
@@ -447,6 +614,9 @@ class Activator:
         def on_ui_active_node_well_change(ui_active_node_well, **kwargs):
             if ui_active_node_well and len(ui_active_node_well) > 0:
                 node_id = ui_active_node_well[0]
+                if not self._is_node_active_able(node_id, state.ui_select_node_well):
+                    state.ui_active_node_well = []
+                    return
                 type_node = self._tree.find_type(node_id)
 
                 state.update({
@@ -467,38 +637,79 @@ class Activator:
         self._surface_active_handler = on_ui_active_node_surface_change
         self._well_active_handler = on_ui_active_node_well_change
 
+    def notify_active_reps(self, current_rep_paths):
+        """Hide the color bars of reps that are no longer in the active
+        selection. Called by the engine after the load + sync, so we can
+        clean up stale color bars left behind when the user switches between
+        reps (e.g., between two IjkGrids — without this, both grids' bars
+        stack in the view).
+
+        Only hides a bar if NO other still-present rep references the same
+        array (multiple reps can share a LUT/bar)."""
+        if not self._current_array_by_rep:
+            return
+        view = pvsimple.GetActiveView()
+        if view is None:
+            return
+        present = set(current_rep_paths or [])
+        gone = [r for r in list(self._current_array_by_rep.keys()) if r not in present]
+        for rep_path in gone:
+            arr_name = self._current_array_by_rep.pop(rep_path, None)
+            if not arr_name:
+                continue
+            still_used = any(
+                a == arr_name
+                for r, a in self._current_array_by_rep.items()
+                if r in present
+            )
+            if still_used:
+                continue
+            try:
+                lut = pvsimple.GetColorTransferFunction(arr_name)
+                if lut is not None:
+                    bar = pvsimple.GetScalarBar(lut, view)
+                    if bar is not None:
+                        bar.Visibility = 0
+            except Exception:
+                pass
+
     def refresh_active(self):
         """Re-run the active-node handlers for whatever is currently active.
-        Used after a manual Apply: the active state changed BEFORE the load
+        Used after a manual Show: the active state changed BEFORE the load
         (so the rep didn't exist when the @state.change fired and the ColorBy
         wiring short-circuited). Now that the rep exists we want to re-run
-        the same logic."""
-        print(f"[DEBUG refresh_active] enter ui_active_reservoir={state.ui_active_node_reservoir!r} surface={state.ui_active_node_surface!r} well={state.ui_active_node_well!r}")
+        the same logic.
+
+        Skip the call when the active node is not consistent with the current
+        selection — VTreeview's `update_selected` will sync ui_active to the
+        new value on the next flush and the handler will fire then. Without
+        this guard we'd cause a wasted reject → reset → cleared → property
+        chain (3 handler fires) for every grid switch.
+        """
         try:
-            if state.ui_active_node_reservoir:
-                print(f"[DEBUG refresh_active] -> reservoir_handler")
-                self._reservoir_active_handler(state.ui_active_node_reservoir)
+            active = state.ui_active_node_reservoir
+            if active and self._is_node_active_able(active[0], state.ui_select_node_reservoir):
+                self._reservoir_active_handler(active)
         except Exception as e:
             print(f"[WARNING] refresh_active reservoir failed: {e}")
             import traceback
             traceback.print_exc()
         try:
-            if state.ui_active_node_surface:
-                print(f"[DEBUG refresh_active] -> surface_handler")
-                self._surface_active_handler(state.ui_active_node_surface)
+            active = state.ui_active_node_surface
+            if active and self._is_node_active_able(active[0], state.ui_select_node_surface):
+                self._surface_active_handler(active)
         except Exception as e:
             print(f"[WARNING] refresh_active surface failed: {e}")
             import traceback
             traceback.print_exc()
         try:
-            if state.ui_active_node_well:
-                print(f"[DEBUG refresh_active] -> well_handler")
-                self._well_active_handler(state.ui_active_node_well)
+            active = state.ui_active_node_well
+            if active and self._is_node_active_able(active[0], state.ui_select_node_well):
+                self._well_active_handler(active)
         except Exception as e:
             print(f"[WARNING] refresh_active well failed: {e}")
             import traceback
             traceback.print_exc()
-        print(f"[DEBUG refresh_active] done")
 
     def _set_active_block_selector(self, path: str):
         """Set BlockSelectors on the active representation to the given assembly path."""

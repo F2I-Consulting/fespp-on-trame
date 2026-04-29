@@ -10,7 +10,7 @@ TREE_ICONS = {
     "Property": "mdi-chart-box-outline",
     "ContinuousProperty": "mdi-chart-line",
     "DiscreteProperty": "mdi-chart-bar",
-    "CategoricalProperty": "mdi-tag-multiple",
+    "CategoricalProperty": "mdi-chart-bar",
     "TimeSeries": "mdi-timeline-clock",
     "MultiRealization": "mdi-layers-triple",
     "MultiRealizationTimeSeries": "mdi-animation",
@@ -32,17 +32,17 @@ TREE_ICONS = {
 def get_icon_for_type(node_type: str) -> dict:
     """
     Retourne l'icône et la couleur correspondant au type de nœud.
-    
+
     Args:
         node_type: Le type du nœud (ex: "IjkGrid", "Property", etc.)
-        
+
     Returns:
         Dict contenant 'icon' et 'color'
     """
     # Recherche exacte
     if node_type in TREE_ICONS:
         return TREE_ICONS[node_type]
-    
+
     # Recherche partielle (ex: "ContinuousProperty" contient "Property")
     for key, icon in TREE_ICONS.items():
         if key in node_type or node_type in key:
@@ -50,6 +50,31 @@ def get_icon_for_type(node_type: str) -> dict:
 
     # Fallback par défaut
     return "mdi-folder"
+
+
+# Synthetic types where the primary icon should reflect the underlying
+# property type (Continuous/Discrete/Categorical) — not the synthetic
+# wrapper. The MR/TS aspect is conveyed via secondary badges in the
+# treeview.
+_SYNTHETIC_PROPERTY_TYPES = {
+    "TimeSeries",
+    "MultiRealization",
+    "MultiRealizationTimeSeries",
+}
+
+
+def get_primary_icon(node_type: str, prop_kind: str = None) -> str:
+    """Return the primary icon for a tree node.
+
+    For synthetic types (TimeSeries / MultiRealization /
+    MultiRealizationTimeSeries) that collapse a sub-tree into a single
+    leaf, the icon should reflect the underlying property type — exposed
+    by FESPP as the `propKind` assembly attribute. Falls back to the
+    synthetic type's own icon when `propKind` is missing (older data).
+    """
+    if node_type in _SYNTHETIC_PROPERTY_TYPES and prop_kind:
+        return get_icon_for_type(prop_kind)
+    return get_icon_for_type(node_type)
 
 def get_icon_expression(type_field: str = "item.type") -> str:
     """

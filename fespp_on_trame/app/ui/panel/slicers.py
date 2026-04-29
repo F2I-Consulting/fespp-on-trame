@@ -41,8 +41,22 @@ class SlicerControls(html.Div):
         self._mode_var = f"ui_slices_range_mode"
         self._slices_range_active_var = f"ui_slices_range_active"
         
+        # Hide the whole panel when neither inner section has anything to
+        # show — empty Slicer headers are noise. The two sections are:
+        #   - IJK/Volume slicers (only for IjkGrid representations)
+        #   - Realization slider (only when realization_labels is populated)
+        _slicer_panel_v_if = (
+            "ui_active_node_reservoir_type_rep === 'IjkGrid'"
+            " || (realization_labels && realization_labels.length > 0)"
+        )
+
         with self:
-          with vuetify3.VExpansionPanels(v_model=("slc_panels", [0]), multiple=True, elevation=0):
+          with vuetify3.VExpansionPanels(
+              v_if=_slicer_panel_v_if,
+              v_model=("slc_panels", [0]),
+              multiple=True,
+              elevation=0,
+          ):
             with vuetify3.VExpansionPanel(elevation=0, value=0):
               with vuetify3.VExpansionPanelTitle(classes="pa-2"):
                 html.Span("Slicer", classes="text-body-2 font-weight-medium")

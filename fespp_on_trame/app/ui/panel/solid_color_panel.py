@@ -19,6 +19,7 @@ from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
 
 from .color_editor import _FesppColorOpacityEditor, _apply_nan_color_to_lut
+from .categorical_color_editor import CategoricalColorEditor
 
 server = get_server()
 state = server.state
@@ -220,16 +221,36 @@ class SolidColorPanel(html.Div):
                                 max_width=300,
                             )
 
-                        # Property mode → LUT/PWF editor for the active array
+                        # Property mode → editor for the active array.
+                        # Continuous: classic LUT/PWF editor (gradients).
+                        # Discrete/Categorical: per-category VColorPicker list
+                        # bound to LUT.IndexedColors / IndexedOpacities.
+                        _is_categorical = (
+                            "active_property_kind === 'DiscreteProperty'"
+                            " || active_property_kind === 'CategoricalProperty'"
+                        )
+                        # Continuous (or unknown) editor
                         with html.Div(
                             v_if=(
                                 "solid_color_mode !== 'solid'"
                                 " && active_color_array_name"
                                 " && active_color_array_name.length > 0"
+                                f" && !({_is_categorical})"
                             ),
                             classes="pa-0",
                         ):
                             coe = _FesppColorOpacityEditor()
+                        # Categorical / Discrete editor
+                        with html.Div(
+                            v_if=(
+                                "solid_color_mode !== 'solid'"
+                                " && active_color_array_name"
+                                " && active_color_array_name.length > 0"
+                                f" && ({_is_categorical})"
+                            ),
+                            classes="pa-0",
+                        ):
+                            CategoricalColorEditor()
 
         # --- Override array-name lookup to use state instead of active source ---
         _original_get_array_name = coe.get_representation_color_array_name
