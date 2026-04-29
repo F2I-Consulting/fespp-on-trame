@@ -56,10 +56,6 @@ class Collector:
         controller.update_data_information()
         return True
     
-    def extract_block(self, blockname):
-        self._collector.SetPropertyWithName('extractMode', 2)
-        self._collector.SetPropertyWithName('objecttoextract', blockname)
-
     def set_realization_index(self, index: int):
         """Set the active realization index for RealizationTimeSeries nodes and trigger a pipeline update.
         RealizationIndex is exposed as a StringVectorProperty (dropdown) on the

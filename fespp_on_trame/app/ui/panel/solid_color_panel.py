@@ -170,9 +170,13 @@ class SolidColorPanel(html.Div):
         state.setdefault("active_representation_has_properties", False)
         state.setdefault("solid_color_mode_by_rep", {})
         state.setdefault("solid_color_by_rep", {})
+        state.setdefault("solid_color_next_idx", 0)
         state.setdefault("last_property_array_by_rep", {})
         state.setdefault("solid_color_mode", "property")
         state.setdefault("solid_color", "#808080FF")
+        # Drives the per-tree-node color chip. Read by tree_views.py templates.
+        # Maps rep_path → "#color" (Solid mode) or "PROPERTY" (Property mode).
+        state.setdefault("tree_chip_color_by_path", {})
 
         with self:
             with vuetify3.VExpansionPanels(v_model=("sc_panels", [0]), multiple=True, elevation=0):
@@ -294,6 +298,21 @@ class SolidColorPanel(html.Div):
             state.solid_color_by_rep = colors
             if state.solid_color_mode == "solid":
                 _apply_solid(path, solid_color)
+
+        @state.change("solid_color_by_rep", "solid_color_mode_by_rep")
+        def _refresh_tree_chip_colors(solid_color_by_rep, solid_color_mode_by_rep, **_):
+            # Recompute the rep_path → chip-value map for the treeview.
+            # "PROPERTY" sentinel triggers a rainbow gradient in the template;
+            # any other value is a hex color used as-is.
+            colors = solid_color_by_rep or {}
+            modes = solid_color_mode_by_rep or {}
+            chips = {}
+            for path, color in colors.items():
+                if modes.get(path) == "property":
+                    chips[path] = "PROPERTY"
+                else:
+                    chips[path] = color
+            state.tree_chip_color_by_path = chips
 
         def _record_active_array_for_rep():
             path = state.active_representation_path

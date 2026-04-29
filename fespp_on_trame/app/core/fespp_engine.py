@@ -15,6 +15,7 @@ from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.sources.etp_connector import ETPConnector
 from fespp_on_trame.app.core.sources.rep_sources import RepSources
 from fespp_on_trame.app.core.fespp_selection import Selector
+from fespp_on_trame.app.core.color_palette import color_for_index
 import fespp_on_trame.app.core.fespp_active as fespp_active
 from fespp_on_trame.app.io.drop_files import on_client_connected, on_client_exited
 from fespp_on_trame.app.io.upload_endpoint import register_upload_route
@@ -323,6 +324,10 @@ def initialize_fespp_engine(
             _on_change_fespp_data_selectors_impl()
 
     def _on_change_fespp_data_selectors_impl():
+        import time as _time
+        _t_total_start = _time.perf_counter()
+        def _ms(t0):
+            return int((_time.perf_counter() - t0) * 1000)
         print("FESPP data selectors changed:", state.fespp_data_selectors)
         # Determine which source is active (ETP or EPC)
         if _etp_connector.is_connected:
@@ -333,23 +338,32 @@ def initialize_fespp_engine(
         if active_source is None:
             return
 
-        # Set the 'Selectors' property on the ParaView source to load selected data
+        # Set the 'Selectors' property on the ParaView source to load selected data.
+        # SetPropertyWithName triggers ClearSelectors + AddSelector × N on the
+        # C++ side; both are now Modified()-only (no per-call Update()) to avoid
+        # N full pipeline executions per add. We must explicitly trigger the
+        # actual RequestData ONCE here so downstream code (set_node_id,
+        # _rep_sources.sync) sees the freshly-loaded multiblock output.
+        _t = _time.perf_counter()
         active_source.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
-        active_source.get_source().UpdatePipelineInformation()
+        active_source.get_source().UpdatePipeline()
         active_source.show()
+        print(f"[PERF py] SetSelectors+UpdatePipeline+show: {_ms(_t)}ms")
 
-        pvsimple.Render(view=_view)
-
-
-        # Configure representation for partitioned dataset (e.g., show assembly structure)
-        # Hide objects in vtkPartitionedDataSet: extracted object
+        # Hide the parent multiblock representation BEFORE any render.
+        # Each loaded rep is rendered through its own ExtractBlock proxy below;
+        # leaving the parent visible at this point caused a Render() that
+        # processed all N blocks via the parent rep, scaling O(N) per add
+        # (~1100ms per extra grid in the original code).
+        _t = _time.perf_counter()
         representation = active_source.get_representation()
         representation.Assembly='Assembly'
         representation.BlockSelectors = ['/data']
-        #active_source.show()
-        #pvsimple.Render(view=_view)
+        representation.Visibility = 0
+        print(f"[PERF py] representation.Assembly+BlockSelectors+Visibility=0: {_ms(_t)}ms")
 
         # Update IJK Grid visibility if a reservoir node is selected
+        _t = _time.perf_counter()
         if len(state.ui_select_node_reservoir) > 0:
             for reservoir_node_id in state.ui_select_node_reservoir:
                 if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
@@ -361,24 +375,92 @@ def initialize_fespp_engine(
                         traceback.print_exc()
                     break
         _ijkGrid.update_block_visibility()
+        print(f"[PERF py] ijkGrid handling: {_ms(_t)}ms")
+
+        # Reserve a distinct chip color for every newly loaded representation.
+        # Cache (selector → rep_path, has_props) to avoid re-walking the tree
+        # for selectors we've already seen. Single state mutation per call so
+        # Trame reactivity (and the treeview slot re-render) only fires once.
+        # Done BEFORE _rep_sources.sync so newly created TrivialProducers can
+        # read their assigned color from state.solid_color_by_rep and tint
+        # their display straight away — no need for the user to activate a
+        # node to get the default solid color.
+        _t = _time.perf_counter()
+        sel_cache = dict(getattr(state, "_selector_rep_cache", {}) or {})
+        colors = dict(state.solid_color_by_rep or {})
+        modes = dict(state.solid_color_mode_by_rep or {})
+        next_idx = int(state.solid_color_next_idx or 0)
+        for sel in state.fespp_data_selectors or []:
+            cached = sel_cache.get(sel)
+            if cached is None:
+                n_id = _tree.find_node_id(sel)
+                if n_id is None:
+                    sel_cache[sel] = (None, False)
+                    continue
+                r_id = _tree.find_representation_node(n_id)
+                if r_id is None:
+                    sel_cache[sel] = (None, False)
+                    continue
+                r_path = _tree.find_path(r_id)
+                has_props = _tree.has_property_descendant(r_id)
+                sel_cache[sel] = (r_path, has_props)
+            else:
+                r_path, has_props = cached
+            if not r_path or r_path in colors:
+                continue
+            colors[r_path] = color_for_index(next_idx)
+            next_idx += 1
+            # Reps with at least one property default to Property mode so the
+            # chip starts as the rainbow gradient (matches the actual rendering).
+            if has_props:
+                modes.setdefault(r_path, "property")
+        state._selector_rep_cache = sel_cache
+        state.solid_color_by_rep = colors
+        state.solid_color_mode_by_rep = modes
+        state.solid_color_next_idx = next_idx
+        print(f"[PERF py] color assignment loop: {_ms(_t)}ms")
 
         # Sync per-representation ExtractBlock sources with current selection.
         # Non-IjkGrid representations are rendered from their own extracted proxy;
         # the parent multiblock stops rendering (Visibility forced to 0 below — empty
         # BlockSelectors falls back to "show all" in Assembly mode and would cause
         # double rendering on top of the extracts).
+        _t = _time.perf_counter()
         _rep_sources.sync(state.fespp_data_selectors)
+        # The C++ side modifies partition data in place (addDataArray for new
+        # property selectors, array swap for realization/time changes). The
+        # TrivialProducers wrapping those partitions cache their data
+        # information at the proxy level — so without an explicit Modified()
+        # bump, GetCellDataInformation returns a stale array list and the
+        # active handler can't find a freshly-added property like "SOIL".
+        # Bump every producer's MTime to invalidate the proxy cache.
+        for src in _rep_sources.all_sources():
+            try:
+                src.GetClientSideObject().Modified()
+                src.UpdatePipelineInformation()
+            except Exception:
+                pass
+        print(f"[PERF py] _rep_sources.sync: {_ms(_t)}ms")
+        try:
+            fespp_active._debug_dump_sources("engine.after_sync")
+        except Exception as _e:
+            print(f"[DUMP engine.after_sync] FATAL {_e}")
 
         # Trigger Trame view replacement and general update
         controller.view_replace
         state.view_update = True
 
-        # Show the data source and set it as active
-        active_source.show()
+        # Set the FESPP source as active for ParaView dialogs that look at it.
+        # We do NOT call active_source.show() here — that would re-set the
+        # parent rep's Visibility to 1 and undo the early hide above (a Render
+        # afterwards would then walk all N blocks via the parent, the very
+        # O(N) cost we just removed).
+        _t = _time.perf_counter()
         pvsimple.SetActiveSource(active_source.get_source())
         # Notify Trame components (like TimeControl and ColorBy) that data has loaded
         server.controller.on_data_loaded() # for ptc.TimeControl()
         server.controller.on_active_proxy_change() # for ptc.RepresentBy() / ptc.ColorBy
+        print(f"[PERF py] setActive+notify: {_ms(_t)}ms")
 
         # CAMERA RESET LOGIC (ONLY ON FIRST LOAD)
         if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
@@ -389,13 +471,25 @@ def initialize_fespp_engine(
         # (set on slider change). Color mapping follows automatically because
         # the array name doesn't change between realizations.
 
-        # Final render to display the scene with the new camera
+        # Re-run the active-node handlers AFTER the load+sync so newly-loaded
+        # reps get their ColorBy / TimeControl wiring even when their @state.change
+        # active handler fired before this load handler (handler ordering
+        # between ui_select_node_* and ui_active_node_* is not guaranteed).
+        # Idempotent: if the active handler already ran successfully on its
+        # own (rep already existed), this is a no-op. If it short-circuited
+        # because rep_source was None, this is the catch-up.
+        print(f"[DEBUG engine] before refresh_active, _activator={'YES' if _activator else 'None'}")
+        if _activator is not None:
+            _activator.refresh_active()
+
+        # Single Render at the very end. The parent multiblock was already
+        # hidden (Visibility=0) earlier, so this only paints the new
+        # ExtractBlock representations + IjkGrid slicers.
+        _t = _time.perf_counter()
         state.view_update = True
-        active_source.show()
-        # Force-hide the parent multiblock display: every visible block is now
-        # rendered through its own extracted proxy (or via IjkGrid slicers).
-        representation.Visibility = 0
         pvsimple.Render(view=_view)
+        print(f"[PERF py] final Render: {_ms(_t)}ms")
+        print(f"[PERF py] >>> TOTAL on_change_fespp_data_selectors: {_ms(_t_total_start)}ms <<<")
         # ----------------------------------------------------
 
     #======================= Main Properties
@@ -538,23 +632,62 @@ def initialize_fespp_engine(
             state.ui_time_label = ""
 
     #======================= TreeView: change selection
+    # apply_mode: "auto" → every checkbox toggle pushes immediately to the
+    # ParaView pipeline (the legacy behaviour). "manual" → checkbox toggles
+    # only update the per-tab selection state; the user clicks the toolbar
+    # "Apply" button to push the aggregated selection in one shot.
+    state.setdefault("apply_mode", "auto")
+
     # Handler for surface node selection changes
     @state.change("ui_select_node_surface")
     def on_change_ui_select_node_surface(**kwargs):
-        if _selector is not None:
+        print(f"[DEBUG select.surface] mode={state.apply_mode} sel={state.ui_select_node_surface!r}")
+        if _selector is not None and state.apply_mode == "auto":
             _selector.select_node_surface()
-        
+
     # Handler for well node selection changes
     @state.change("ui_select_node_well")
     def on_change_ui_select_node_well(**kwargs):
-        if _selector is not None:
+        print(f"[DEBUG select.well] mode={state.apply_mode} sel={state.ui_select_node_well!r}")
+        if _selector is not None and state.apply_mode == "auto":
             _selector.select_node_well()
-    
+
     # Handler for reservoir node selection changes
     @state.change("ui_select_node_reservoir")
     def on_change_ui_select_node_reservoir(**kwargs):
-        if _selector is not None:
+        print(f"[DEBUG select.reservoir] mode={state.apply_mode} sel={state.ui_select_node_reservoir!r}")
+        if _selector is not None and state.apply_mode == "auto":
             _selector.select_node_reservoir()
+
+    # Toolbar "Apply" button entry point — pushes the current (potentially
+    # accumulated) per-tab selections to the ParaView pipeline. Used only in
+    # apply_mode == "manual"; in "auto" mode the per-tab state.change handlers
+    # above already push on every toggle.
+    @controller.set("apply_pending_selection")
+    def apply_pending_selection():
+        if _selector is None:
+            return
+        _selector.select_node_reservoir()
+        _selector.select_node_surface()
+        _selector.select_node_well()
+        # Re-run the active-node handlers in fespp_active.py for any node
+        # currently marked active. In manual mode the active change
+        # happened BEFORE the Apply (when the user checked the box) — the
+        # rep didn't exist yet, so ColorBy / TimeControl wiring
+        # short-circuited. Now that the rep exists we re-run the same
+        # logic. We can't just bump the state vars (Trame batches the
+        # mutations and the diff disappears), so we call the handler
+        # methods directly via Activator.refresh_active().
+        if _activator is not None:
+            _activator.refresh_active()
+
+    # Switching from "manual" back to "auto" must flush any pending selection
+    # the user staged while in manual mode — otherwise their already-checked
+    # boxes would stay un-applied until the next checkbox toggle.
+    @state.change("apply_mode")
+    def on_apply_mode_change(apply_mode, **kwargs):
+        if apply_mode == "auto" and _selector is not None:
+            apply_pending_selection()
         
     #======================= View Controls
     # Handler for camera reset flag

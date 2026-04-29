@@ -1,5 +1,65 @@
+from trame.app import get_server
+from trame.widgets import html
 from trame.widgets import vuetify3 as vuetify3
-from trame.widgets import vuetify3 as vuetify3
+
+_server = get_server()
+_state = _server.state
+
+
+def _wire_select_to_active(select_var: str, active_var: str, prev_var: str):
+    """When a new node is checked in `select_var`, set `active_var` to it.
+    When the currently-active node is unchecked, fall back to any remaining
+    selected node. Activating via label click does NOT alter selection (kept
+    by Vuetify's separate update_activated callback)."""
+    @_state.change(select_var)
+    def _on_change(**_):
+        curr = list(getattr(_state, select_var) or [])
+        prev = list(getattr(_state, prev_var, []) or [])
+        prev_set = set(prev)
+        new_ones = [x for x in curr if x not in prev_set]
+        if new_ones:
+            setattr(_state, active_var, [new_ones[-1]])
+        else:
+            active = getattr(_state, active_var) or []
+            if active and active[0] not in curr:
+                setattr(_state, active_var, [curr[0]] if curr else [])
+        setattr(_state, prev_var, curr)
+
+# Inline rainbow gradient for the "Property" chip — a single CSS string,
+# rendered on the rare nodes whose rep is currently coloured by a data array.
+_RAINBOW_STYLE = (
+    "width:10px;height:10px;border-radius:50%;display:inline-block;"
+    "margin-left:4px;vertical-align:middle;"
+    "background:linear-gradient(90deg,"
+    "#ff0000,#ff8000,#ffff00,#00ff00,#00ffff,#0000ff,#8000ff);"
+)
+
+
+def _chip_slot():
+    """Color chip rendered next to the tree node label.
+
+    - No chip if the rep_path has no entry in tree_chip_color_by_path
+      (i.e. rep not loaded yet).
+    - Rainbow gradient if mode is Property (sentinel "PROPERTY").
+    - Solid mdi-circle in the assigned color otherwise.
+    Lookup is O(1) per node — safe for large trees.
+    """
+    has_chip = "tree_chip_color_by_path && tree_chip_color_by_path[item.path]"
+    is_property = (
+        "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'PROPERTY'"
+    )
+    is_solid = (
+        "tree_chip_color_by_path && tree_chip_color_by_path[item.path]"
+        " && tree_chip_color_by_path[item.path] !== 'PROPERTY'"
+    )
+    html.Div(v_if=is_property, style=_RAINBOW_STYLE)
+    vuetify3.VIcon(
+        "mdi-circle",
+        v_else_if=is_solid,
+        size="x-small",
+        color=("tree_chip_color_by_path[item.path]",),
+        classes="ml-1",
+    )
 
 
 class TreeViews:
@@ -36,6 +96,22 @@ class TreeViews:
 
         # Initialize per-grid selection states for reservoir (each grid has independent selection)
         self._init_grid_selections()
+
+        # Surface and well trees use the "classic" multi-select strategy.
+        # update_selected from Vuetify gives the FULL selected array, so
+        # setting active = $event picks array[0] (the first ever selected),
+        # not the last clicked. Wire a Python handler that sets active to
+        # the newly-added node instead, with sensible fallback on removal.
+        # Reservoir uses single-leaf (one selection at a time) and works
+        # correctly via update_selected directly.
+        _wire_select_to_active(
+            "ui_select_node_surface", "ui_active_node_surface",
+            "_prev_select_surface",
+        )
+        _wire_select_to_active(
+            "ui_select_node_well", "ui_active_node_well",
+            "_prev_select_well",
+        )
 
     def _init_grid_selections(self):
         """Initialize per-grid selection states for reservoir grids.
@@ -87,6 +163,7 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                _chip_slot()
 
     def surface_tree(self):
         with vuetify3.VTreeview(
@@ -105,12 +182,13 @@ class TreeViews:
             selected=("ui_select_node_surface", []),
             selectable=True,
             select_strategy="classic",
-            update_selected="ui_select_node_surface = $event; ui_active_node_surface = $event",
+            update_selected="ui_select_node_surface = $event",
             indent_lines="default",
             separate_roots=True,
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                _chip_slot()
 
     def well_tree(self):
         with vuetify3.VTreeview(
@@ -131,7 +209,8 @@ class TreeViews:
             select_strategy="classic",
             indent_lines="default",
             separate_roots=True,
-            update_selected="ui_select_node_well = $event; ui_active_node_well = $event",
+            update_selected="ui_select_node_well = $event",
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                _chip_slot()

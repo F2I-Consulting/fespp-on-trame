@@ -1,8 +1,10 @@
 from trame.app import get_server
 from paraview import simple as pvsimple
+from paraview.servermanager import vtkSMPropertyHelper
 
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.fespp_tree import Tree
+from fespp_on_trame.app.core.sources.rep_sources import _apply_default_tint, _find_registered_proxy
 
 
 server = get_server()
@@ -134,13 +136,24 @@ class IjkGrid:
                 self._delete_all_sources()
 
             self._node_id = ijkgrid_node_id
-            label = self._tree.find_label(self._node_id)
-            self._collector.extract_block(label)
             self._property_path = self._tree.find_path(node_id)
-            self._src_extract_init = pvsimple.FindSource(label)
-
+            # Trigger the FESPP-side extract via the proxy property mechanism
+            # (same path as RepSources). The producer's registration name is
+            # read back from the information-only property. The producer's
+            # output preserves the real VTK type (vtkExplicitStructuredGrid),
+            # which ExplicitStructuredGridCrop below requires.
+            ijkgrid_rep_path = self._tree.find_path(ijkgrid_node_id)
+            coll_proxy = self._collector.get_source().SMProxy
+            vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
+            coll_proxy.UpdateVTKObjects()
+            coll_proxy.UpdatePropertyInformation()
+            reg_name = vtkSMPropertyHelper(coll_proxy, "ExtractedRepProducerName").GetAsString()
+            if not reg_name:
+                self._node_id = None
+                return
+            self._src_extract_init = _find_registered_proxy(reg_name)
             if self._src_extract_init is None:
-                self._node_id = None  # reset so next call retries
+                self._node_id = None
                 return
 
             view = pvsimple.GetActiveView()
@@ -161,8 +174,15 @@ class IjkGrid:
                 src.UpdatePipelineInformation()
 
             rep_type = state.representation_active or 'Surface'
+            # Apply the assigned default solid color to every slicer display
+            # so the grid is visible in its unique color even before the
+            # user picks a property. The IjkGrid grid_path is the same for
+            # all its slicers (1 entry in solid_color_by_rep).
+            grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
-                pvsimple.GetRepresentation(proxy=src, view=view).Representation = rep_type
+                disp = pvsimple.GetRepresentation(proxy=src, view=view)
+                disp.Representation = rep_type
+                _apply_default_tint(disp, grid_color)
 
             self.update_block_visibility()
             pvsimple.Show(proxy=self._src_extract_init, view=view)

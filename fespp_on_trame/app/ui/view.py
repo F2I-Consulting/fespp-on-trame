@@ -206,7 +206,6 @@ def ui(server: Server, **kwargs) -> None:
                             with vuetify3.VSheet(classes="pa-2"):
                                 # Only show attributes if active node is also selected
                                 with html.Div(v_if="ui_active_node_surface.length > 0 && ui_select_node_surface.includes(ui_active_node_surface[0])"):
-                                    vuetify3.VTextField("{{ ui_active_node_surface }} => {{ ui_active_node_surface_type }}")
                                     with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
                                         RepresentationTypePanel()
                                         SolidColorPanel()
@@ -230,7 +229,6 @@ def ui(server: Server, **kwargs) -> None:
                             with vuetify3.VSheet(classes="pa-2"):
                                 # Only show attributes if active node is also selected
                                 with html.Div(v_if="ui_active_node_well.length > 0 && ui_select_node_well.includes(ui_active_node_well[0])"):
-                                    vuetify3.VTextField("{{ ui_active_node_well }} => {{ ui_active_node_well_type }}")
                                     with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
                                         RepresentationTypePanel()
                                         SolidColorPanel()
@@ -293,16 +291,34 @@ def ui(server: Server, **kwargs) -> None:
                                 te.bind_on_apply_button_clicked(_apply_global_scale)
                 
                                 vuetify3.VDivider(classes="my-3")
-                
+
+                                # Apply mode — toggle between auto-apply and manual.
+                                # Manual mode lets the user check several nodes across
+                                # tabs without paying the load cost on every click;
+                                # the toolbar "Apply" button pushes them all at once.
+                                html.Div("Apply Mode", classes="text-caption text-uppercase font-weight-bold mb-2")
+                                with vuetify3.VBtnToggle(
+                                    v_model=("apply_mode", "auto"),
+                                    mandatory=True,
+                                    density="comfortable",
+                                    color="blue",
+                                    divided=True,
+                                    classes="mb-3 w-100",
+                                ):
+                                    vuetify3.VBtn("Auto", value="auto", size="small")
+                                    vuetify3.VBtn("Manual", value="manual", size="small")
+
+                                vuetify3.VDivider(classes="my-3")
+
                                 # 3. Couleur de fond (Background Color)
-                                with html.Div(classes="d-flex align-center pt-2"): 
+                                with html.Div(classes="d-flex align-center pt-2"):
                                     html.Span(
-                                        "Background Color:", 
+                                        "Background Color:",
                                         classes="text-caption font-weight-medium mr-3" # Label pour le picker
                                     )
                                     ptc.PalettePicker(
                                         color = "blue",
-                                        base_color="blue", 
+                                        base_color="blue",
                                         item_color="blue",
                                         flat=True,
                                     )

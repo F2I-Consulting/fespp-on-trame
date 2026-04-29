@@ -23,10 +23,10 @@ class Tree():
         node_id = self._data_assembly.GetChild(parent_id, child_index)
         node_label = None
         node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-        node_title = node_label[node_label.find("_") + 1 :]
-        node_type = node_label[:node_label.find("_")]
+        node_title = self._data_assembly.GetAttributeOrDefault(node_id, "title", None)
+        node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
         node_path = self._data_assembly.GetNodePath(node_id)
-            
+
         if treeview_type == "unknown":
             #if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
             if node_type in ['IjkGrid', 'UnstructuredGrid']:
@@ -35,13 +35,13 @@ class Tree():
                 treeview_type = "well"
             elif node_type in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                 treeview_type = "surface"
-            elif node_type in ['partial']:
+            elif node_type in ['partial', 'Partial']:
                 disabled = True
                 node_supportType = None
                 node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
                 #if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
                 if node_supportType in ['IjkGrid', 'UnstructuredGrid']:
-                    node_title = '!!!PARTIAL!!! '+ node_title
+                    node_title = '!!!PARTIAL!!! '+ (node_title or "")
                     treeview_type = "reservoir"
                 elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     node_title = node_label
@@ -63,8 +63,8 @@ class Tree():
         data["treeview_type"] = treeview_type
 
         children_count = self._data_assembly.GetNumberOfChildren(node_id)
-        # If node type is "Realization" or "RealizationTimeSeries", do NOT add children to tree
-        if children_count > 0 and node_type not in ("Realization", "RealizationTimeSeries"):
+        # Multi-realization synthetic nodes are leaves: don't expose their internals.
+        if children_count > 0 and node_type not in ("MultiRealization", "MultiRealizationTimeSeries"):
             data["treeview"]["children"]=[]
             for i in range(children_count):
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
@@ -84,10 +84,10 @@ class Tree():
                 node_id = self._data_assembly.GetChild(root_id, i)
                 node_label = None
                 node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-                node_title=node_label[node_label.find("_") + 1 :]
-                node_type=node_label[:node_label.find("_")]
+                node_title = self._data_assembly.GetAttributeOrDefault(node_id, "title", None)
+                node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
                 node_path = self._data_assembly.GetNodePath(node_id)
-                
+
                 # dispatch on reservoir/surface/well
                 treeview = {}
                 treeview_type = "unknown"
@@ -98,14 +98,14 @@ class Tree():
                     treeview_type = "well"
                 elif node_type in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
-                elif node_type in ['partial']:
+                elif node_type in ['partial', 'Partial']:
                     disabled = True
                     node_supportType = None
                     node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", node_supportType)
                     treeview["disabled"] = True,
                     #if node_supportType in ['IjkGrid','Sub', 'UnstructuredGrid']:
                     if node_supportType in ['IjkGrid', 'UnstructuredGrid']:
-                        node_title = '!!!PARTIAL!!! '+ node_title
+                        node_title = '!!!PARTIAL!!! '+ (node_title or "")
                         treeview_type = "reservoir"
                     elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                         node_title = node_label
@@ -124,8 +124,8 @@ class Tree():
                 if disabled: treeview["disabled"] = True
 
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
-                # If node type is "Realization", do NOT add children to tree
-                if children_count > 0 and node_type != "Realization":
+                # Multi-realization synthetic nodes are leaves at top level too.
+                if children_count > 0 and node_type not in ("MultiRealization", "MultiRealizationTimeSeries"):
                     treeview["children"]=[]
                     for i in range(children_count):
                         subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
@@ -151,14 +151,11 @@ class Tree():
     def find_ijkgrid(self, node_id) -> None:
         if node_id == 0 or self._data_assembly is None:
             return
-    
-        node_label = None
-        node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-        node_type = node_label[:node_label.find("_")]
 
+        node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
         if node_type:
-            if node_type in [ 'IjkGrid' ]:
-                return node_label
+            if node_type == 'IjkGrid':
+                return self._data_assembly.GetAttributeOrDefault(node_id, "label", None)
             else:
                 return self.find_ijkgrid(self._data_assembly.GetParent(node_id))
         return
@@ -170,12 +167,9 @@ class Tree():
         if node_id == 0 or self._data_assembly is None:
             return
 
-        node_label = None
-        node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-        node_type = node_label[:node_label.find("_")]
-
+        node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
         if node_type:
-            if node_type == type :
+            if node_type == type:
                 return node_id
             else:
                 return self.find_parent_node_id_with_type(self._data_assembly.GetParent(node_id), type)
@@ -195,9 +189,7 @@ class Tree():
                     ijkgrid_label = None
                     ijkgrid_label = self._data_assembly.GetAttributeOrDefault(ijkgrid_node, "label", ijkgrid_label)
                     if ijkgrid_label is not None and node_label == ijkgrid_label:
-                        property_label = None
-                        property_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", property_label)
-                        return property_label[property_label.find("_") + 1 :]
+                        return self._data_assembly.GetAttributeOrDefault(node_id, "title", None)
         return
 
     # -----------------------------------------------------------------------------
@@ -209,28 +201,24 @@ class Tree():
         return self._data_assembly.GetNodePath(node_id)
 
     # -----------------------------------------------------------------------------
-    # find type by node_id
+    # find type by node_id — reads the 'kind' attribute set by C++
     # -----------------------------------------------------------------------------
     def find_type(self, node_id) -> None:
         if node_id == 0 or self._data_assembly is None:
             return
-        label = None
-        label = self._data_assembly.GetAttributeOrDefault(node_id, "label", label)
-        if label:
-            return label[:label.find("_")]
-        return
+        kind = None
+        kind = self._data_assembly.GetAttributeOrDefault(node_id, "kind", kind)
+        return kind
 
     # -----------------------------------------------------------------------------
-    # find title by node_id
+    # find title by node_id — reads the 'title' attribute set by C++
     # -----------------------------------------------------------------------------
     def find_title(self, node_id) -> None:
         if node_id == 0 or self._data_assembly is None:
             return
-        label = None
-        label = self._data_assembly.GetAttributeOrDefault(node_id, "label", label)
-        if label:
-            return label[label.find("_") + 1 :]
-        return
+        title = None
+        title = self._data_assembly.GetAttributeOrDefault(node_id, "title", title)
+        return title
 
     # -----------------------------------------------------------------------------
     # find label by node_id
@@ -256,11 +244,8 @@ class Tree():
     def find_representation_node(self, node_id) -> None:
         if node_id == 0 or self._data_assembly is None:
             return
-    
-        node_label = None
-        node_label = self._data_assembly.GetAttributeOrDefault(node_id, "label", node_label)
-        node_type = node_label[:node_label.find("_")]
 
+        node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
         if node_type:
             if node_type in self._representation_type_in:
                 return node_id
@@ -293,7 +278,7 @@ class Tree():
         for i in range(children_count):
             child_id = self._data_assembly.GetChild(node_id, i)
             child_type = self.find_type(child_id) or ""
-            if "Property" in child_type:
+            if "Property" in child_type or child_type in ("MultiRealization", "MultiRealizationTimeSeries"):
                 return True
             if self.has_property_descendant(child_id):
                 return True

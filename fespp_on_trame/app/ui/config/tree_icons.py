@@ -12,8 +12,8 @@ TREE_ICONS = {
     "DiscreteProperty": "mdi-chart-bar",
     "CategoricalProperty": "mdi-tag-multiple",
     "TimeSeries": "mdi-timeline-clock",
-    "Realization": "mdi-layers-triple",
-    "RealizationTimeSeries": "mdi-animation",
+    "MultiRealization": "mdi-layers-triple",
+    "MultiRealizationTimeSeries": "mdi-animation",
 
     # Surface types
     "Grid2d": "mdi-grid-large",

@@ -25,6 +25,20 @@ class Toolbar:
         with vuetify3.VContainer(classes="fill-height"):
             vuetify3.VSpacer()
 
+            # Apply button — only visible in apply_mode="manual". Pushes the
+            # current per-tab selections (reservoir/surface/well) to ParaView
+            # in a single shot so the user can stage many checkbox toggles
+            # without paying a load on each click.
+            vuetify3.VBtn(
+                "Apply",
+                v_if="apply_mode === 'manual'",
+                variant="flat",
+                color="green",
+                prepend_icon="mdi-play",
+                click=(controller.apply_pending_selection,),
+                classes="mr-2",
+            )
+
             with html.Div(style="width: 15%;", classes="d-flex align-center gap-2"):
                 vuetify3.VBtn(
                     "Import data",
