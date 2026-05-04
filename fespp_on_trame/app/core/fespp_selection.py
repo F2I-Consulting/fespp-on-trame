@@ -24,78 +24,22 @@ class Selector:
         state.setdefault("first_selection", True)
 
     def optimize_tree_selection(self, selected_items, tree_data):
+        """Identity in explicit-selection mode.
+
+        Historically this collapsed groups of all-children-selected leaves to
+        their parent path, on the assumption that the parent path covers all
+        descendants on the C++ side. With FESPP's `ExplicitSelection=1` mode
+        (set at boot in fespp_engine.py), that assumption no longer holds for
+        non-grouping nodes — sending the parent path would only load the
+        parent's geometry and silently drop the user's checked properties.
+
+        UI-side dependency expansion (auto-check Trajectory when a
+        Channel/Marker is checked, auto-check descendants of a grouping)
+        happens in tree_views.py instead, before this function runs. So by
+        the time we get here, `selected_items` is the complete set the user
+        actually wants. Just return it as-is.
         """
-        Optimise la sélection récursivement : remonte dans l'arbre tant que 
-        toutes les feuilles d'un parent sont sélectionnées
-        """
-        if not selected_items or not tree_data:
-            return selected_items
-    
-        # Construire le mapping de tous les descendants pour chaque nœud
-        node_descendants = {}  # nœud -> tous ses descendants (enfants, petits-enfants, etc.)
-        node_leaves = {}       # nœud -> toutes ses feuilles finales
-
-        def build_descendants(items):
-            for item in items:
-                item_id = item.get('id')
-                descendants = set()
-                leaves = set()
-
-                if 'children' in item and item['children']:
-                    # Récurser sur les enfants
-                    build_descendants(item['children'])
-
-                    for child in item['children']:
-                        child_id = child.get('id')
-                        descendants.add(child_id)
-                        # Ajouter tous les descendants du child
-                        if child_id in node_descendants:
-                            descendants.update(node_descendants[child_id])
-                        # Ajouter toutes les feuilles du child
-                        if child_id in node_leaves:
-                            leaves.update(node_leaves[child_id])
-                        else:
-                            leaves.add(child_id)  # Le child est lui-même une feuille
-                else:
-                    # C'est une feuille
-                    leaves.add(item_id)
-
-                node_descendants[item_id] = descendants
-                node_leaves[item_id] = leaves
-
-        build_descendants(tree_data)
-
-        selected_set = set(selected_items)
-
-        # Trouver le nœud le plus haut qui peut représenter sa sélection complète
-        optimized_nodes = []
-        processed_descendants = set()
-
-        # Trier les nœuds par profondeur (les plus profonds d'abord -> les plus hauts à la fin)
-        # On va traiter du plus haut vers le plus bas
-        all_nodes = [(node_id, len(node_descendants[node_id])) for node_id in node_descendants.keys()]
-        all_nodes.sort(key=lambda x: x[1])  # Trier par nombre de descendants (les parents en dernier)
-
-        for node_id, _ in reversed(all_nodes):  # Traiter du plus haut vers le plus bas
-            # Vérifier si ce nœud n'a pas déjà été traité comme descendant d'un autre
-            if node_id in processed_descendants:
-                continue
-                
-            # Vérifier si toutes les feuilles de ce nœud sont sélectionnées
-            node_leaves_set = node_leaves.get(node_id, {node_id})
-            if node_leaves_set.issubset(selected_set):
-                # Toutes les feuilles sont sélectionnées, on peut prendre ce nœud
-                optimized_nodes.append(node_id)
-                # Marquer tous ses descendants comme traités
-                processed_descendants.update(node_descendants.get(node_id, set()))
-                processed_descendants.add(node_id)
-
-        # Ajouter les feuilles sélectionnées qui n'ont pas été couvertes par un parent
-        for leaf in selected_items:
-            if leaf not in processed_descendants:
-                optimized_nodes.append(leaf)
-
-        return optimized_nodes
+        return list(selected_items) if selected_items else []
     
     def select_node_surface(self):
         if self._timeseries is not None:
@@ -171,16 +115,30 @@ class Selector:
             if self._tree.find_type(node_id) == "TimeSeries":
                 self._timeseries = TimeSeries(self._tree, node_id)
 
+        # Build selector paths from EVERY checked reservoir node (grid,
+        # property, sub-rep). With ExplicitSelection=1 (set at boot in
+        # fespp_engine), the C++ side does not auto-load descendants of
+        # a non-grouping path — every property the user wants must be
+        # listed explicitly here.
+        path_selectors = []
+        for node_id in list_selected:
+            path = self._tree.find_path(node_id)
+            if path:
+                path_selectors.append(path)
+        self._selection_path_reservoir = path_selectors
+
+        # Slicers attach to a single active IjkGrid. Pick the first
+        # IjkGrid id in the selection (or clear if none).
         if self._ijkgrid is not None:
-            if len(state.ui_select_node_reservoir) < 1:
+            if not list_selected:
                 self._ijkgrid.set_node_id(None)
-                if self._selection_path_reservoir != []:
-                    self._selection_path_reservoir = []
-                    state.fespp_data_selectors = self._selection_path_surface + self._selection_path_well
-            else:
-                node_id = state.ui_select_node_reservoir[0]
-                self._selection_path_reservoir = [self._tree.find_path(node_id)]
-                state.fespp_data_selectors = self._selection_path_reservoir + self._selection_path_surface + self._selection_path_well
+            # else: handled in fespp_engine on fespp_data_selectors change.
+
+        state.fespp_data_selectors = (
+            self._selection_path_reservoir
+            + self._selection_path_surface
+            + self._selection_path_well
+        )
         if state.first_selection == True:
             state.first_selection = False
         state.view_update = True

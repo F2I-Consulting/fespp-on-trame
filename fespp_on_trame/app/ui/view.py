@@ -100,7 +100,9 @@ def ui(server: Server, **kwargs) -> None:
         import_dialog = ImportDialog(state, controller)
 
         # Initialize tree views (registers opened-nodes handler and initializes state)
-        tv = TreeViews(controller, state)
+        # Pass the engine's Tree instance so dependency-expansion handlers can
+        # walk the assembly (groupings → descendants, Channel/Marker → Trajectory).
+        tv = TreeViews(controller, state, fespp_engine._tree)
 
         # Main application toolbar -> delegate to Toolbar class
         with layout.toolbar:
@@ -292,13 +294,15 @@ def ui(server: Server, **kwargs) -> None:
                 
                                 vuetify3.VDivider(classes="my-3")
 
-                                # Show mode — toggle between auto-show and manual.
+                                # Load mode — toggle between auto-load and manual.
                                 # Manual mode lets the user check several nodes across
                                 # tabs without paying the load cost on every click;
-                                # the toolbar "Show" button pushes them all at once.
-                                html.Div("Show Mode", classes="text-caption text-uppercase font-weight-bold mb-2")
+                                # the toolbar "Load" button pushes them all at once.
+                                # (Visibility on/off is separate — driven by the eye
+                                # icons next to each loaded node.)
+                                html.Div("Load Mode", classes="text-caption text-uppercase font-weight-bold mb-2")
                                 with vuetify3.VBtnToggle(
-                                    v_model=("show_mode", "auto"),
+                                    v_model=("load_mode", "auto"),
                                     mandatory=True,
                                     density="comfortable",
                                     color="blue",
@@ -307,6 +311,43 @@ def ui(server: Server, **kwargs) -> None:
                                 ):
                                     vuetify3.VBtn("Auto", value="auto", size="small")
                                     vuetify3.VBtn("Manual", value="manual", size="small")
+
+                                vuetify3.VDivider(classes="my-3")
+
+                                # Tree hierarchy mode — controls how reps are grouped
+                                # in the trees. Useful when several reps share a name
+                                # but differ by Interpretation (e.g. variants of the
+                                # same grid). Changing the mode rebuilds the assembly
+                                # on the C++ side and resets the selection.
+                                html.Div("Tree Hierarchy", classes="text-caption text-uppercase font-weight-bold mb-2")
+                                with vuetify3.VBtnToggle(
+                                    v_model=("tree_hierarchy_mode", "flat"),
+                                    mandatory=True,
+                                    density="comfortable",
+                                    color="blue",
+                                    divided=True,
+                                    classes="mb-3 w-100",
+                                ):
+                                    vuetify3.VBtn("Flat", value="flat", size="small")
+                                    vuetify3.VBtn("By Interp.", value="by_interpretation", size="small")
+                                    vuetify3.VBtn("By Feat.+Interp.", value="by_feature_and_interpretation", size="small")
+
+                                # Permanent caption under the toggle so the user knows
+                                # before clicking that switching wipes the selection.
+                                with html.Div(classes="d-flex align-start mb-3"):
+                                    vuetify3.VIcon(
+                                        "mdi-alert-circle-outline",
+                                        size="x-small",
+                                        color="orange-darken-2",
+                                        classes="mr-1 mt-1",
+                                    )
+                                    html.Span(
+                                        "Switching mode clears all current selections and"
+                                        " visibility/coloring state — you'll need to re-pick"
+                                        " what you want under the new layout.",
+                                        classes="text-caption text-medium-emphasis",
+                                        style="line-height: 1.2;",
+                                    )
 
                                 vuetify3.VDivider(classes="my-3")
 
@@ -555,5 +596,26 @@ def ui(server: Server, **kwargs) -> None:
     }
 })();
 """)
+
+        # Snackbar shown after a tree-hierarchy mode change wipes a non-empty
+        # selection — extra confirmation that the user's current picks were
+        # discarded and they need to re-select under the new layout.
+        with vuetify3.VSnackbar(
+            v_model=("tree_hierarchy_snackbar_visible", False),
+            timeout=4500,
+            color="orange-darken-2",
+            location="bottom",
+        ):
+            with html.Div(classes="d-flex align-center"):
+                vuetify3.VIcon(
+                    "mdi-alert-circle-outline",
+                    size="small",
+                    classes="mr-2",
+                )
+                html.Span(
+                    "Tree hierarchy changed — your previous selection has"
+                    " been cleared. Re-pick what you want to load under the"
+                    " new layout."
+                )
 
         return layout

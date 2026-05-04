@@ -1,18 +1,16 @@
-"""Merged Colors & Opacity panel.
+"""Colors & Opacity panel — driven by the active tree node.
 
-Drives per-representation coloring with a Property/Solid toggle:
-- Solid → VColorPicker writes display.DiffuseColor + Opacity directly.
-- Property → embedded ColorOpacityEditor for the active array's LUT/PWF.
+Two modes, derived from the active node type (no manual toggle):
+- Active node = a representation → VColorPicker for solid color + opacity
+  (writes display.DiffuseColor / Opacity; never touches ColorArrayName,
+  which is owned by the eye state in ui_active_array_by_rep).
+- Active node = a data-array (Property/TimeSeries/MultiRealization/...)
+  → embedded ColorOpacityEditor for that array's LUT/PWF. The editor
+  edits the global LUT for the array name, so the changes apply
+  whenever the eye is open (now or later).
 
-Each non-IjkGrid representation is materialized as its own ParaView source
-(see RepSources / ExtractBlock). This panel drives that source's display
-directly via ColorBy + DiffuseColor + Opacity — no BlockColors detour.
-
-State layout (keyed by representation path):
-- solid_color_mode_by_rep  : {path: "property" | "solid"}
-- solid_color_by_rep       : {path: "#RRGGBBAA"}
-- last_property_array_by_rep: {path: "<array name>"} remembered so that
-  toggling Property re-applies the last property the user had selected.
+State (keyed by rep path):
+- solid_color_by_rep : {path: "#RRGGBBAA"} — solid color picked by the user.
 """
 from trame.app import get_server
 from trame.widgets import vuetify3, html
@@ -86,28 +84,12 @@ def _displays_for_rep(rep_path):
     return [(display, source, view)]
 
 
-def _clear_color_array(display):
-    """Disable scalar coloring on a display. PV6 has two regressions here:
-    - pvsimple.ColorBy(display, None) raises 'invalid association string NONE'
-    - display.ColorArrayName = ['', ''] is silently rejected (the proxy keeps
-      the previous array name, so DiffuseColor never takes over)
-    Working path: call vtkSMPVRepresentationProxy::SetScalarColoring on the
-    underlying SMProxy with an empty name; that actually clears the binding."""
-    sm_proxy = getattr(display, "SMProxy", None)
-    if sm_proxy is not None:
-        try:
-            sm_proxy.SetScalarColoring("", 0)  # 0 == vtkDataObject.POINT, ignored when name is empty
-            sm_proxy.UpdateVTKObjects()
-            return
-        except Exception:
-            pass
-    try:
-        display.ColorArrayName = ['', '']
-    except Exception:
-        pass
-
-
 def _apply_solid(rep_path, color_hex):
+    """Push DiffuseColor + Opacity onto every display rendering rep_path.
+    Never touches ColorArrayName — that's owned by ui_active_array_by_rep
+    (the eye state). When the eye is open on a data-array, ColorBy wins
+    and the diffuse color is dormant; when the eye is barred, this color
+    is what the user sees."""
     targets = _displays_for_rep(rep_path)
     if not targets:
         return
@@ -116,7 +98,6 @@ def _apply_solid(rep_path, color_hex):
     last_view = None
     for display, source, view in targets:
         last_view = view
-        _clear_color_array(display)
         display.DiffuseColor = [r, g, b]
         display.AmbientColor = [r, g, b]
         display.Opacity = a
@@ -124,60 +105,34 @@ def _apply_solid(rep_path, color_hex):
     controller.view_update()
 
 
-def _apply_property(rep_path):
-    """Restore property-based coloring for this rep. If we recorded a last
-    array, re-apply it; otherwise just lift the solid override."""
-    targets = _displays_for_rep(rep_path)
-    array_name = (state.last_property_array_by_rep or {}).get(rep_path)
-    # Fallback: when the rep is activated, controller.update_color_editor may set
-    # state.active_color_array_name to the same value twice in a row (once before
-    # active_representation_path is set, once after) — the second call doesn't
-    # fire @state.change due to value diff, so _on_active_array_change never
-    # records it. Trust state.active_color_array_name as the live source of truth.
-    if not array_name:
-        array_name = state.active_color_array_name or None
-    if not targets:
-        return
-    last_view = None
-    for display, source, view in targets:
-        last_view = view
-        applied = False
-        if array_name and source is not None:
-            try:
-                cell_info = source.GetCellDataInformation()
-                point_info = source.GetPointDataInformation()
-                if cell_info and cell_info.GetArray(array_name):
-                    pvsimple.ColorBy(display, ("CELLS", array_name))
-                    applied = True
-                elif point_info and point_info.GetArray(array_name):
-                    pvsimple.ColorBy(display, ("POINTS", array_name))
-                    applied = True
-            except Exception:
-                applied = False
-        if not applied:
-            _clear_color_array(display)
-            display.Opacity = 1.0
-    pvsimple.Render(view=last_view)
-    controller.view_update()
-
-
 class SolidColorPanel(html.Div):
-    """Toggle property / solid color per representation, with a color+alpha picker."""
+    """Colors & Opacity panel.
+
+    Visible whenever the user has an active node on a loaded representation.
+    The panel content is selected by the *type* of the active node:
+    - Active = the rep itself → solid color picker (DiffuseColor + Opacity).
+    - Active = a data-array (Property/TimeSeries/...) → that array's
+      LUT/PWF editor.
+    """
 
     def __init__(self):
         super().__init__(v_if="active_representation_path && active_representation_path.length > 0")
 
         state.setdefault("active_representation_path", "")
         state.setdefault("active_representation_has_properties", False)
-        state.setdefault("solid_color_mode_by_rep", {})
         state.setdefault("solid_color_by_rep", {})
         state.setdefault("solid_color_next_idx", 0)
-        state.setdefault("last_property_array_by_rep", {})
-        state.setdefault("solid_color_mode", "property")
         state.setdefault("solid_color", "#808080FF")
         # Drives the per-tree-node color chip. Read by tree_views.py templates.
-        # Maps rep_path → "#color" (Solid mode) or "PROPERTY" (Property mode).
+        # Maps rep_path → "#color" (no array active on the rep, i.e. SolidColor)
+        # or "PROPERTY" (an array eye is open on the rep).
         state.setdefault("tree_chip_color_by_path", {})
+
+        # "active node is a data-array" if the active_color_array_name is
+        # non-empty. We use that as the panel-mode selector.
+        _is_array_active = (
+            "active_color_array_name && active_color_array_name.length > 0"
+        )
 
         with self:
             with vuetify3.VExpansionPanels(v_model=("sc_panels", [0]), multiple=True, elevation=0):
@@ -186,32 +141,15 @@ class SolidColorPanel(html.Div):
                         html.Span("Colors & Opacity", classes="text-body-2 font-weight-medium")
                         vuetify3.VSpacer()
                         vuetify3.VChip(
-                            "{{ solid_color_mode === 'solid' ? 'Solid' : 'Property' }}",
+                            f"{{{{ ({_is_array_active}) ? 'LUT/PWF' : 'Solid' }}}}",
                             size="x-small",
                             variant="tonal",
-                            # Blue for default (Property, OR Solid when no property exists),
-                            # orange for Solid that the user explicitly toggled on.
-                            color=(
-                                "(solid_color_mode === 'solid' && active_representation_has_properties)"
-                                " ? 'orange' : 'blue'",
-                            ),
+                            color=(f"({_is_array_active}) ? 'purple' : 'blue'",),
                             classes="font-italic mr-2",
                         )
                     with vuetify3.VExpansionPanelText(classes="pa-2"):
-                        with vuetify3.VBtnToggle(
-                            v_if="active_representation_has_properties",
-                            v_model=("solid_color_mode",),
-                            mandatory=True,
-                            density="comfortable",
-                            color="blue",
-                            divided=True,
-                            classes="mb-3 w-100",
-                        ):
-                            vuetify3.VBtn("Property", value="property", size="small")
-                            vuetify3.VBtn("Solid", value="solid", size="small")
-
-                        # Solid mode → color+alpha picker
-                        with html.Div(v_if="solid_color_mode === 'solid'"):
+                        # Active node = rep → solid color picker
+                        with html.Div(v_if=f"!({_is_array_active})"):
                             vuetify3.VColorPicker(
                                 v_model=("solid_color",),
                                 modes=("['hexa']",),
@@ -221,7 +159,7 @@ class SolidColorPanel(html.Div):
                                 max_width=300,
                             )
 
-                        # Property mode → editor for the active array.
+                        # Active node = data-array → LUT/PWF editor.
                         # Continuous: classic LUT/PWF editor (gradients).
                         # Discrete/Categorical: per-category VColorPicker list
                         # bound to LUT.IndexedColors / IndexedOpacities.
@@ -229,25 +167,13 @@ class SolidColorPanel(html.Div):
                             "active_property_kind === 'DiscreteProperty'"
                             " || active_property_kind === 'CategoricalProperty'"
                         )
-                        # Continuous (or unknown) editor
                         with html.Div(
-                            v_if=(
-                                "solid_color_mode !== 'solid'"
-                                " && active_color_array_name"
-                                " && active_color_array_name.length > 0"
-                                f" && !({_is_categorical})"
-                            ),
+                            v_if=f"({_is_array_active}) && !({_is_categorical})",
                             classes="pa-0",
                         ):
                             coe = _FesppColorOpacityEditor()
-                        # Categorical / Discrete editor
                         with html.Div(
-                            v_if=(
-                                "solid_color_mode !== 'solid'"
-                                " && active_color_array_name"
-                                " && active_color_array_name.length > 0"
-                                f" && ({_is_categorical})"
-                            ),
+                            v_if=f"({_is_array_active}) && ({_is_categorical})",
                             classes="pa-0",
                         ):
                             CategoricalColorEditor()
@@ -282,32 +208,14 @@ class SolidColorPanel(html.Div):
 
         controller.update_color_editor = _update_color_editor
 
-        @state.change("active_representation_path", "active_representation_has_properties")
-        def _on_path_change(active_representation_path, active_representation_has_properties, **_):
+        @state.change("active_representation_path")
+        def _on_path_change(active_representation_path, **_):
+            # Sync the picker value to whatever solid color this rep has
+            # (default tint assigned at load if none picked yet).
             if not active_representation_path:
                 return
-            stored_mode = (state.solid_color_mode_by_rep or {}).get(active_representation_path)
-            # Reps without any property are solid-only — the toggle is hidden by v_if.
-            if not active_representation_has_properties:
-                mode = "solid"
-            else:
-                mode = stored_mode or "property"
             color = (state.solid_color_by_rep or {}).get(active_representation_path, "#808080FF")
-            state.solid_color_mode = mode
             state.solid_color = color
-
-        @state.change("solid_color_mode")
-        def _on_mode_change(solid_color_mode, **_):
-            path = state.active_representation_path
-            if not path:
-                return
-            modes = dict(state.solid_color_mode_by_rep or {})
-            modes[path] = solid_color_mode
-            state.solid_color_mode_by_rep = modes
-            if solid_color_mode == "solid":
-                _apply_solid(path, state.solid_color)
-            else:
-                _apply_property(path)
 
         @state.change("solid_color")
         def _on_color_change(solid_color, **_):
@@ -317,57 +225,20 @@ class SolidColorPanel(html.Div):
             colors = dict(state.solid_color_by_rep or {})
             colors[path] = solid_color
             state.solid_color_by_rep = colors
-            if state.solid_color_mode == "solid":
-                _apply_solid(path, solid_color)
+            _apply_solid(path, solid_color)
 
-        @state.change("solid_color_by_rep", "solid_color_mode_by_rep")
-        def _refresh_tree_chip_colors(solid_color_by_rep, solid_color_mode_by_rep, **_):
-            # Recompute the rep_path → chip-value map for the treeview.
-            # "PROPERTY" sentinel triggers a rainbow gradient in the template;
-            # any other value is a hex color used as-is.
+        @state.change("solid_color_by_rep", "ui_active_array_by_rep")
+        def _refresh_tree_chip_colors(solid_color_by_rep, ui_active_array_by_rep, **_):
+            # Tree chip:
+            # - "PROPERTY" sentinel (rainbow gradient) when an array is the
+            #   active eye on the rep (i.e. the rep is colored by data).
+            # - Solid hex color otherwise.
             colors = solid_color_by_rep or {}
-            modes = solid_color_mode_by_rep or {}
+            active_map = ui_active_array_by_rep or {}
             chips = {}
             for path, color in colors.items():
-                if modes.get(path) == "property":
+                if path in active_map:
                     chips[path] = "PROPERTY"
                 else:
                     chips[path] = color
             state.tree_chip_color_by_path = chips
-
-        def _record_active_array_for_rep():
-            path = state.active_representation_path
-            array_name = state.active_color_array_name
-            if not path or not array_name:
-                return
-            d = dict(state.last_property_array_by_rep or {})
-            if d.get(path) == array_name:
-                return
-            d[path] = array_name
-            state.last_property_array_by_rep = d
-
-        @state.change("active_color_array_name")
-        def _on_active_array_change(active_color_array_name, **_):
-            # Remember which array was last picked for the currently active rep,
-            # so toggling Property later can re-apply it.
-            _record_active_array_for_rep()
-
-        @state.change("active_representation_path")
-        def _on_path_change_record(**_):
-            # Path may arrive AFTER active_color_array_name has already been set
-            # (and a re-set with the same value won't refire @state.change).
-            _record_active_array_for_rep()
-
-        def _reapply_active_solid():
-            """Re-assert Solid coloring for the active rep after a ColorBy()
-            call (e.g. after a property switch) reverted the display."""
-            path = state.active_representation_path
-            if not path:
-                return
-            mode = (state.solid_color_mode_by_rep or {}).get(path)
-            if mode != "solid":
-                return
-            color = (state.solid_color_by_rep or {}).get(path, "#808080FF")
-            _apply_solid(path, color)
-
-        controller.reapply_active_solid_mode = _reapply_active_solid

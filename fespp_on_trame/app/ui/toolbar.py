@@ -25,13 +25,14 @@ class Toolbar:
         with vuetify3.VContainer(classes="fill-height"):
             vuetify3.VSpacer()
 
-            # Show button — only visible in show_mode="manual". Pushes the
+            # Load button — only visible in load_mode="manual". Pushes the
             # current per-tab selections (reservoir/surface/well) to ParaView
             # in a single shot so the user can stage many checkbox toggles
-            # without paying a load on each click.
+            # without paying a load on each click. Visibility on/off is
+            # handled separately via the per-node eye icons in the trees.
             vuetify3.VBtn(
-                "Show",
-                v_if="show_mode === 'manual'",
+                "Load",
+                v_if="load_mode === 'manual'",
                 variant="flat",
                 color="green",
                 prepend_icon="mdi-reload",

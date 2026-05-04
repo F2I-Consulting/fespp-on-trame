@@ -27,6 +27,11 @@ TREE_ICONS = {
     "Frame": "mdi-vector-line",
     "MarkerFrame":"mdi-flag-outline",
     "Marker": "mdi-map-marker",
+
+    # Tree-hierarchy grouping nodes (ByInterpretation /
+    # ByFeatureAndInterpretation modes)
+    "Feature": "mdi-shape-outline",
+    "Interpretation": "mdi-script-text-outline",
 }
 
 def get_icon_for_type(node_type: str) -> dict:

@@ -81,6 +81,27 @@ class Tree():
                 data["treeview_type"] = subTreeview["treeview_type"]
         return data
 
+    def _resolve_dispatch_kind(self, node_id):
+        """Walk into a grouping subtree (Feature/Interpretation) to find
+        the first non-grouping descendant kind. Used to route a top-level
+        grouping node to the right tab (reservoir/surface/well) based on
+        the kind of its first real representation child."""
+        try:
+            children_count = self._data_assembly.GetNumberOfChildren(node_id)
+        except Exception:
+            return None
+        for i in range(children_count):
+            child_id = self._data_assembly.GetChild(node_id, i)
+            child_kind = self._data_assembly.GetAttributeOrDefault(child_id, "kind", None)
+            if child_kind in ("Feature", "Interpretation"):
+                inner = self._resolve_dispatch_kind(child_id)
+                if inner:
+                    return inner
+                continue
+            if child_kind:
+                return child_kind
+        return None
+
     def set_tree(self, data_assembly):
         self._data_hierarchy_reservoir = []
         self._data_hierarchy_well = []
@@ -98,15 +119,23 @@ class Tree():
                 node_prop_kind = self._data_assembly.GetAttributeOrDefault(node_id, "propKind", None)
                 node_path = self._data_assembly.GetNodePath(node_id)
 
+                # When the top-level node is a grouping inserted by an
+                # alternate tree-hierarchy mode (Feature/Interpretation),
+                # use the first real descendant's kind for dispatching to
+                # the correct tab. The grouping itself stays at top level
+                # in the rendered tree.
+                dispatch_kind = node_type
+                if node_type in ("Feature", "Interpretation"):
+                    dispatch_kind = self._resolve_dispatch_kind(node_id) or node_type
+
                 # dispatch on reservoir/surface/well
                 treeview = {}
                 treeview_type = "unknown"
-                #if node_type in ['IjkGrid','Sub', 'UnstructuredGrid']:
-                if node_type in ['IjkGrid', 'UnstructuredGrid']:
+                if dispatch_kind in ['IjkGrid', 'UnstructuredGrid']:
                     treeview_type = "reservoir"
-                elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
+                elif dispatch_kind in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
-                elif node_type in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
+                elif dispatch_kind in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
                 elif node_type in ['partial', 'Partial']:
                     disabled = True
@@ -186,6 +215,51 @@ class Tree():
             else:
                 return self.find_parent_node_id_with_type(self._data_assembly.GetParent(node_id), type)
         return
+
+    # -----------------------------------------------------------------------------
+    # find first direct child node of `type` under `node_id`. Returns the
+    # child's node id or None. Used by the UI-side dependency expansion to
+    # locate a Wellbore's WellboreTrajectory when the user checks a Channel
+    # or Marker.
+    # -----------------------------------------------------------------------------
+    def find_first_child_of_type(self, node_id, type) -> None:
+        if node_id is None or self._data_assembly is None:
+            return None
+        try:
+            n = self._data_assembly.GetNumberOfChildren(node_id)
+        except Exception:
+            return None
+        for i in range(n):
+            child = self._data_assembly.GetChild(node_id, i)
+            child_type = self._data_assembly.GetAttributeOrDefault(child, "kind", None)
+            if child_type == type:
+                return child
+        return None
+
+    # -----------------------------------------------------------------------------
+    # collect all descendant node ids under `node_id` (recursive). Used by
+    # the UI-side expansion when the user checks a grouping (Wellbore,
+    # Collection, Partial, Feature, Interpretation) — every descendant
+    # should be added to the selection so the UI checkboxes mirror what
+    # FESPP loads.
+    # -----------------------------------------------------------------------------
+    def find_all_descendant_ids(self, node_id) -> list:
+        if node_id is None or self._data_assembly is None:
+            return []
+        out = []
+
+        def _walk(nid):
+            try:
+                n = self._data_assembly.GetNumberOfChildren(nid)
+            except Exception:
+                return
+            for i in range(n):
+                c = self._data_assembly.GetChild(nid, i)
+                out.append(c)
+                _walk(c)
+
+        _walk(node_id)
+        return out
 
     # -----------------------------------------------------------------------------
     # find ijkgrid property name

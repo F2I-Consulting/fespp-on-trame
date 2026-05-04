@@ -87,9 +87,9 @@ class Activator:
         #   - node_id is/under a selected node (checked rep, click property)
         #   - node_id is an ancestor of a selected node (checked property,
         #     click parent rep — the rep loads as a side effect)
-        # Works in both auto and manual show modes since `select_list` is
+        # Works in both auto and manual load modes since `select_list` is
         # the raw checkbox state (`state.ui_select_node_*`), updated as soon
-        # as the user toggles a checkbox regardless of show_mode.
+        # as the user toggles a checkbox regardless of load_mode.
         def _is_node_active_able(node_id, select_list):
             if not select_list or node_id is None or node_id == 0:
                 return False
@@ -323,17 +323,12 @@ class Activator:
                     if prop_title:
                         array_name = prop_title
                 if is_property and array_name:
-                    # Selecting a property is the user's "I want property
-                    # coloring on this rep" intent. Flip the chip mode now,
-                    # regardless of whether ColorBy below succeeds in this
-                    # tick (data may still be loading on a separate thread).
-                    if rep_block_path:
-                        modes = dict(state.solid_color_mode_by_rep or {})
-                        if modes.get(rep_block_path) != "property":
-                            modes[rep_block_path] = "property"
-                            state.solid_color_mode_by_rep = modes
-                        if rep_block_path == state.active_representation_path:
-                            state.solid_color_mode = "property"
+                    # Activating a property only refreshes the panel LUT/PWF.
+                    # The actual ColorBy on the rep is owned by
+                    # ui_active_array_by_rep (the eye state) — driven by
+                    # toggle_dataarray_color and the load sync. The
+                    # eye_open_for_this guard further down preserves the
+                    # invariant when this handler re-applies color.
                     try:
                         active_view = pvsimple.GetActiveView()
 
@@ -480,13 +475,29 @@ class Activator:
                                         print(f"[DEBUG active.reservoir] upstream inspect failed: {_e}")
                                 print(f"[PERF active.reservoir] array={array_name!r} has_cell={has_cell} has_pt={has_pt}")
                                 array_type = None
+                                # ColorBy is now driven by the eye state in
+                                # ui_active_array_by_rep, not by activation.
+                                # Activating a node only refreshes the panel
+                                # LUT/PWF (update_color_editor below). We
+                                # still resolve array_type so the LUT range
+                                # computation below works, and we re-apply
+                                # ColorBy here only when the eye is open for
+                                # this exact array (post-load sync — harmless
+                                # if it's already applied).
+                                array_node_path = self._tree.find_path(node_id)
+                                eye_open_for_this = (
+                                    array_node_path is not None
+                                    and (state.ui_active_array_by_rep or {}).get(rep_block_path) == array_node_path
+                                )
                                 _t = time.perf_counter()
                                 if has_cell:
                                     array_type = "CELLS"
-                                    pvsimple.ColorBy(display, (array_type, array_name))
+                                    if eye_open_for_this:
+                                        pvsimple.ColorBy(display, (array_type, array_name))
                                 elif has_pt:
                                     array_type = "POINTS"
-                                    pvsimple.ColorBy(display, (array_type, array_name))
+                                    if eye_open_for_this:
+                                        pvsimple.ColorBy(display, (array_type, array_name))
                                 _ms_colorby = _ms(_t)
                                 lut = None
                                 if array_type:
@@ -494,7 +505,7 @@ class Activator:
                                     # unless another rep still references the
                                     # same array.
                                     prev_array = self._current_array_by_rep.get(rep_block_path)
-                                    if prev_array and prev_array != array_name:
+                                    if eye_open_for_this and prev_array and prev_array != array_name:
                                         still_used = any(
                                             arr == prev_array
                                             for r, arr in self._current_array_by_rep.items()
@@ -509,7 +520,8 @@ class Activator:
                                                         prev_bar.Visibility = 0
                                             except Exception:
                                                 pass
-                                    self._current_array_by_rep[rep_block_path] = array_name
+                                    if eye_open_for_this:
+                                        self._current_array_by_rep[rep_block_path] = array_name
 
                                     lut = pvsimple.GetColorTransferFunction(array_name)
                                     if lut:
