@@ -46,11 +46,27 @@ class SlicerControls(html.Div):
         state.setdefault("ui_slices_real_locked", True)
         state.setdefault("ui_slices_real_locked_value", None)
 
+        # Per-grid threshold persistence: dicts keyed by grid rep_path so
+        # switching between two loaded grids restores their own array
+        # selection / range / eye instead of resetting.
+        state.setdefault("ui_threshold_array_by_grid", {})
+        state.setdefault("ui_threshold_range_by_grid", {})
+        state.setdefault("ui_threshold_visible_by_grid", {})
+
+        # Active-grid view (UI-bound). Refreshed when the active node's
+        # rep changes.
+        state.setdefault("ui_threshold_arrays", [])
+        state.setdefault("ui_threshold_array", None)
+        state.setdefault("ui_threshold_data_range", [0.0, 1.0])
+        state.setdefault("ui_threshold_range", [0.0, 1.0])
+        state.setdefault("ui_threshold_visible", False)
+
         self._mode_var = f"ui_slices_range_mode"
         self._slices_range_active_var = f"ui_slices_range_active"
 
         _slicer_panel_v_if = (
             "ui_active_node_reservoir_type_rep === 'IjkGrid'"
+            " || ui_active_node_reservoir_type_rep === 'UnstructuredGrid'"
             " || (realization_labels && realization_labels.length > 0)"
         )
 
@@ -91,6 +107,21 @@ class SlicerControls(html.Div):
                         true_value="slice",
                     )
 
+                    # Single eye for the full volume in range mode.
+                    with html.Div(
+                        v_if=f"{self._mode_var} === 'range'",
+                        style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;",
+                    ):
+                        html.Div("Volume", classes="text-caption font-weight-bold",
+                                 style="font-size: 0.75rem;")
+                        vuetify3.VBtn(
+                            icon=("ui_slices_volume_visible ? 'mdi-eye' : 'mdi-eye-off'",),
+                            click="ui_slices_volume_visible = !ui_slices_volume_visible",
+                            variant="text", density="compact", size="x-small",
+                            color=("ui_slices_volume_visible ? 'primary' : 'grey'",),
+                            style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
+                        )
+
                     self.RangeSlider("i")
                     self.RangeSlider("j")
                     self.RangeSlider("k")
@@ -99,12 +130,31 @@ class SlicerControls(html.Div):
                     self.MultiSlider("j")
                     self.MultiSlider("k")
 
+                # Threshold filter — available for IjkGrid AND UnstructuredGrid
+                # reservoir grids. Driven by the currently selected data
+                # array; the eye toggles the threshold filter on/off.
+                with html.Div(
+                    v_if=(
+                        "ui_active_node_reservoir_type_rep === 'IjkGrid'"
+                        " || ui_active_node_reservoir_type_rep === 'UnstructuredGrid'"
+                    ),
+                    classes="mt-2"
+                ):
+                    vuetify3.VDivider(
+                        v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'",
+                        classes="mb-2"
+                    )
+                    self.ThresholdControls()
+
                 with html.Div(
                     v_if="realization_labels && realization_labels.length > 0",
                     classes="mt-2"
                 ):
                     vuetify3.VDivider(
-                        v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'",
+                        v_if=(
+                            "ui_active_node_reservoir_type_rep === 'IjkGrid'"
+                            " || ui_active_node_reservoir_type_rep === 'UnstructuredGrid'"
+                        ),
                         classes="mb-2"
                     )
                     self.Slider("real")
@@ -123,7 +173,6 @@ class SlicerControls(html.Div):
             v_model=(slices_range_var,),
             thumb_label=False,
             hide_details=True,
-            update_modelValue="console.log($event)",
             classes="mx-n4",
         ):
             with html.Template(v_slot_prepend=""):
@@ -306,6 +355,72 @@ class SlicerControls(html.Div):
                     variant="outlined",
                     hide_details=True,
                     style="width: 80px; font-size: 0.75rem;",
+                    type="number",
+                    single_line=True,
+                )
+
+    def ThresholdControls(self):
+        """Threshold filter UI for the active reservoir grid:
+        - VSelect to pick the data array,
+        - VRangeSlider for [LowerThreshold, UpperThreshold],
+        - eye to enable / disable the threshold filter.
+
+        State vars (`ui_threshold_*`) are bound to the active grid;
+        per-grid persistence dicts are maintained server-side."""
+        with html.Div(style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;"):
+            html.Div("Threshold", classes="text-caption font-weight-bold",
+                     style="font-size: 0.75rem;")
+            vuetify3.VBtn(
+                icon=("ui_threshold_visible ? 'mdi-eye' : 'mdi-eye-off'",),
+                click="ui_threshold_visible = !ui_threshold_visible",
+                variant="text", density="compact", size="x-small",
+                color=("ui_threshold_visible ? 'primary' : 'grey'",),
+                style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
+            )
+
+        vuetify3.VSelect(
+            v_model=("ui_threshold_array",),
+            items=("ui_threshold_arrays",),
+            density="compact",
+            variant="outlined",
+            hide_details=True,
+            placeholder="Select array",
+            classes="mb-2",
+            style="font-size: 0.75rem;",
+        )
+
+        with vuetify3.VRangeSlider(
+            v_if="ui_threshold_array",
+            strict=True,
+            min=("ui_threshold_data_range[0]",),
+            max=("ui_threshold_data_range[1]",),
+            step=("(ui_threshold_data_range[1] - ui_threshold_data_range[0]) / 1000 || 1",),
+            v_model=("ui_threshold_range",),
+            thumb_label=False,
+            hide_details=True,
+            classes="mx-n4",
+        ):
+            with html.Template(v_slot_prepend=""):
+                vuetify3.VTextField(
+                    model_value=("ui_threshold_range[0]",),
+                    blur="ui_threshold_range = [parseFloat($event.target.value), ui_threshold_range[1]]",
+                    keydown="$event.key === 'Enter' && (ui_threshold_range = [parseFloat($event.target.value), ui_threshold_range[1]])",
+                    density="compact",
+                    variant="outlined",
+                    hide_details=True,
+                    style="width: 90px; font-size: 0.75rem;",
+                    type="number",
+                    single_line=True,
+                )
+            with html.Template(v_slot_append=""):
+                vuetify3.VTextField(
+                    model_value=("ui_threshold_range[1]",),
+                    blur="ui_threshold_range = [ui_threshold_range[0], parseFloat($event.target.value)]",
+                    keydown="$event.key === 'Enter' && (ui_threshold_range = [ui_threshold_range[0], parseFloat($event.target.value)])",
+                    density="compact",
+                    variant="outlined",
+                    hide_details=True,
+                    style="width: 90px; font-size: 0.75rem;",
                     type="number",
                     single_line=True,
                 )

@@ -51,6 +51,57 @@ def _nan_opacity_from_state():
     return 0.2
 
 
+def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None):
+    """Every display proxy that renders rep_block_path. Used to fan-out
+    ColorBy so the threshold output and its parent source(s) stay in sync
+    even when only one of them is currently visible.
+
+    Match patterns:
+      * UG: rep<sanitized_path> + thr_<sanitized_path>
+      * IJK: rep<sanitized_ijk_path> + slicervolume + sliceri/j/k_*
+        + IjkGrid_* + thr_<id> (only one IJK is active at a time, so
+        any thr_<id> proxy belongs to it)."""
+    if view is None:
+        return []
+    sanitized = (rep_block_path or "").replace('/', '_')
+    expected_rep_filter = "rep" + sanitized
+    expected_thr_for_rep = "thr_" + sanitized
+    is_ijk = rep_type == 'IjkGrid'
+    sources = []
+    for source_id, source in pvsimple.GetSources().items():
+        name = source_id[0]
+        if name == expected_rep_filter or name == expected_thr_for_rep:
+            sources.append(source)
+            continue
+        if is_ijk:
+            if (
+                name == 'slicervolume'
+                or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
+            ):
+                sources.append(source)
+            elif name.startswith('thr_') and not name.startswith(expected_thr_for_rep):
+                # IJK threshold (thr_<id>) — id-keyed name doesn't carry
+                # a rep prefix, but only one IJK is active so it must
+                # belong to this rep.
+                sources.append(source)
+    out = []
+    seen_displays = set()
+    if target_display is not None:
+        seen_displays.add(id(target_display))
+        out.append(target_display)
+    for s in sources:
+        if s is target_source:
+            continue
+        try:
+            d = pvsimple.GetDisplayProperties(s, view=view)
+        except Exception:
+            continue
+        if d is not None and id(d) not in seen_displays:
+            seen_displays.add(id(d))
+            out.append(d)
+    return out
+
+
 def _drill_to_inner(vtk_out):
     """If vtk_out is a vtkPartitionedDataSetCollection, return its first
     inner partition; otherwise return as-is. Defensive helper kept in
@@ -314,11 +365,30 @@ class Activator:
                     try:
                         active_view = pvsimple.GetActiveView()
 
-                        target_source = rep_source if (rep_type and rep_type != 'IjkGrid') else None
+                        # Non-IjkGrid: by default the rep_source is the
+                        # render target; if a Threshold filter is active
+                        # for this rep, the source is hidden and the
+                        # threshold output is what's shown — colorize
+                        # that instead.
+                        target_source = None
+                        if rep_type and rep_type != 'IjkGrid':
+                            target_source = rep_source
+                            if active_view and target_source is not None:
+                                disp = pvsimple.GetDisplayProperties(target_source, view=active_view)
+                                if disp and not disp.Visibility:
+                                    expected_thr_name = "thr_" + (rep_block_path or "").replace('/', '_')
+                                    for source_id, source in pvsimple.GetSources().items():
+                                        if source_id[0] == expected_thr_name:
+                                            d = pvsimple.GetDisplayProperties(source, view=active_view)
+                                            if d and d.Visibility:
+                                                target_source = source
+                                                break
 
                         if target_source is None:
                             # IjkGrid path — find the visible source.
                             # Priority order:
+                            #   0. thr_* (threshold filter active —
+                            #      replaces rep_data / slicers when on);
                             #   1. rep_data filter (used in volume mode
                             #      now; bypasses slicervolume because
                             #      PV6's vtkExplicitStructuredGridCrop
@@ -332,13 +402,21 @@ class Activator:
                             # (slashes → underscores).
                             all_sources = pvsimple.GetSources()
 
-                            expected_rep_data_name = "rep" + (rep_block_path or "").replace('/', '_')
                             for source_id, source in all_sources.items():
-                                if source_id[0] == expected_rep_data_name:
+                                if source_id[0].startswith('thr_'):
                                     display = pvsimple.GetDisplayProperties(source, view=active_view)
                                     if display and display.Visibility:
                                         target_source = source
                                         break
+
+                            if not target_source:
+                                expected_rep_data_name = "rep" + (rep_block_path or "").replace('/', '_')
+                                for source_id, source in all_sources.items():
+                                    if source_id[0] == expected_rep_data_name:
+                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
+                                        if display and display.Visibility:
+                                            target_source = source
+                                            break
 
                             if not target_source:
                                 for source_id, source in all_sources.items():
@@ -464,14 +542,28 @@ class Activator:
                                     and (state.ui_active_array_by_rep or {}).get(rep_block_path) == array_node_path
                                 )
                                 _t = time.perf_counter()
+                                array_type = None
                                 if has_cell:
                                     array_type = "CELLS"
-                                    if eye_open_for_this:
-                                        pvsimple.ColorBy(display, (array_type, array_name))
                                 elif has_pt:
                                     array_type = "POINTS"
-                                    if eye_open_for_this:
-                                        pvsimple.ColorBy(display, (array_type, array_name))
+                                if array_type and eye_open_for_this:
+                                    # Apply ColorBy to every display
+                                    # rendering this rep (source +
+                                    # downstream Threshold filter, IJK
+                                    # slicers + their thresholds, etc.).
+                                    # Without the fan-out the visible
+                                    # threshold and the hidden source
+                                    # drift apart on a property switch.
+                                    color_displays = _all_displays_for_rep(
+                                        rep_block_path, rep_type, active_view,
+                                        target_source, display,
+                                    )
+                                    for d in color_displays:
+                                        try:
+                                            pvsimple.ColorBy(d, (array_type, array_name))
+                                        except Exception:
+                                            pass
                                 _ms_colorby = _ms(_t)
                                 lut = None
                                 if array_type:

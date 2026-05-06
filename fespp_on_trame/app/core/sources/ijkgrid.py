@@ -36,6 +36,18 @@ class IjkGrid:
         self._src_slicers_k = []
         self._src_slicer_volume = None
 
+        # Threshold pipeline: one Threshold proxy per upstream source
+        # (rep_data in range mode; each slicer crop in slice mode).
+        # Settings (array / low / high / visible) are shared across the
+        # filters so all visible cuts of the active grid use the same
+        # threshold.
+        self._thresholds = {}  # id(src_proxy) -> Threshold proxy
+        self._threshold_assoc = None    # 'CELLS' or 'POINTS'
+        self._threshold_array = None    # str, vtk array name
+        self._threshold_low = 0.0
+        self._threshold_high = 1.0
+        self._threshold_visible = False
+
     def color_array_type(self, name) -> None:
         """Return 'CELLS' / 'POINTS' / 'FIELD' depending on which data
         store of the first I-axis slicer holds the named array."""
@@ -56,9 +68,43 @@ class IjkGrid:
     def _all_slice_sources(self):
         return self._src_slicers_i + self._src_slicers_j + self._src_slicers_k
 
+    def _delete_threshold_for(self, src):
+        """Delete the Threshold proxy attached to src, if any."""
+        if src is None:
+            return
+        thr = self._thresholds.pop(id(src), None)
+        if thr is None:
+            return
+        view = pvsimple.GetActiveView()
+        try:
+            pvsimple.Hide(proxy=thr, view=view)
+        except Exception:
+            pass
+        try:
+            pvsimple.Delete(thr)
+        except Exception:
+            pass
+
+    def _delete_all_thresholds(self):
+        for thr in list(self._thresholds.values()):
+            view = pvsimple.GetActiveView()
+            try:
+                pvsimple.Hide(proxy=thr, view=view)
+            except Exception:
+                pass
+            try:
+                pvsimple.Delete(thr)
+            except Exception:
+                pass
+        self._thresholds = {}
+
     def _delete_all_sources(self):
         view = pvsimple.GetActiveView()
         pvsimple.SetActiveSource(None)
+        # Thresholds reference the slicer/rep_data proxies; delete them
+        # FIRST so the upstream Delete calls don't trip on dangling
+        # downstream filters.
+        self._delete_all_thresholds()
         for src in self._all_slice_sources():
             try:
                 pvsimple.Hide(proxy=src, view=view)
@@ -109,9 +155,13 @@ class IjkGrid:
         while len(srcs) < count:
             src = self._create_slice_source(axis, len(srcs))
             srcs.append(src)
+            # If a threshold is currently active, attach one to the new slicer.
+            if self._threshold_visible and self._threshold_array:
+                self._create_threshold_for(src)
         view = pvsimple.GetActiveView()
         while len(srcs) > count:
             src = srcs.pop()
+            self._delete_threshold_for(src)
             try:
                 pvsimple.Hide(proxy=src, view=view)
                 pvsimple.Delete(src)
@@ -248,39 +298,286 @@ class IjkGrid:
             pvsimple.Hide(proxy=self._src_extract_init)
             self.show()
 
+    def _is_range_full_extent(self):
+        """True when the range slider equals the grid's full extent. PV6's
+        ExplicitStructuredGridCrop produces a degenerate 1-cell output at
+        full extent, so we fall back to rep_data in that case (the
+        non-cropped equivalent) and only switch to slicervolume once the
+        user actually cropped something."""
+        if not self._current_extent:
+            return True
+        full = self._current_extent
+        ri = state.ui_slices_range_i or [full[0], full[1]]
+        rj = state.ui_slices_range_j or [full[2], full[3]]
+        rk = state.ui_slices_range_k or [full[4], full[5]]
+        return (
+            int(ri[0]) <= full[0] and int(ri[1]) >= full[1]
+            and int(rj[0]) <= full[2] and int(rj[1]) >= full[3]
+            and int(rk[0]) <= full[4] and int(rk[1]) >= full[5]
+        )
+
+    def _primary_range_source(self):
+        """The source that's actually rendered in range mode."""
+        if self._is_range_full_extent() or self._src_slicer_volume is None:
+            return self._src_extract_init
+        return self._src_slicer_volume
+
     def show(self):
         """Show / hide the right combination of sources for the current
-        slicer mode. Slice mode displays the per-axis crops; volume
-        mode displays the rep_data filter directly because PV6's
-        ExplicitStructuredGridCrop produces a degenerate 1-cell output
-        on the full extent (see investigation in fespp_active.py)."""
+        slicer mode. Slice mode displays the per-axis crops; range mode
+        displays slicervolume when the slider is on a subset of the grid,
+        and rep_data when it spans the full extent (slicervolume's output
+        is degenerate at full extent on PV6 — see _is_range_full_extent).
+
+        Fallback: when the user hides every visible slicer (slice mode)
+        or the volume eye (range mode), we show rep_data — the parent
+        un-cropped grid — instead of leaving an empty view.
+
+        When a threshold is enabled, each "would-be visible" source is
+        replaced by its downstream Threshold filter."""
         if self._node_id is None:
             return
         view = pvsimple.GetActiveView()
+        use_threshold = bool(self._threshold_visible and self._threshold_array)
+
         if state.ui_slices_range_mode == 'slice':
-            if self._src_extract_init is not None:
-                pvsimple.Hide(proxy=self._src_extract_init, view=view)
             if self._src_slicer_volume is not None:
                 pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
+                self._hide_threshold_for(self._src_slicer_volume, view)
+
             vis_i = list(state.ui_slices_i_visible_list or [])
             vis_j = list(state.ui_slices_j_visible_list or [])
             vis_k = list(state.ui_slices_k_visible_list or [])
-            for idx, src in enumerate(self._src_slicers_i):
-                visible = vis_i[idx] if idx < len(vis_i) else True
-                (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
-            for idx, src in enumerate(self._src_slicers_j):
-                visible = vis_j[idx] if idx < len(vis_j) else True
-                (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
-            for idx, src in enumerate(self._src_slicers_k):
-                visible = vis_k[idx] if idx < len(vis_k) else True
-                (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
+            any_visible = False
+            for axis_srcs, vis_list in (
+                (self._src_slicers_i, vis_i),
+                (self._src_slicers_j, vis_j),
+                (self._src_slicers_k, vis_k),
+            ):
+                for idx, src in enumerate(axis_srcs):
+                    visible = vis_list[idx] if idx < len(vis_list) else True
+                    self._show_source_or_threshold(src, view, visible, use_threshold)
+                    if visible:
+                        any_visible = True
+
+            if self._src_extract_init is not None:
+                # Parent fallback: show rep_data when no slicer is visible.
+                self._show_source_or_threshold(
+                    self._src_extract_init, view, not any_visible, use_threshold,
+                )
         else:
-            if self._src_slicer_volume is not None:
-                pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
             for src in self._all_slice_sources():
                 pvsimple.Hide(proxy=src, view=view)
-            if self._src_extract_init is not None:
-                pvsimple.Show(proxy=self._src_extract_init, view=view)
+                self._hide_threshold_for(src, view)
+
+            primary = self._primary_range_source()
+            volume_visible = bool(getattr(state, 'ui_slices_volume_visible', True))
+            # Parent fallback: volume eye OFF means "bypass the crop" —
+            # always show rep_data (the un-cropped parent), regardless of
+            # whether we were on a subset or full extent.
+            if not volume_visible:
+                primary = self._src_extract_init
+                volume_visible = True
+
+            for s in (self._src_extract_init, self._src_slicer_volume):
+                if s is not None and s is not primary:
+                    pvsimple.Hide(proxy=s, view=view)
+                    self._hide_threshold_for(s, view)
+            if primary is not None:
+                self._show_source_or_threshold(primary, view, volume_visible, use_threshold)
+
+    def _show_source_or_threshold(self, src, view, visible, use_threshold):
+        """Show src OR its downstream Threshold (mutually exclusive),
+        gated by the user's eye state for that source."""
+        thr = self._thresholds.get(id(src)) if use_threshold else None
+        if thr is not None:
+            pvsimple.Hide(proxy=src, view=view)
+            (pvsimple.Show if visible else pvsimple.Hide)(proxy=thr, view=view)
+        else:
+            self._hide_threshold_for(src, view)
+            (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
+
+    def _hide_threshold_for(self, src, view):
+        thr = self._thresholds.get(id(src))
+        if thr is not None:
+            try:
+                pvsimple.Hide(proxy=thr, view=view)
+            except Exception:
+                pass
+
+    def available_arrays(self):
+        """Return [(assoc, name), ...] for the active grid's data arrays.
+        Used by the engine to populate the threshold VSelect."""
+        src = self._src_extract_init
+        if src is None:
+            return []
+        out = []
+        seen = set()
+        for store_attr, assoc in (("CellData", "CELLS"), ("PointData", "POINTS")):
+            try:
+                store = getattr(src, store_attr)
+                for i in range(store.GetNumberOfArrays()):
+                    a = store.GetArray(i)
+                    if a is None:
+                        continue
+                    name = a.Name
+                    key = (assoc, name)
+                    if name and key not in seen:
+                        seen.add(key)
+                        out.append(key)
+            except Exception:
+                pass
+        return out
+
+    def array_data_range(self, array_name):
+        """Return (min, max) for the named array on the active grid, or
+        None if the array isn't found."""
+        src = self._src_extract_init
+        if src is None or not array_name:
+            return None
+        for store_attr in ("CellData", "PointData"):
+            try:
+                store = getattr(src, store_attr)
+                for i in range(store.GetNumberOfArrays()):
+                    a = store.GetArray(i)
+                    if a is not None and a.Name == array_name:
+                        rng = a.GetRange()
+                        return (float(rng[0]), float(rng[1]))
+            except Exception:
+                pass
+        return None
+
+    def set_threshold(self, array, low, high, visible):
+        """Drive the per-source Threshold filters from the UI state.
+        Rebuilds the filter set whenever the array changes (Threshold's
+        Scalars property can change but it's simpler to recreate, and the
+        underlying VTK caches the upstream output)."""
+        if self._node_id is None:
+            return
+        prev_array = self._threshold_array
+        new_assoc = None
+        if array:
+            for assoc, name in self.available_arrays():
+                if name == array:
+                    new_assoc = assoc
+                    break
+
+        self._threshold_array = array if new_assoc else None
+        self._threshold_assoc = new_assoc
+        self._threshold_low = float(low) if low is not None else 0.0
+        self._threshold_high = float(high) if high is not None else 1.0
+        self._threshold_visible = bool(visible) and bool(self._threshold_array)
+
+        # Recreate when the array changes — Scalars on Threshold can be
+        # mutated in place but recreating side-steps any stale cached
+        # output and keeps the registrationName tied to the source id.
+        if array != prev_array:
+            self._delete_all_thresholds()
+
+        if self._threshold_visible:
+            for src in self._sources_for_threshold_attach():
+                thr = self._thresholds.get(id(src))
+                if thr is None:
+                    self._create_threshold_for(src)
+                else:
+                    self._update_threshold_props(thr)
+        self.show()
+
+    def refresh_threshold_pipeline(self):
+        """Re-attach thresholds to the current set of "active sources" —
+        called when the slicer mode flips (the source set changes)."""
+        if not (self._threshold_visible and self._threshold_array):
+            self._delete_all_thresholds()
+            return
+        target_srcs = self._sources_for_threshold_attach()
+        target_ids = {id(s) for s in target_srcs}
+        for src_id in list(self._thresholds.keys()):
+            if src_id not in target_ids:
+                thr = self._thresholds.pop(src_id)
+                view = pvsimple.GetActiveView()
+                try:
+                    pvsimple.Hide(proxy=thr, view=view)
+                except Exception:
+                    pass
+                try:
+                    pvsimple.Delete(thr)
+                except Exception:
+                    pass
+        for src in target_srcs:
+            if id(src) not in self._thresholds:
+                self._create_threshold_for(src)
+            else:
+                self._update_threshold_props(self._thresholds[id(src)])
+
+    def _sources_for_threshold_attach(self):
+        # Always attach to rep_data — it's the fallback rendered when
+        # the user hides every per-axis slicer (slice mode) or the volume
+        # eye (range mode), and we want the threshold to follow.
+        out = []
+        if self._src_extract_init is not None:
+            out.append(self._src_extract_init)
+        if state.ui_slices_range_mode == 'slice':
+            out.extend(self._all_slice_sources())
+        else:
+            if self._src_slicer_volume is not None:
+                out.append(self._src_slicer_volume)
+        return out
+
+    def _create_threshold_for(self, src):
+        if src is None or not self._threshold_array or not self._threshold_assoc:
+            return None
+        try:
+            thr = pvsimple.Threshold(
+                registrationName=f"thr_{id(src)}",
+                Input=src,
+            )
+        except Exception as e:
+            print(f"[WARNING] Threshold creation failed: {e}")
+            return None
+        self._thresholds[id(src)] = thr
+        self._update_threshold_props(thr)
+        # Mirror the source's CURRENT display state (representation,
+        # ColorArrayName, LUT, scale) directly. self._title only tracks
+        # the property the IjkGrid was loaded with (set_node_id) — it's
+        # stale after the user switches active property through the
+        # tree eye, so reading the source's display is the authoritative
+        # source.
+        view = pvsimple.GetActiveView()
+        try:
+            src_disp = pvsimple.GetDisplayProperties(src, view=view)
+            thr_disp = pvsimple.GetRepresentation(proxy=thr, view=view)
+            if src_disp is not None and thr_disp is not None:
+                for attr, as_list in (
+                    ("Representation", False),
+                    ("Scale", True),
+                    ("ColorArrayName", True),
+                    ("LookupTable", False),
+                ):
+                    try:
+                        val = getattr(src_disp, attr)
+                        if as_list:
+                            val = list(val)
+                        setattr(thr_disp, attr, val)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return thr
+
+    def _update_threshold_props(self, thr):
+        if thr is None or not self._threshold_array or not self._threshold_assoc:
+            return
+        try:
+            thr.Scalars = [self._threshold_assoc, self._threshold_array]
+            thr.LowerThreshold = float(self._threshold_low)
+            thr.UpperThreshold = float(self._threshold_high)
+            thr.UpdatePipeline()
+        except Exception as e:
+            print(f"[WARNING] Threshold property update failed: {e}")
+
+    def all_threshold_sources(self):
+        """Used by the engine / activator to walk threshold proxies."""
+        return list(self._thresholds.values())
 
     def _nan_opacity_from_state(self):
         """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""

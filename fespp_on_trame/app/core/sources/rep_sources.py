@@ -74,6 +74,10 @@ class RepSources:
         self._collector = collector
         self._tree = tree
         self._sources: dict = {}
+        # Per-rep threshold filter: rep_path -> Threshold proxy.
+        # Lifecycle is tied to the rep — released alongside the rep when
+        # the selector goes away.
+        self._thresholds: dict = {}
         # Cache selector path → rep_path | None (None = IjkGrid or
         # unresolved). Tree walks are stable for a given assembly; this
         # avoids re-walking on every selector change when most
@@ -145,6 +149,8 @@ class RepSources:
         return src
 
     def release(self, rep_path: str):
+        # Drop the downstream Threshold first so its Input doesn't dangle.
+        self._delete_threshold(rep_path)
         src = self._sources.pop(rep_path, None)
         if src is None:
             return
@@ -155,6 +161,155 @@ class RepSources:
             pvsimple.Delete(src)
         except Exception:
             pass
+
+    def _delete_threshold(self, rep_path: str):
+        thr = self._thresholds.pop(rep_path, None)
+        if thr is None:
+            return
+        view = pvsimple.GetActiveView()
+        try:
+            if view is not None:
+                pvsimple.Hide(proxy=thr, view=view)
+        except Exception:
+            pass
+        try:
+            pvsimple.Delete(thr)
+        except Exception:
+            pass
+
+    def available_arrays(self, rep_path: str):
+        """Return [(assoc, name), ...] for the rep's data arrays."""
+        src = self._sources.get(rep_path)
+        if src is None:
+            return []
+        out = []
+        seen = set()
+        for store_attr, assoc in (("CellData", "CELLS"), ("PointData", "POINTS")):
+            try:
+                store = getattr(src, store_attr)
+                for i in range(store.GetNumberOfArrays()):
+                    a = store.GetArray(i)
+                    if a is None:
+                        continue
+                    name = a.Name
+                    key = (assoc, name)
+                    if name and key not in seen:
+                        seen.add(key)
+                        out.append(key)
+            except Exception:
+                pass
+        return out
+
+    def array_data_range(self, rep_path: str, array_name: str):
+        src = self._sources.get(rep_path)
+        if src is None or not array_name:
+            return None
+        for store_attr in ("CellData", "PointData"):
+            try:
+                store = getattr(src, store_attr)
+                for i in range(store.GetNumberOfArrays()):
+                    a = store.GetArray(i)
+                    if a is not None and a.Name == array_name:
+                        rng = a.GetRange()
+                        return (float(rng[0]), float(rng[1]))
+            except Exception:
+                pass
+        return None
+
+    def set_threshold(self, rep_path: str, array, low, high, visible):
+        """Create / update / hide the Threshold filter chained on the
+        rep's source. visible=False (or array empty) hides the filter
+        and shows the source again."""
+        src = self._sources.get(rep_path)
+        if src is None:
+            return
+        view = pvsimple.GetActiveView()
+        assoc = None
+        if array:
+            for a, n in self.available_arrays(rep_path):
+                if n == array:
+                    assoc = a
+                    break
+        active = bool(visible) and bool(array) and assoc is not None
+        if not active:
+            # Hide threshold (if any) and re-show the source.
+            thr = self._thresholds.get(rep_path)
+            if thr is not None and view is not None:
+                try:
+                    pvsimple.Hide(proxy=thr, view=view)
+                except Exception:
+                    pass
+            if view is not None:
+                # Mirror eye-toggle state: only re-show if the rep is not
+                # in the user-hidden set.
+                if rep_path not in (state.ui_hidden_rep_paths or []):
+                    try:
+                        pvsimple.Show(proxy=src, view=view)
+                    except Exception:
+                        pass
+            return
+
+        thr = self._thresholds.get(rep_path)
+        if thr is None:
+            try:
+                thr = pvsimple.Threshold(
+                    registrationName=f"thr_{rep_path.replace('/', '_')}",
+                    Input=src,
+                )
+            except Exception as e:
+                print(f"[WARNING] Threshold creation for {rep_path} failed: {e}")
+                return
+            self._thresholds[rep_path] = thr
+            # Inherit the source's representation type and z-scale.
+            if view is not None:
+                try:
+                    src_disp = pvsimple.GetDisplayProperties(src, view=view)
+                    thr_disp = pvsimple.GetRepresentation(proxy=thr, view=view)
+                    if src_disp is not None and thr_disp is not None:
+                        try:
+                            thr_disp.Representation = src_disp.Representation
+                        except Exception:
+                            pass
+                        try:
+                            thr_disp.Scale = list(src_disp.Scale)
+                        except Exception:
+                            pass
+                        # Inherit ColorArrayName if any (the activator
+                        # later re-applies ColorBy properly).
+                        try:
+                            thr_disp.ColorArrayName = list(src_disp.ColorArrayName)
+                            thr_disp.LookupTable = src_disp.LookupTable
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+        try:
+            thr.Scalars = [assoc, array]
+            thr.LowerThreshold = float(low)
+            thr.UpperThreshold = float(high)
+            thr.UpdatePipeline()
+        except Exception as e:
+            print(f"[WARNING] Threshold update for {rep_path} failed: {e}")
+            return
+
+        # Hide the source, show the threshold (subject to the rep's eye).
+        if view is not None:
+            try:
+                pvsimple.Hide(proxy=src, view=view)
+            except Exception:
+                pass
+            if rep_path not in (state.ui_hidden_rep_paths or []):
+                try:
+                    pvsimple.Show(proxy=thr, view=view)
+                except Exception:
+                    pass
+
+    def get_threshold(self, rep_path: str):
+        return self._thresholds.get(rep_path)
+
+    def all_thresholds(self):
+        return list(self._thresholds.items())
 
     def release_all(self):
         for path in list(self._sources.keys()):
@@ -198,12 +353,16 @@ class RepSources:
             rep = pvsimple.GetRepresentation(proxy=src, view=view)
             if rep is not None:
                 rep.Scale = [1.0, 1.0, float(zscale)]
+        for thr in self._thresholds.values():
+            rep = pvsimple.GetRepresentation(proxy=thr, view=view)
+            if rep is not None:
+                rep.Scale = [1.0, 1.0, float(zscale)]
 
     def apply_representation(self, representation_type: str):
         view = pvsimple.GetActiveView()
         if view is None or not representation_type:
             return
-        for src in self._sources.values():
+        for src in list(self._sources.values()) + list(self._thresholds.values()):
             rep = pvsimple.GetRepresentation(proxy=src, view=view)
             if rep is not None:
                 try:
