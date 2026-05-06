@@ -7,10 +7,20 @@ state = server.state
 
 vuetify3.enable_lab()
 
+
 class SlicerControls(html.Div):
+    """IJK slicer panel for the active reservoir node. Hosts:
+    - one range slider per axis (Range mode);
+    - a multi-position slider per axis with add/remove buttons (Slice
+      mode);
+    - a realization slider when a multi-realization property is active.
+
+    The whole panel is hidden when neither IJK slicers nor a
+    realization slider would render."""
+
     def __init__(self):
         super().__init__()
-        
+
         state.setdefault("ui_range_i", [0, 0])
         state.setdefault("ui_range_j", [0, 0])
         state.setdefault("ui_range_k", [0, 0])
@@ -28,23 +38,17 @@ class SlicerControls(html.Div):
         state.setdefault("ui_range_real", [0, 0])
         state.setdefault("ui_slices_real", 0)
 
-        # Per-slicer visibility lists (one bool per slicer row)
         state.setdefault("ui_slices_i_visible_list", [True])
         state.setdefault("ui_slices_j_visible_list", [True])
         state.setdefault("ui_slices_k_visible_list", [True])
         state.setdefault("ui_slices_volume_visible", True)
 
-        # Lock state for realization
         state.setdefault("ui_slices_real_locked", True)
         state.setdefault("ui_slices_real_locked_value", None)
 
         self._mode_var = f"ui_slices_range_mode"
         self._slices_range_active_var = f"ui_slices_range_active"
-        
-        # Hide the whole panel when neither inner section has anything to
-        # show — empty Slicer headers are noise. The two sections are:
-        #   - IJK/Volume slicers (only for IjkGrid representations)
-        #   - Realization slider (only when realization_labels is populated)
+
         _slicer_panel_v_if = (
             "ui_active_node_reservoir_type_rep === 'IjkGrid'"
             " || (realization_labels && realization_labels.length > 0)"
@@ -61,7 +65,6 @@ class SlicerControls(html.Div):
               with vuetify3.VExpansionPanelTitle(classes="pa-2"):
                 html.Span("Slicer", classes="text-body-2 font-weight-medium")
                 vuetify3.VSpacer()
-                # IJK mode chip — Range or Slice
                 vuetify3.VChip(
                     "{{ ui_slices_range_mode === 'slice' ? 'Slice' : 'Range' }}",
                     size="x-small",
@@ -70,7 +73,6 @@ class SlicerControls(html.Div):
                     classes="font-italic mr-1",
                     v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'",
                 )
-                # Realization chip — current realization label (e.g. "Real 23")
                 vuetify3.VChip(
                     "Real {{ realization_labels && realization_labels[ui_slices_real] }}",
                     size="x-small",
@@ -80,7 +82,6 @@ class SlicerControls(html.Div):
                     v_if="realization_labels && realization_labels.length > 0",
                 )
               with vuetify3.VExpansionPanelText(classes="pa-2"):
-                # IJK/Volume slicers - only for IjkGrid representations
                 with html.Div(v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'"):
                     vuetify3.VSwitch(
                         v_model=(self._mode_var, "range",),
@@ -98,12 +99,10 @@ class SlicerControls(html.Div):
                     self.MultiSlider("j")
                     self.MultiSlider("k")
 
-                # Realization slider section
                 with html.Div(
                     v_if="realization_labels && realization_labels.length > 0",
                     classes="mt-2"
                 ):
-                    # Divider visible only if IJK sliders are shown above
                     vuetify3.VDivider(
                         v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'",
                         classes="mb-2"
@@ -111,6 +110,7 @@ class SlicerControls(html.Div):
                     self.Slider("real")
 
     def RangeSlider(self, index: Literal["i", "j", "k"]):
+        """Range slider for the volume crop on the given axis."""
         range_var = f"ui_range_{index}"
         slices_range_var = f"ui_slices_range_{index}"
 
@@ -126,12 +126,10 @@ class SlicerControls(html.Div):
             update_modelValue="console.log($event)",
             classes="mx-n4",
         ):
-            # Prepend slot: Label + Visibility button + Min value field
             with html.Template(v_slot_prepend=""):
                 with html.Div(style="display: flex; align-items: center; gap: 4px;"):
                     html.Div(index.upper(), classes="text-caption", style="width: 10px; text-align: center; font-size: 0.65rem;")
 
-                    # Refresh icon for volume - reset to full range
                     vuetify3.VBtn(
                         icon="mdi-refresh",
                         click=f"{slices_range_var} = [{range_var}[0], {range_var}[1]]",
@@ -154,7 +152,6 @@ class SlicerControls(html.Div):
                         single_line=True,
                     )
 
-            # Append slot: Max value field
             with html.Template(v_slot_append=""):
                 vuetify3.VTextField(
                     model_value=(f"{slices_range_var}[1]",),
@@ -169,14 +166,16 @@ class SlicerControls(html.Div):
                 )
 
     def MultiSlider(self, index: Literal["i", "j", "k"]):
-        """Slider multi-position pour le mode slice (0 à N slices par axe)."""
+        """Multi-position slider used in Slice mode: 0..N slicers per
+        axis, each with its own position, visibility eye and delete
+        button. Add button creates a new slicer at the mid-range
+        position."""
         range_var = f"ui_range_{index}"
         list_var = f"ui_slices_{index}_list"
         vis_list_var = f"ui_slices_{index}_visible_list"
         label = index.upper()
 
         with html.Div(v_if=f"{self._mode_var} === 'slice'", classes="mb-1"):
-            # En-tête : label + bouton ajout
             with html.Div(style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;"):
                 html.Div(label, classes="text-caption font-weight-bold",
                          style="width: 16px; text-align: center; font-size: 0.75rem;")
@@ -191,7 +190,6 @@ class SlicerControls(html.Div):
                     style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
                 )
 
-            # Une ligne par position de slice (v-for côté Vue)
             with html.Div(
                 v_for=f"(pos, idx) in {list_var}",
                 key=("idx",),
@@ -218,7 +216,6 @@ class SlicerControls(html.Div):
                     type="number",
                     single_line=True,
                 )
-                # Oeil de visibilité par slicer
                 vuetify3.VBtn(
                     icon=(f"{vis_list_var}[idx] !== false ? 'mdi-eye' : 'mdi-eye-off'",),
                     click=f"{vis_list_var} = {vis_list_var}.map(function(v, i) {{ return i === idx ? !v : v; }})",
@@ -226,7 +223,6 @@ class SlicerControls(html.Div):
                     color=(f"{vis_list_var}[idx] !== false ? 'primary' : 'grey'",),
                     style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px; flex-shrink: 0;",
                 )
-                # Bouton suppression — toujours visible, autorise 0 slicers
                 vuetify3.VBtn(
                     icon="mdi-close",
                     click=(
@@ -239,15 +235,15 @@ class SlicerControls(html.Div):
                 )
 
     def Slider(self, index: Literal["i", "j", "k", "real"]):
-        # Configure based on slider type
+        """Single-value slider — used for the realization slider. The
+        i/j/k variants are kept here too for symmetry but the slice
+        mode uses MultiSlider above."""
         range_var = f"ui_range_{index}"
         slices_var = f"ui_slices_{index}"
         label = index.upper() if index != "real" else "Real"
 
-        # Only IJK sliders have v_if condition for mode switching
         v_if_condition = None if index == "real" else f"{self._mode_var} === 'slice'"
 
-        # Build VSlider kwargs
         slider_kwargs = {
             "min": (f"{range_var}[0]",),
             "max": (f"{range_var}[1]",),
@@ -262,14 +258,11 @@ class SlicerControls(html.Div):
             slider_kwargs["v_if"] = (v_if_condition,)
 
         with vuetify3.VSlider(**slider_kwargs):
-            # Prepend slot: Label + Icon button
             with html.Template(v_slot_prepend=""):
                 with html.Div(style="display: flex; align-items: center; gap: 4px;"):
                     html.Div(label, classes="text-caption", style="width: 30px; text-align: center; font-size: 0.65rem;")
 
-                    # Icon button: lock for real, visibility for i/j/k
                     if index == "real":
-                        # Lock icon for realization
                         vuetify3.VBtn(
                             icon=("ui_slices_real_locked ? 'mdi-lock' : 'mdi-lock-open'",),
                             click="ui_slices_real_locked = !ui_slices_real_locked",
@@ -280,7 +273,6 @@ class SlicerControls(html.Div):
                             style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
                         )
                     else:
-                        # Visibility icon for i/j/k slices
                         visible_var = f"ui_slices_{index}_visible"
                         vuetify3.VBtn(
                             icon=(f"{visible_var} ? 'mdi-eye' : 'mdi-eye-off'",),
@@ -292,17 +284,17 @@ class SlicerControls(html.Div):
                             style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
                         )
 
-            # Append slot: Editable field for all sliders
             with html.Template(v_slot_append=""):
-                # Special handling for realization labels
                 if index == "real":
+                    # Realization slider: the user types a label
+                    # ("23"), we look up its index in
+                    # realization_labels and store that as
+                    # ui_slices_real.
                     model_value_expr = "realization_labels[ui_slices_real]"
-                    # Find index of label in array and set ui_slices_real
                     change_expr = "console.log('blur real:', $event.target.value); ui_slices_real = realization_labels.indexOf($event.target.value)"
                     enter_expr = "$event.key === 'Enter' && (console.log('enter real:', $event.target.value), ui_slices_real = realization_labels.indexOf($event.target.value))"
                 else:
                     model_value_expr = slices_var
-                    # Directly set state variable with parsed integer value
                     change_expr = f"console.log('blur {index}:', $event.target.value); {slices_var} = parseInt($event.target.value)"
                     enter_expr = f"$event.key === 'Enter' && (console.log('enter {index}:', $event.target.value), {slices_var} = parseInt($event.target.value))"
 

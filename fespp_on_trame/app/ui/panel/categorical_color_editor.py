@@ -22,10 +22,11 @@ state = server.state
 controller = server.controller
 
 
-# Mirror of FESPP's C++ MakeValidNodeName — see fespp_active.py for context.
-# RESQML titles can contain characters (spaces, parens, etc.) that FESPP strips
-# when naming VTK arrays. The Trame state holds the original title; we may
-# need the sanitized variant to look the array up.
+# Mirror of FESPP's C++ MakeValidNodeName — see fespp_active.py for
+# context. RESQML titles can contain characters (spaces, parens, ...)
+# that FESPP strips when naming VTK arrays. The Trame state holds the
+# original title; we may need the sanitized variant to look the array
+# up.
 _VTK_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
 
 
@@ -47,14 +48,12 @@ def _find_array_in_store(store, name):
     return None
 
 
-# ---------------------------------------------------------------------------
-# Helpers to set LUT proxy properties via SMProxy directly. pvsimple's
-# Proxy wrapper has a strict __setattr__ that rejects unknown names ("This
-# class does not allow addition of new attributes to avoid mistakes due to
-# typos") — IndexedLookup, Annotations, IndexedColors, IndexedOpacities all
-# trip it on PV6's PVLookupTable proxy in some configurations. Setting them
-# via the underlying SMProxy bypasses the wrapper.
-# ---------------------------------------------------------------------------
+# Set LUT proxy properties via SMProxy directly: pvsimple's Proxy
+# wrapper has a strict __setattr__ that rejects unknown names ("This
+# class does not allow addition of new attributes...") — IndexedLookup,
+# Annotations, IndexedColors, IndexedOpacities all trip it on PV6's
+# PVLookupTable proxy in some configurations. The SMProxy path bypasses
+# the wrapper.
 def _set_int_property(lut, name: str, value: int) -> bool:
     if lut is None or lut.SMProxy is None:
         return False
@@ -135,17 +134,24 @@ def _default_color_for_index(idx):
 
 
 class CategoricalColorEditor(html.Div):
-    """Per-category color list bound to LUT.IndexedColors / IndexedOpacities."""
+    """Per-category color list bound to LUT.IndexedColors /
+    IndexedOpacities. Used in place of the continuous LUT/PWF editor
+    when the active property's `propKind` is DiscreteProperty or
+    CategoricalProperty — each distinct integer value is its own
+    category and gets an independently-chosen colour. The alpha
+    channel of each picker doubles as per-category opacity."""
 
     def __init__(self):
         super().__init__()
-        # state.categorical_entries shape:
+        # categorical_entries shape:
         #   [{"index": int, "value": str, "label": str, "color": "#RRGGBBAA"}, ...]
-        # `index` is the slot in the LUT.IndexedColors flat array (0-based).
+        # `index` is the slot in LUT.IndexedColors (0-based).
         state.setdefault("categorical_entries", [])
-        # Sentinel used by VColorPicker update_modelValue → server: pushes
-        # {"index": ..., "color": "#RRGGBBAA"}; the watcher below applies it
-        # then resets the sentinel to None.
+        # Sentinel pushed by VColorPicker update_modelValue:
+        # {"index": ..., "color": "#RRGGBBAA"}. The handler below
+        # applies it then resets the sentinel so the next colour tick
+        # re-triggers the watcher (Trame ignores writes that don't
+        # change the value).
         state.setdefault("cce_pending_change", None)
 
         with self:
@@ -206,11 +212,10 @@ class CategoricalColorEditor(html.Div):
                                 v_if="entry.label !== entry.value",
                             )
 
-        # ---------- back-end: rebuild list when active property changes -------
-        # Default values on the kwargs because the very first flush Trame does
-        # at startup may pre-date the setdefault on these state vars (depends
-        # on import order); without defaults Trame raises TypeError when it
-        # invokes the handler without the missing kwarg.
+        # Default values on the kwargs: the very first Trame flush at
+        # startup may pre-date the setdefault on these state vars
+        # (depends on import order). Without defaults Trame raises
+        # TypeError when it invokes the handler without the kwarg.
         @state.change("active_color_array_name", "active_property_kind")
         def _on_active_change(active_color_array_name=None, active_property_kind=None, **_):
             kind = active_property_kind or ""
@@ -219,7 +224,6 @@ class CategoricalColorEditor(html.Div):
             else:
                 state.categorical_entries = []
 
-        # ---------- back-end: apply VColorPicker change to LUT ----------------
         @state.change("cce_pending_change")
         def _on_pending_change(cce_pending_change=None, **_):
             if not cce_pending_change:
@@ -231,14 +235,13 @@ class CategoricalColorEditor(html.Div):
             except (TypeError, ValueError):
                 pass
             finally:
-                # Reset the sentinel so the next color tick re-triggers the
-                # watcher (Trame ignores writes that don't change the value).
                 state.cce_pending_change = None
 
-    # ------------------------------------------------------------------
-    # Build state.categorical_entries from VTK array + LUT
-    # ------------------------------------------------------------------
     def _refresh(self, array_name: str):
+        """Rebuild state.categorical_entries from the active source's
+        VTK array + the LUT's IndexedColors / IndexedOpacities. Seeds
+        a categorical preset on the first activation if the LUT has no
+        per-category colours yet."""
         if not array_name:
             state.categorical_entries = []
             return
@@ -257,7 +260,6 @@ class CategoricalColorEditor(html.Div):
             state.categorical_entries = []
             return
 
-        # 1. unique values from the VTK array (cell or point data)
         _t = time.perf_counter()
         try:
             vtk_obj = active_source.GetClientSideObject()
@@ -273,8 +275,8 @@ class CategoricalColorEditor(html.Div):
                 arr = _find_array_in_store(store, array_name)
                 if arr is not None:
                     vtk_arr = arr
-                    # Use the actual VTK array name for downstream LUT lookup
-                    # — the user-facing title may have been sanitized.
+                    # Use the actual VTK name (the title we got may be
+                    # the un-sanitized RESQML one).
                     actual_name = arr.GetName()
                     if actual_name and actual_name != array_name:
                         array_name = actual_name
@@ -298,7 +300,6 @@ class CategoricalColorEditor(html.Div):
         _ms_scan = int((time.perf_counter() - _t) * 1000)
         print(f"[PERF cce] scan VTK array {n} cells → {len(sorted_vals)} uniques: {_ms_scan}ms")
 
-        # 2. existing annotations + colors from LUT
         _t = time.perf_counter()
         lut = pvsimple.GetColorTransferFunction(array_name)
         annotations = []
@@ -318,11 +319,10 @@ class CategoricalColorEditor(html.Div):
             except Exception as e:
                 print(f"[WARNING] read LUT props failed: {e}")
 
-            # If the LUT has no per-category colors yet (first time we see this
-            # array), seed it with a ParaView categorical preset. Falls back to
-            # the golden-ratio HSV palette below if the preset is unknown or
-            # doesn't fill enough colors. Try a few well-known preset names —
-            # availability varies between ParaView versions.
+            # First-time activation: seed the LUT with a categorical
+            # preset. Try a few well-known names — availability varies
+            # between ParaView versions. Falls back to the golden-ratio
+            # HSV palette below if no preset fills enough colours.
             if not existing_colors:
                 for preset in ("Categorical 1", "Set 1", "Categorical", "Set 3"):
                     try:
@@ -345,7 +345,7 @@ class CategoricalColorEditor(html.Div):
                 pass
         _ms_read = int((time.perf_counter() - _t) * 1000)
 
-        # 3. build entries; fill defaults where the LUT didn't already have a slot
+        # Build entries; fill defaults for slots the LUT didn't have.
         _t = time.perf_counter()
         entries = []
         new_colors = []
@@ -374,11 +374,11 @@ class CategoricalColorEditor(html.Div):
 
         state.categorical_entries = entries
 
-        # 4. push back to the LUT so renders pick up the (possibly default-filled)
-        # colors right away — and switch to indexed lookup if not already.
-        # `EnableOpacityMapping=1` is required for the mapper to actually
-        # consume IndexedOpacities; without it the alpha values silently get
-        # ignored and every category renders fully opaque.
+        # Push the (possibly default-filled) colours back to the LUT
+        # and switch to indexed lookup. EnableOpacityMapping=1 is
+        # required for the mapper to consume IndexedOpacities;
+        # without it alpha values are silently ignored and every
+        # category renders fully opaque.
         _t = time.perf_counter()
         ok_lookup = _set_int_property(lut, "IndexedLookup", 1)
         ok_ann = _set_string_list_property(lut, "Annotations", new_annotations)
@@ -388,16 +388,15 @@ class CategoricalColorEditor(html.Div):
         _ms_push = int((time.perf_counter() - _t) * 1000)
         print(f"[PERF cce] LUT push lookup={ok_lookup} ann={ok_ann} col={ok_col} op={ok_op} eom={ok_eom}: {_ms_push}ms")
 
-        # No Render here — the active.reservoir handler already issues the
-        # final Render after its own ColorBy + LUT setup. Calling Render
-        # again from here would double the GPU paint cost.
+        # No Render here — the active.reservoir handler issues the
+        # final Render after its own ColorBy + LUT setup. Calling
+        # Render again would double the GPU paint cost.
         _ms_total = int((time.perf_counter() - _t0) * 1000)
         print(f"[PERF cce] read={_ms_read}ms build={_ms_build}ms push={_ms_push}ms TOTAL={_ms_total}ms")
 
-    # ------------------------------------------------------------------
-    # Apply a single VColorPicker change
-    # ------------------------------------------------------------------
     def _apply_color_change(self, index: int, hex_color: str):
+        """Apply a single colour-picker change to the LUT and refresh
+        the matching categorical_entries row."""
         array_name = state.active_color_array_name or ""
         if not array_name:
             return
@@ -406,7 +405,7 @@ class CategoricalColorEditor(html.Div):
         if lut is None or lut.SMProxy is None:
             return
 
-        # Read current via SMProxy (avoid pvsimple's strict __getattr__).
+        # Read via SMProxy to avoid pvsimple's strict __getattr__.
         col_prop = lut.SMProxy.GetProperty("IndexedColors")
         op_prop = lut.SMProxy.GetProperty("IndexedOpacities")
         colors = []

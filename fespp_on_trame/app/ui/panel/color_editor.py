@@ -12,7 +12,7 @@ controller = server.controller
 
 
 def _apply_nan_color_to_lut(lut):
-    """Apply current state.nan_color (#RRGGBB or #RRGGBBAA) to a LUT."""
+    """Apply state.nan_color (#RRGGBB or #RRGGBBAA) to the given LUT."""
     nan_color = state.nan_color or ""
     hex_val = nan_color.lstrip("#")
     if len(hex_val) < 6:
@@ -27,16 +27,16 @@ def _apply_nan_color_to_lut(lut):
 
 
 class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
-    """Surcharge de ptc.ColorOpacityEditor avec NaN color en mode hexa (#RRGGBBAA)
-    pour gérer couleur ET opacité du NaN en un seul picker."""
+    """ptc.ColorOpacityEditor with a hexa (#RRGGBBAA) NaN color picker
+    so the user can pick both the colour and the alpha of NaN cells in
+    a single control."""
 
     def __init__(self):
-        # Force le format hexa avant que le parent ne pose son défaut #RRGGBB
+        # Force hexa format BEFORE the parent applies its #RRGGBB default.
         state.setdefault("nan_color", "#FF000033")
         super().__init__()
 
     def build_content(self) -> None:
-        """Même contenu que le parent, mais VColorPicker hexa à la place de ColorPicker."""
         with self:
             vuetify3.VSelect(
                 label="Select preset",
@@ -65,7 +65,6 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 histograms_color=("histograms_color", [0, 0, 0, 0.25]),
             )
 
-            # Nan color picker en hexa (#RRGGBBAA)
             with vuetify3.VMenu(close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     with vuetify3.VBtn(
@@ -107,26 +106,22 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     @change("preset_name")
     def on_preset_name_changed(self, *args, **kwargs) -> None:
-        """Surcharge : appel parent + préserve l'alpha de nan_color."""
-        # Sauvegarder l'alpha actuel avant que le parent n'écrase nan_color en #RRGGBB
+        """Wrap the parent's preset handler so the NaN alpha survives.
+        The parent rewrites nan_color in #RRGGBB and would silently
+        drop the alpha component."""
         hex_val = (self.state.nan_color or "").lstrip("#")
         saved_alpha = hex_val[6:8] if len(hex_val) >= 8 else "33"
-        # Appel du parent (met à jour le LUT, les couleurs, et écrit nan_color en #RRGGBB)
         super().on_preset_name_changed(*args, **kwargs)
-        # Ré-ajouter l'alpha
         current = (self.state.nan_color or "#FF0000").lstrip("#")[:6]
         self.state.nan_color = f"#{current}{saved_alpha}"
 
     @change("opacities")
     def on_opacities_changed(self, *args, **kwargs) -> None:
-        """EnableOpacityMapping conditionnel.
-
-        Limitation VTK : quand EnableOpacityMapping=1, le rendu ignore
-        lut.NanOpacity (l'alpha des cellules NaN est forcé à 1.0 par le
-        shader de l'OTF). On active donc l'OTF uniquement si au moins un
-        nœud d'opacité est < 1.0 — sinon on laisse EOM=0 pour préserver
-        NaN opacity dans le cas par défaut "tout opaque".
-        """
+        """Toggle EnableOpacityMapping based on whether any opacity
+        node is below 1.0. VTK limitation: when EnableOpacityMapping=1
+        the renderer ignores lut.NanOpacity (the OTF shader forces
+        NaN cells to alpha=1.0). We keep EOM=0 for the default
+        all-opaque case so NaN opacity stays effective."""
         [_, array_name] = self.get_representation_color_array_name()
         if array_name:
             lut = pvsimple.GetColorTransferFunction(array_name)
@@ -138,7 +133,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     @change("nan_color")
     def on_nan_color_changed(self, *args, **kwargs) -> None:
-        """Surcharge : applique NanColor + NanOpacity sur le LUT actif."""
+        """Apply NanColor + NanOpacity on the active LUT."""
         nan_color = self.state.nan_color
         if not nan_color or len(nan_color) < 7:
             return
@@ -152,10 +147,5 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         pvsimple.Render()
         self.ctrl.view_update()
 
-
-# NOTE: the standalone ColorEditor panel class has been merged into
-# SolidColorPanel (see solid_color_panel.py). _FesppColorOpacityEditor and
-# _apply_nan_color_to_lut remain here as shared utilities, imported by the
-# merged panel.
 
 state.setdefault("active_color_array_name", "")

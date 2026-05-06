@@ -1,10 +1,7 @@
-"""
-Configuration des icônes pour les différents types de nœuds dans les TreeViews
-"""
+"""Material Design icon map for tree node kinds."""
 
-# Mapping entre les types de nœuds et leurs icônes Material Design
 TREE_ICONS = {
-    # Reservoir types
+    # Reservoir
     "IjkGrid": "mdi-axis-arrow-info",
     "UnstructuredGrid": "mdi-data-matrix",
     "Property": "mdi-chart-box-outline",
@@ -15,52 +12,45 @@ TREE_ICONS = {
     "MultiRealization": "mdi-layers-triple",
     "MultiRealizationTimeSeries": "mdi-animation",
 
-    # Surface types
+    # Surface
     "Grid2d": "mdi-grid-large",
     "PointSet": "mdi-circle-medium",
     "TriangulatedSet": "mdi-triangle-outline",
     "PolylineSet": "mdi-vector-polyline",
-    
-    # Well types
+
+    # Well
     "Wellbore": "mdi-transmission-tower",
     "Trajectory": "mdi-pipe",
     "Frame": "mdi-vector-line",
-    "MarkerFrame":"mdi-flag-outline",
+    "MarkerFrame": "mdi-flag-outline",
     "Marker": "mdi-map-marker",
 
-    # Tree-hierarchy grouping nodes (ByInterpretation /
-    # ByFeatureAndInterpretation modes)
+    # Grouping nodes inserted by the alternate tree-hierarchy modes
+    # (ByInterpretation / ByFeatureAndInterpretation).
     "Feature": "mdi-shape-outline",
     "Interpretation": "mdi-script-text-outline",
 }
 
-def get_icon_for_type(node_type: str) -> dict:
-    """
-    Retourne l'icône et la couleur correspondant au type de nœud.
 
-    Args:
-        node_type: Le type du nœud (ex: "IjkGrid", "Property", etc.)
-
-    Returns:
-        Dict contenant 'icon' et 'color'
-    """
-    # Recherche exacte
+def get_icon_for_type(node_type: str) -> str:
+    """Return the icon name for a node kind. Falls back to a substring
+    match so e.g. "ContinuousProperty" inherits the "Property" icon
+    when no exact entry exists, and finally to mdi-folder when nothing
+    matches."""
     if node_type in TREE_ICONS:
         return TREE_ICONS[node_type]
 
-    # Recherche partielle (ex: "ContinuousProperty" contient "Property")
     for key, icon in TREE_ICONS.items():
         if key in node_type or node_type in key:
             return icon
 
-    # Fallback par défaut
     return "mdi-folder"
 
 
-# Synthetic types where the primary icon should reflect the underlying
-# property type (Continuous/Discrete/Categorical) — not the synthetic
-# wrapper. The MR/TS aspect is conveyed via secondary badges in the
-# treeview.
+# Synthetic kinds whose primary icon should reflect the underlying
+# property type (Continuous / Discrete / Categorical) instead of the
+# synthetic wrapper itself. The TS / MR aspect is conveyed via
+# secondary badges in the treeview.
 _SYNTHETIC_PROPERTY_TYPES = {
     "TimeSeries",
     "MultiRealization",
@@ -69,34 +59,24 @@ _SYNTHETIC_PROPERTY_TYPES = {
 
 
 def get_primary_icon(node_type: str, prop_kind: str = None) -> str:
-    """Return the primary icon for a tree node.
-
-    For synthetic types (TimeSeries / MultiRealization /
-    MultiRealizationTimeSeries) that collapse a sub-tree into a single
-    leaf, the icon should reflect the underlying property type — exposed
-    by FESPP as the `propKind` assembly attribute. Falls back to the
-    synthetic type's own icon when `propKind` is missing (older data).
-    """
+    """Primary icon for a tree node. For synthetic types that collapse
+    a sub-tree into a single leaf, use the underlying property kind
+    (FESPP's `propKind` attribute) so the icon matches what's
+    displayed; fall back to the synthetic type's own icon when
+    `propKind` is missing (older data)."""
     if node_type in _SYNTHETIC_PROPERTY_TYPES and prop_kind:
         return get_icon_for_type(prop_kind)
     return get_icon_for_type(node_type)
 
+
 def get_icon_expression(type_field: str = "item.type") -> str:
-    """
-    Génère une expression JavaScript pour déterminer l'icône dynamiquement.
-    Utile pour les templates Vue.
-    
-    Args:
-        type_field: Le champ contenant le type dans l'objet item
-        
-    Returns:
-        Expression JavaScript sous forme de string
-    """
+    """Build a Vue-template ternary that selects the icon name from
+    `item.type` at render time (kept for templates that resolve icons
+    inline rather than via the precomputed `item.icon`)."""
     conditions = []
     for node_type, config in TREE_ICONS.items():
         if node_type != "default":
             conditions.append(f"{type_field} === '{node_type}' ? '{config['icon']}'")
-    
-    # Ajouter le fallback
+
     expression = " : ".join(conditions) + f" : '{TREE_ICONS['default']['icon']}'"
     return expression

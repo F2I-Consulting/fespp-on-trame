@@ -1,8 +1,9 @@
-"""
-HTTP multipart endpoint for uploading large files.
+"""HTTP multipart endpoint for uploading large EPC + H5 files.
 
-Strategy: aiohttp middleware + patch AppRunner.setup() to catch
-the app that actually serves HTTP requests.
+Strategy: aiohttp middleware + patch AppRunner.setup() to catch the
+app that actually serves HTTP requests (Trame creates several
+aiohttp.Application instances during startup; the one we want is the
+one AppRunner.setup wires up — not necessarily the first one we see).
 """
 from pathlib import Path
 from aiohttp import web as aiohttp_web
@@ -28,7 +29,6 @@ def register_upload_route(server) -> bool:
                 filename = field.filename
                 filepath = Path(temp_dir) / filename
                 print(f"[Upload] Receiving {filename}...", flush=True)
-                # Check if file already exists
                 if filepath.exists():
                     print(f"[Upload] File {filename} already exists, ignored.", flush=True)
                     continue
@@ -67,13 +67,13 @@ def register_upload_route(server) -> bool:
 
     @aiohttp_web.middleware
     async def upload_middleware(request: aiohttp_web.Request, handler):
-        # Log ALL requests to diagnose which app actually serves them
         print(f"[Upload-MW] {request.method} {request.path} app_id={id(request.app)}", flush=True)
         if request.method == "POST" and request.path in ("/upload", "/paraview/upload"):
             return await handle_upload(request)
         return await handler(request)
 
-    # Patch 1: aiohttp.Application.__init__
+    # Patch 1: every aiohttp.Application created from now on gets the
+    # upload middleware injected as its first middleware.
     _orig_app_init = getattr(aiohttp_web.Application, "_fespp_orig_init", None)
     if _orig_app_init is None:
         _orig_app_init = aiohttp_web.Application.__init__
@@ -89,9 +89,10 @@ def register_upload_route(server) -> bool:
         aiohttp_web.Application._fespp_orig_init = _orig_app_init
         print("[Upload] Patch Application.__init__ installed.", flush=True)
 
-    # Patch 2: AppRunner.setup()
-    # AppRunner.setup() is called just before the app actually serves requests.
-    # We intercept it to inject routes into the effective app.
+    # Patch 2: AppRunner.setup() runs just before the app starts
+    # serving requests. Intercepting it lets us inject the middleware
+    # AND the route into the *effective* serving app, even when Trame
+    # swapped the application instance after Patch 1 ran.
     try:
         from aiohttp.web_runner import AppRunner as _AppRunner
 
@@ -102,16 +103,18 @@ def register_upload_route(server) -> bool:
             async def _patched_runner_setup(self_runner, *args, **kwargs):
                 app = self_runner.app
                 print(f"[Upload] AppRunner.setup() app_id={id(app)} type={type(app).__name__}", flush=True)
-                # Inject middleware if not already present
                 mw_list = list(app.middlewares)
                 if upload_middleware not in mw_list:
-                    # Insert via _middlewares (before freeze)
+                    # Insert via _middlewares (the public list is
+                    # frozen at this point; the underlying tuple is
+                    # the only way in).
                     try:
                         app._middlewares = (upload_middleware,) + tuple(mw_list)
                         print("[Upload] Middleware injected into serving app.", flush=True)
                     except Exception as exc:
                         print(f"[Upload] Middleware injection failed: {exc}", flush=True)
-                # Also inject the route (belt-and-suspenders)
+                # Belt-and-suspenders: also register the route on the
+                # router (some configurations bypass middleware).
                 try:
                     router = app.router
                     was_frozen = getattr(router, "_frozen", False)

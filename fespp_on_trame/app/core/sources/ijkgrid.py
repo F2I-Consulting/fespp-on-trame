@@ -13,29 +13,32 @@ ctrl = server.controller
 
 
 class IjkGrid:
+    """Slicer / volume rendering for the *currently active* IJK grid.
+    Owns one rep_data filter (the EnergisticsExtractor on the
+    collector) plus an ExplicitStructuredGridCrop per slicer position
+    on each axis and one for the volume mode. Only one IJK grid can be
+    active at a time; switching grids tears down all sources and
+    rebuilds them."""
+
     def __init__(self, collector: Collector, tree: Tree):
         self._collector = collector
         self._tree = tree
         self._node_id = None
         self._title = None
         self._property_path = None
-        # Current coloring state — needed to apply colors to dynamically added sources
         self._current_array_type = None
         self._current_property_type = None
         self._current_extent = None  # [x0,x1,y0,y1,z0,z1]
 
-        # ParaView sources — lists for multi-slice support (one list per axis)
         self._src_extract_init = None
         self._src_slicers_i = []
         self._src_slicers_j = []
         self._src_slicers_k = []
         self._src_slicer_volume = None
 
-    # -------------------------------------------------------------------------
-    # Helpers
-    # -------------------------------------------------------------------------
-
     def color_array_type(self, name) -> None:
+        """Return 'CELLS' / 'POINTS' / 'FIELD' depending on which data
+        store of the first I-axis slicer holds the named array."""
         src = self._src_slicers_i[0] if self._src_slicers_i else None
         if src is None:
             return None
@@ -54,7 +57,6 @@ class IjkGrid:
         return self._src_slicers_i + self._src_slicers_j + self._src_slicers_k
 
     def _delete_all_sources(self):
-        """Delete every slice source and the extract source."""
         view = pvsimple.GetActiveView()
         pvsimple.SetActiveSource(None)
         for src in self._all_slice_sources():
@@ -81,7 +83,8 @@ class IjkGrid:
             self._src_extract_init = None
 
     def _create_slice_source(self, axis: str, idx: int):
-        """Create and return a new ExplicitStructuredGridCrop for (axis, idx)."""
+        """Create and return a new ExplicitStructuredGridCrop for
+        (axis, idx)."""
         src = pvsimple.ExplicitStructuredGridCrop(
             registrationName=f'slicer{axis}_{idx}',
             Input=self._src_extract_init,
@@ -98,15 +101,14 @@ class IjkGrid:
         return src
 
     def _sync_slice_sources(self, axis: str, count: int):
-        """Ensure exactly `count` slicer sources exist for the given axis."""
+        """Ensure exactly `count` slicer sources exist for the given
+        axis."""
         if self._src_extract_init is None:
             return
         srcs = getattr(self, f'_src_slicers_{axis}')
-        # Add missing sources
         while len(srcs) < count:
             src = self._create_slice_source(axis, len(srcs))
             srcs.append(src)
-        # Remove excess sources
         view = pvsimple.GetActiveView()
         while len(srcs) > count:
             src = srcs.pop()
@@ -116,11 +118,13 @@ class IjkGrid:
             except Exception:
                 pass
 
-    # -------------------------------------------------------------------------
-    # Public API
-    # -------------------------------------------------------------------------
-
     def set_node_id(self, node_id):
+        """Switch the active IJK grid. Passing None tears everything
+        down. Passing a node id:
+        - If it points to a different IJK grid than the current one,
+          delete all sources and rebuild from scratch.
+        - Otherwise, treat it as a property change within the same
+          grid (refresh ColorBy on every slicer)."""
         if node_id is None:
             if self._node_id is not None:
                 self._delete_all_sources()
@@ -131,17 +135,17 @@ class IjkGrid:
         if ijkgrid_node_id is None:
             return
 
-        if self._node_id != ijkgrid_node_id:  # new IjkGrid — rebuild all sources
+        if self._node_id != ijkgrid_node_id:
             if self._node_id is not None:
                 self._delete_all_sources()
 
             self._node_id = ijkgrid_node_id
             self._property_path = self._tree.find_path(node_id)
-            # Trigger the FESPP-side extract via the proxy property mechanism
-            # (same path as RepSources). The producer's registration name is
-            # read back from the information-only property. The producer's
-            # output preserves the real VTK type (vtkExplicitStructuredGrid),
-            # which ExplicitStructuredGridCrop below requires.
+            # Trigger the FESPP-side extract via the proxy property
+            # mechanism (same path as RepSources). The producer's
+            # output preserves the real VTK type
+            # (vtkExplicitStructuredGrid), which
+            # ExplicitStructuredGridCrop below requires.
             ijkgrid_rep_path = self._tree.find_path(ijkgrid_node_id)
             coll_proxy = self._collector.get_source().SMProxy
             vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
@@ -174,13 +178,9 @@ class IjkGrid:
                 src.UpdatePipelineInformation()
 
             rep_type = state.representation_active or 'Surface'
-            # Apply the assigned default solid color to every slicer display
-            # so the grid is visible in its unique color even before the
-            # user picks a property. The IjkGrid grid_path is the same for
-            # all its slicers (1 entry in solid_color_by_rep).
             grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
-            # Configure the rep_data filter's display too — for volume mode
-            # we display IT directly instead of slicervolume (PV6's
+            # Configure the rep_data filter's display too — for volume
+            # mode we display IT directly instead of slicervolume (PV6's
             # vtkExplicitStructuredGridCrop produces a degenerate 1-cell
             # output even with OutputWholeExtent set to the full grid).
             for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
@@ -191,7 +191,6 @@ class IjkGrid:
             self.update_block_visibility()
             self.show()
 
-            # Initialise ranges and list state from grid extent
             data_info = self._src_extract_init.GetDataInformation()
             extent = list(data_info.GetExtent())
             self._current_extent = extent
@@ -217,20 +216,20 @@ class IjkGrid:
 
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.OutputWholeExtent = extent
-            # The slicers ran their first RequestData via Show() above, but at
-            # that point OutputWholeExtent was still the default (often empty
-            # / invalid), producing an empty output. Now that we've set the
-            # real extent, force a re-execute so the cached output reflects
-            # the actual cropped grid (with CellData arrays propagated from
-            # the rep_data filter). Without this, the slicer's CellData stays
-            # empty until something else triggers UpdatePipeline downstream.
+            # The slicers ran their first RequestData via Show() above
+            # but at that point OutputWholeExtent was still the default
+            # (often empty / invalid), producing an empty output. Now
+            # that we've set the real extent, force a re-execute so the
+            # cached output reflects the cropped grid (with CellData
+            # arrays propagated from the rep_data filter). Without
+            # this, the slicer's CellData stays empty until something
+            # else triggers UpdatePipeline downstream.
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 try:
                     src.UpdatePipeline()
                 except Exception:
                     pass
 
-        # Property change within the same grid
         property_title = self._tree.find_title(node_id)
         property_type = self._tree.find_type(node_id)
         if property_title != self._title:
@@ -250,13 +249,15 @@ class IjkGrid:
             self.show()
 
     def show(self):
+        """Show / hide the right combination of sources for the current
+        slicer mode. Slice mode displays the per-axis crops; volume
+        mode displays the rep_data filter directly because PV6's
+        ExplicitStructuredGridCrop produces a degenerate 1-cell output
+        on the full extent (see investigation in fespp_active.py)."""
         if self._node_id is None:
             return
         view = pvsimple.GetActiveView()
         if state.ui_slices_range_mode == 'slice':
-            # Slice mode: i/j/k crops are the visible sources. Hide the
-            # volume sources (rep_data + slicervolume) — actual slicing
-            # works via ExplicitStructuredGridCrop on each axis.
             if self._src_extract_init is not None:
                 pvsimple.Hide(proxy=self._src_extract_init, view=view)
             if self._src_slicer_volume is not None:
@@ -274,11 +275,6 @@ class IjkGrid:
                 visible = vis_k[idx] if idx < len(vis_k) else True
                 (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
         else:
-            # Volume mode: show the rep_data filter directly. Bypass
-            # slicervolume because PV6's vtkExplicitStructuredGridCrop
-            # produces a degenerate 1-cell output even with the correct
-            # OutputWholeExtent — see investigation in fespp_active.py
-            # (target.NumberOfCells=1 vs upstream.NumberOfCells=N).
             if self._src_slicer_volume is not None:
                 pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
             for src in self._all_slice_sources():
@@ -297,6 +293,9 @@ class IjkGrid:
         return 0.2
 
     def update_colors(self, src, array_type, property_title, property_type):
+        """Apply a ColorBy on a single slicer source: set the lookup
+        table, the scalar bar's title / format, and hide the scalar
+        bar of the previously selected array."""
         representation = pvsimple.GetRepresentation(proxy=src, view=pvsimple.GetActiveView())
         representation.ColorArrayName = [array_type, property_title]
         lut = pvsimple.GetColorTransferFunction(property_title)
@@ -318,6 +317,9 @@ class IjkGrid:
                 pass
 
     def update_block_visibility(self):
+        """Mirror the property selection on the parent multiblock's
+        BlockSelectors (excluding the property path itself, which is
+        rendered through the per-axis slicers)."""
         if self._property_path is not None and self._property_path in state.fespp_data_selectors:
             blockSelectors = state.fespp_data_selectors.copy()
             blockSelectors.remove(self._property_path)
@@ -325,6 +327,9 @@ class IjkGrid:
             print(f"Updated block selectors for {self._property_path}: {blockSelectors}")
 
     def update_slices(self, slices_i_list, slices_j_list, slices_k_list):
+        """Sync the per-axis slicer sources with the position lists,
+        creating / deleting sources as needed and updating
+        OutputWholeExtent on each one."""
         if self._node_id is None:
             return
         self._sync_slice_sources('i', len(slices_i_list))

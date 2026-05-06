@@ -32,9 +32,13 @@
 *.app
 /.venv
 /fespp_on_trame.egg-info
-/fespp_on_trame/__pycache__
 fespp_on_trame/app/core/fespp_engine copy.py
-/tests/__pycache__
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 
 # FESPP local source (for local build mode)
 /fespp-src-local/

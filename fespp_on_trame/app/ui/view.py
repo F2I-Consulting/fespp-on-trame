@@ -16,72 +16,46 @@ from fespp_on_trame.app.ui.panel.solid_color_panel import SolidColorPanel
 from fespp_on_trame.app.ui.panel.representation_type_panel import RepresentationTypePanel
 from fespp_on_trame.app.ui.config.tree_selection import get_item_props_js
 
-# new modular imports
 from fespp_on_trame.app.ui.toolbar import Toolbar
 from fespp_on_trame.app.ui.helpers import create_card
 from fespp_on_trame.app.ui.import_dialog import ImportDialog
 from fespp_on_trame.app.ui.tree_views import TreeViews
 
-# NOTE: This file was partially refactored to improve maintainability.
-# - Toolbar UI moved to `fespp_on_trame.app.ui.toolbar.Toolbar`
-# - Import dialog moved to `fespp_on_trame.app.ui.import_dialog.ImportDialog`
-# - Card helper moved to `fespp_on_trame.app.ui.helpers.create_card`
 
-
-
-# -----------------------------------------------------------------------------
-# Trame Server Setup and State Initialization
-# -----------------------------------------------------------------------------
-
-# Get the Trame server instance
 server = get_server()
-# Access Trame state (reactive variables shared between server and client)
 state = server.state
-# Access Trame controller (functions accessible from the client)
 controller = server.controller
 
-# Initialize state variables
-state.dialog_visible = False     # Controls the visibility of the file import dialog
-state.execute_action = False     # Flag to trigger the file processing function (run_action)
-state.ui_time_label = ""         # Label for displaying current time step in the UI
-state.drawer_width = 500         # Initial drawer width (set once; resize is handled via pure JS)
+state.dialog_visible = False
+state.execute_action = False
+state.ui_time_label = ""
+# Drawer width is set once; live resize is handled via the JS hook
+# below (no Trame round-trip per drag step).
+state.drawer_width = 500
 
-state.init_height_dataexplorer = "50vh"        # Initial height for the data explorer card
-state.init_height_attribute = "600px"         # Initial height for the attribute card
-
-# NOTE: Tree opened-nodes initialization is now handled by TreeViews class
-# See: fespp_on_trame.app.ui.tree_views.TreeViews.__init__
-
-# NOTE: Import action is now handled by ImportDialog class which manages its own state change handler
-# See: fespp_on_trame.app.ui.import_dialog.ImportDialog._on_execute_action
+state.init_height_dataexplorer = "50vh"
+state.init_height_attribute = "600px"
 
 
-# -----------------------------------------------------------------------------
-# General UI Definition
-# -----------------------------------------------------------------------------
 def ui(server: Server, **kwargs) -> None:
-    """
-    Defines the main user interface layout and components using Trame's Vuetify3 bindings.
-    """
-    # Get logo from public folder using LocalFileManager
+    """Build the main UI layout (toolbar, drawer, tabs, render area)."""
     localFileManager = LocalFileManager(PUBLIC_PATH)
     localFileManager.url("logo", "logo.png")
-    
-    # Use the SinglePageWithDrawerLayout for the main structure (with a side panel)
+
     with SinglePageWithDrawerLayout(
         server,
-        width=("drawer_width", 500), # Initial width (JS resize script handles live resizing)
+        width=("drawer_width", 500),
     ) as layout:
-        
-        # Set application title in the browser tab and toolbar
+
         layout.title.set_text(TRAME_APP_TITLE)
 
-        # CSS fixes for ptc components (trame_client.Style injects into document head)
+        # CSS fix for ptc components — trame_client.Style injects a
+        # real <style> in the document head (unlike html.Style).
         trame_client.Style(".te-align-center .v-row { align-items: center; }")
 
-        # Hide default trame footer bar ("Powered by trame", "?", copyright)
-        # trame_client.Style injects a real <style> in the document head (unlike html.Style)
-        # --v-layout-bottom reset prevents Vuetify from reserving space for the hidden footer
+        # Hide the default trame footer ("Powered by trame", "?",
+        # copyright). The --v-layout-bottom reset prevents Vuetify
+        # from reserving space for the hidden footer.
         trame_client.Style(
             "footer, .v-footer {"
             "  display: none !important;"
@@ -92,26 +66,24 @@ def ui(server: Server, **kwargs) -> None:
             ".v-layout { --v-layout-bottom: 0 !important; }"
         )
 
-        # Application icon (logo)
         with layout.icon:
             vuetify3.VImg(src=localFileManager["logo"], height="35", width="35")
 
-        # Initialize import dialog (registers state change handler internally)
         import_dialog = ImportDialog(state, controller)
 
         # Initialize tree views (registers opened-nodes handler and initializes state)
-        # Pass the engine's Tree instance so dependency-expansion handlers can
-        # walk the assembly (groupings → descendants, Channel/Marker → Trajectory).
+        # Pass the engine's Tree instance so the dependency-expansion
+        # handler can walk the assembly (groupings → descendants,
+        # Channel/Marker → Trajectory).
         tv = TreeViews(controller, state, fespp_engine._tree)
 
-        # Main application toolbar -> delegate to Toolbar class
         with layout.toolbar:
             toolbar = Toolbar(localFileManager, import_dialog)
             toolbar.render()
 
-        # Side Drawer (Navigation/Control Panel)
         with layout.drawer as drawer:
-            # Upload progress overlay — covers the full drawer while uploading
+            # Upload progress overlay — covers the full drawer while
+            # uploading.
             with html.Div(
                 v_show="upload_uploading",
                 style=(
@@ -133,65 +105,51 @@ def ui(server: Server, **kwargs) -> None:
                     style="color: white; font-size: 0.95rem; margin: 0;",
                 )
 
-            # Resizing Handle (VDivider or VSheet)
-            # Position the handle on the right edge and give it a 'resize' cursor style
+            # Resize handle on the right edge of the drawer.
             with vuetify3.VSheet(
                 classes="position-absolute h-100 fespp-drawer-resize-handle",
                 style="right: -4px; cursor: ew-resize; z-index: 1000; width: 8px; background-color: transparent;",
             ):
                 vuetify3.VDivider(vertical=True, classes="h-100")
-                
-            with vuetify3.VContainer(fluid=True, classes="pa-0"): # Make the container fluid and remove its default padding
-        
-                # --- 1. Tabs (VTabs) ---
-                with vuetify3.VTabs(v_model=("tab", None), 
-                            classes="bg-grey-lighten-4", 
-                            color="blue", 
+
+            with vuetify3.VContainer(fluid=True, classes="pa-0"):
+
+                with vuetify3.VTabs(v_model=("tab", None),
+                            classes="bg-grey-lighten-4",
+                            color="blue",
                             density="comfortable",
                             grow=True,
-                            selected_class="font-weight-bold text-blue"): 
+                            selected_class="font-weight-bold text-blue"):
                     vuetify3.VTab("Reservoir ({{ ui_subtree_reservoir ? ui_subtree_reservoir.length : 0 }})", value="reservoir")
                     vuetify3.VTab("Surface ({{ ui_subtree_surface ? ui_subtree_surface.length : 0 }})", value="surface")
                     vuetify3.VTab("Well ({{ ui_subtree_well ? ui_subtree_well.length : 0 }})", value="well")
-                
-                # --- 2. Tab Content (always-rendered, visibility via v_show) ---
+
+                # All three tabs are mounted at once and their visibility
+                # is toggled via v_show — this preserves expansion /
+                # active state when the user switches tabs.
                 with html.Div(classes="pa-4"):
 
-                    # ------------------------------------
-                    # Reservoir Tab Content
-                    # ------------------------------------
                     with html.Div(v_show="tab === 'reservoir'"):
-                        # Data Explorer Treeview CARD
                         with create_card(
                             "Data Explorer",
                             "mdi-file-tree",
                             "init_height_dataexplorer",
                         ):
-                            # Treeview for displaying reservoir data hierarchy (extracted)
                             with vuetify3.VSheet(classes="pa-2"):
                                 tv.reservoir_tree()
-                        # Node Attribute CARD
                         with create_card(
                             "Attributes",
                             "mdi-information",
                             "init_height_attribute",
                         ):
                             with vuetify3.VSheet(classes="pa-2"):
-                                # Show attribute controls only when a reservoir node is active
                                 with html.Div(v_if="ui_active_node_reservoir && ui_active_node_reservoir.length > 0"):
                                     with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
                                         panel_slicers.SlicerControls()
-
-                                        # Display type per representation (Surface / Wireframe / …)
                                         RepresentationTypePanel()
-
-                                        # Merged Colors & Opacity panel — Property/Solid toggle,
-                                        # color picker (Solid) and LUT/PWF editor (Property)
                                         SolidColorPanel()
 
-                    # Surface Tab Content
                     with html.Div(v_show="tab === 'surface'"):
-                        # Data Explorer Treeview CARD for surface data
                         with create_card(
                             "Data Explorer",
                             "mdi-file-tree",
@@ -199,22 +157,20 @@ def ui(server: Server, **kwargs) -> None:
                         ):
                             with vuetify3.VSheet(classes="pa-2"):
                                 tv.surface_tree()
-                        # Node Attribute CARD
                         with create_card(
                             "Attributes",
                             "mdi-information",
                             "init_height_attribute"
                         ):
                             with vuetify3.VSheet(classes="pa-2"):
-                                # Only show attributes if active node is also selected
+                                # Show the panel only when the active
+                                # node is also currently checked.
                                 with html.Div(v_if="ui_active_node_surface.length > 0 && ui_select_node_surface.includes(ui_active_node_surface[0])"):
                                     with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
                                         RepresentationTypePanel()
                                         SolidColorPanel()
 
-                    # Well Tab Content
                     with html.Div(v_show="tab === 'well'"):
-                        # Data Explorer Treeview CARD for well data
                         with create_card(
                             "Data Explorer",
                             "mdi-file-tree",
@@ -222,44 +178,34 @@ def ui(server: Server, **kwargs) -> None:
                         ):
                             with vuetify3.VSheet(classes="pa-2"):
                                 tv.well_tree()
-                        # Node Attribute CARD
                         with create_card(
                             "Attributes",
                             "mdi-information",
                             "init_height_attribute"
                         ):
                             with vuetify3.VSheet(classes="pa-2"):
-                                # Only show attributes if active node is also selected
                                 with html.Div(v_if="ui_active_node_well.length > 0 && ui_select_node_well.includes(ui_active_node_well[0])"):
                                     with vuetify3.VExpansionPanels(style="display: initial;", classes="mb-2"):
                                         RepresentationTypePanel()
                                         SolidColorPanel()
-                            
-                # General parameters CARD
-                # On utilise la fonction d'aide 'create_card' pour avoir le même look and feel
-                # que "Data Explorer" et "Attributes".
+
                 with create_card(
                     "General Display Settings",
-                    "mdi-cogs", # Icône appropriée pour les paramètres généraux
+                    "mdi-cogs",
                     "init_height_attribute"
                 ):
-                    # Tout le contenu de la carte est placé dans un VSheet avec padding (grâce à create_card),
-                    # puis on utilise VExpansionPanels/VExpansionPanel pour le contenu interne.
                     with vuetify3.VExpansionPanels(classes="mt-0", elevation=10,):
                         with vuetify3.VExpansionPanel(
-                            title="Display Options", # Titre du panneau déroulant
+                            title="Display Options",
                             value="display_options",
                             elevation=0,
                             classes="border-b"
                         ) as expansion_panel:
-                            # 💡 VExpansionPanelText est CRUCIAL pour que les composants aient un padding correct
                             with vuetify3.VExpansionPanelText(classes="pa-2"):
 
-                                # Display type (Surface / Wireframe / …) is now per-representation;
-                                # see RepresentationTypePanel inside each rep's attribute panel.
-
-                                # Transformation (Scale Z only) — stays global on purpose:
-                                # vertical exaggeration only makes sense across the whole scene.
+                                # Z-scale stays global on purpose:
+                                # vertical exaggeration only makes
+                                # sense across the whole scene.
                                 html.Div("Transformation", classes="text-caption text-uppercase font-weight-bold mb-n1")
                                 te = ptc.TransformEditor(
                                     show_translation=False,
@@ -294,12 +240,12 @@ def ui(server: Server, **kwargs) -> None:
                 
                                 vuetify3.VDivider(classes="my-3")
 
-                                # Load mode — toggle between auto-load and manual.
-                                # Manual mode lets the user check several nodes across
-                                # tabs without paying the load cost on every click;
-                                # the toolbar "Load" button pushes them all at once.
-                                # (Visibility on/off is separate — driven by the eye
-                                # icons next to each loaded node.)
+                                # Manual mode lets the user check several
+                                # nodes across tabs without paying the
+                                # load cost on every click; the toolbar
+                                # Load button pushes them all at once.
+                                # Visibility on/off is independent —
+                                # driven by the eye icons in the trees.
                                 html.Div("Load Mode", classes="text-caption text-uppercase font-weight-bold mb-2")
                                 with vuetify3.VBtnToggle(
                                     v_model=("load_mode", "auto"),
@@ -314,11 +260,11 @@ def ui(server: Server, **kwargs) -> None:
 
                                 vuetify3.VDivider(classes="my-3")
 
-                                # Tree hierarchy mode — controls how reps are grouped
-                                # in the trees. Useful when several reps share a name
-                                # but differ by Interpretation (e.g. variants of the
-                                # same grid). Changing the mode rebuilds the assembly
-                                # on the C++ side and resets the selection.
+                                # Switching the mode rebuilds the C++
+                                # assembly and resets every selection
+                                # / visibility / coloring state — see
+                                # the snackbar at the bottom of the
+                                # layout.
                                 html.Div("Tree Hierarchy", classes="text-caption text-uppercase font-weight-bold mb-2")
                                 with vuetify3.VBtnToggle(
                                     v_model=("tree_hierarchy_mode", "flat"),
@@ -332,8 +278,6 @@ def ui(server: Server, **kwargs) -> None:
                                     vuetify3.VBtn("By Interp.", value="by_interpretation", size="small")
                                     vuetify3.VBtn("By Feat.+Interp.", value="by_feature_and_interpretation", size="small")
 
-                                # Permanent caption under the toggle so the user knows
-                                # before clicking that switching wipes the selection.
                                 with html.Div(classes="d-flex align-start mb-3"):
                                     vuetify3.VIcon(
                                         "mdi-alert-circle-outline",
@@ -351,20 +295,18 @@ def ui(server: Server, **kwargs) -> None:
 
                                 vuetify3.VDivider(classes="my-3")
 
-                                # 3. Couleur de fond (Background Color)
                                 with html.Div(classes="d-flex align-center pt-2"):
                                     html.Span(
                                         "Background Color:",
-                                        classes="text-caption font-weight-medium mr-3" # Label pour le picker
+                                        classes="text-caption font-weight-medium mr-3"
                                     )
                                     ptc.PalettePicker(
-                                        color = "blue",
+                                        color="blue",
                                         base_color="blue",
                                         item_color="blue",
                                         flat=True,
                                     )
-                        
-        # Main Content Area (3D Viewer + Log panel below)
+
         with layout.content:
             vuetify3.VOverlay(
                 v_if=("trame__busy",),
@@ -374,10 +316,10 @@ def ui(server: Server, **kwargs) -> None:
                 class_="d-flex align-center justify-center",
             )
 
-            # Flex column: 3D view grows, log panel stays at bottom without overlapping
+            # Flex column: the 3D view grows; the log panel stays at
+            # the bottom without overlapping.
             with html.Div(style="display: flex; flex-direction: column; height: 100%; width: 100%;"):
 
-                # ---- 3D Render area ----
                 with html.Div(style="flex: 1; position: relative; overflow: hidden; min-height: 0;"):
                     view = paraview.VtkRemoteView(
                         pvsimple.GetActiveViewOrCreate("RenderView") if pvsimple else None,
@@ -387,7 +329,6 @@ def ui(server: Server, **kwargs) -> None:
                         style="width: 100%; height: 100%;",
                     )
 
-                    # Floating buttons for camera reset
                     ptc.ResetCameraButtons(
                         classes="position-absolute top-0 left-0 ma-2",
                         variant="text",
@@ -395,7 +336,6 @@ def ui(server: Server, **kwargs) -> None:
                         direction="vertical",
                     )
 
-                    # Time controls (Top Center)
                     with vuetify3.VRow(
                         justify="center",
                         classes="position-absolute top-0 w-100 pa-0 ma-0",
@@ -407,7 +347,6 @@ def ui(server: Server, **kwargs) -> None:
                         ):
                             ptc.TimeControl(namespace="time_view", time_expression="ui_time_label")
 
-                    # Loading Progress Bar
                     with html.Div(
                         v_if=("trame__busy",),
                         style="position: absolute; bottom: 0; width: 100%; left: 0;",
@@ -422,13 +361,12 @@ def ui(server: Server, **kwargs) -> None:
                             classes="w-100 pa-0 ma-0",
                         )
 
-                    # Link view callbacks
                     server.controller.view_replace = view.replace_view
                     server.controller.view_update = view.update
                     server.controller.view_reset_camera = view.reset_camera
                     server.controller.on_server_ready.add(server.controller.view_update)
 
-                # ---- VTK Log Panel — visible below the 3D view only when messages exist ----
+                # VTK log panel — visible only when messages exist.
                 with html.Div(
                     v_show="vtk_log_messages && vtk_log_messages.length > 0",
                     style=(
@@ -437,7 +375,6 @@ def ui(server: Server, **kwargs) -> None:
                         " border-top: 2px solid #444;"
                     ),
                 ):
-                    # Floating action buttons — top-right, offset left to avoid scrollbar overlap
                     with html.Div(
                         style=(
                             "position: absolute; top: 2px; right: 28px; z-index: 200;"
@@ -453,7 +390,6 @@ def ui(server: Server, **kwargs) -> None:
                             click="vtk_log_messages = []; $event.stopPropagation()",
                         )
 
-                    # Expandable log zone — collapsed by default, title shows live counts
                     with vuetify3.VExpansionPanels(
                         v_model=("log_panel_open", []),
                         multiple=True,
@@ -472,7 +408,6 @@ def ui(server: Server, **kwargs) -> None:
                                     " background: rgba(18,18,18,0.97);"
                                 ),
                             ):
-                                # Error count in red, warning count in orange
                                 html.Span(
                                     "{{ (vtk_log_messages||[]).filter(function(m){return m.level==='error'}).length }}",
                                     style="color: #ef5350; font-weight: bold;",
@@ -485,7 +420,6 @@ def ui(server: Server, **kwargs) -> None:
                                 html.Span(" warning(s)", style="color: #888;")
 
                             with vuetify3.VExpansionPanelText(classes="pa-0"):
-                                # Scroll container — ~8 visible lines, auto-scroll on new entries
                                 with html.Div(
                                     id="vtk-log-container",
                                     style=(
@@ -515,7 +449,10 @@ def ui(server: Server, **kwargs) -> None:
                                     ):
                                         html.Span("{{ msg.text }}")
 
-        # Auto-scroll (trame_client.Script injects a real executable <script> in the document)
+        # Hide-footer + log auto-scroll + drawer resize handle. All
+        # pure-JS to avoid trame/server round-trips per drag step.
+        # trame_client.Script injects a real executable <script>
+        # element (unlike html.Script).
         trame_client.Script("""
 (function () {
     function hideEl(el) {
@@ -597,9 +534,9 @@ def ui(server: Server, **kwargs) -> None:
 })();
 """)
 
-        # Snackbar shown after a tree-hierarchy mode change wipes a non-empty
-        # selection — extra confirmation that the user's current picks were
-        # discarded and they need to re-select under the new layout.
+        # Shown after a tree-hierarchy mode change wipes a non-empty
+        # selection — extra confirmation that the user's previous
+        # picks have been discarded.
         with vuetify3.VSnackbar(
             v_model=("tree_hierarchy_snackbar_visible", False),
             timeout=4500,

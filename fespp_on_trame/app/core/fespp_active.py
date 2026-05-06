@@ -7,13 +7,12 @@ from paraview import simple as pvsimple
 from fespp_on_trame.app.core.fespp_tree import Tree
 
 
-# Mirror of FESPP's C++ MakeValidNodeName
-# (ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx). FESPP strips any
-# character outside [-.0-9A-Z_a-z] from property titles before using them as
-# VTK array names. The tree's `title` attribute keeps the original RESQML
-# title (with spaces, parentheses, etc.), so a direct GetArray(title) lookup
-# fails when the title contains stripped characters. This helper produces the
-# sanitized variant used to retry the lookup.
+# Mirror of FESPP's C++ MakeValidNodeName. FESPP strips characters
+# outside [-.0-9A-Z_a-z] from property titles before using them as VTK
+# array names; the tree's `title` attribute keeps the original RESQML
+# title (with spaces, parentheses, etc.), so a direct GetArray(title)
+# lookup fails when the title contains stripped characters. This regex
+# produces the sanitized variant used to retry the lookup.
 _VTK_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
 
 
@@ -35,9 +34,11 @@ def _find_array_in_store(store, name):
         return store.GetArray(sanitized)
     return None
 
+
 server = get_server()
 state = server.state
 controller = server.controller
+
 
 def _nan_opacity_from_state():
     """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""
@@ -51,11 +52,9 @@ def _nan_opacity_from_state():
 
 
 def _drill_to_inner(vtk_out):
-    """If vtk_out is a vtkPartitionedDataSetCollection (e.g. for sources
-    whose output is the global multiblock), drill down to the first inner
-    partition. Otherwise return as-is. Defensive helper: the rep_data
-    filter outputs single-piece so this is a no-op there, but kept in case
-    a downstream wrapping ever adds a composite layer."""
+    """If vtk_out is a vtkPartitionedDataSetCollection, return its first
+    inner partition; otherwise return as-is. Defensive helper kept in
+    case a downstream wrapping ever adds a composite layer."""
     if vtk_out is None:
         return None
     if hasattr(vtk_out, 'GetPartitionedDataSet'):
@@ -69,28 +68,32 @@ def _drill_to_inner(vtk_out):
 
 
 class Activator:
+    """Reacts to active-node changes in the three trees and updates the
+    Attributes panel + LUT/PWF for the active node. ColorBy itself is
+    owned by ui_active_array_by_rep (the eye state) — this class just
+    refreshes the panel and re-applies ColorBy when the eye is open."""
+
     def __init__(self, tree: Tree, rep_sources=None):
         self._tree = tree
         self._rep_sources = rep_sources
 
-        # Track the array currently colorized per rep. ParaView keys color
-        # bars by LUT (one per array name globally), so when a rep switches
-        # property A → B we must hide A's color bar — otherwise it stacks
-        # on top of B's bar in the view. We only hide A's bar if NO other
-        # rep is still colored by A (multiple reps can share a LUT/bar).
+        # Track the array currently colorized per rep. ParaView keys
+        # color bars by LUT (one per array name globally), so when a rep
+        # switches property A → B we must hide A's bar — otherwise it
+        # stacks on top of B's bar in the view. We only hide A's bar if
+        # NO other rep is still colored by A (multiple reps can share a
+        # LUT/bar).
         self._current_array_by_rep = {}
 
-        # ----- Helper: validate that the active node belongs to a checked
-        # subtree before letting the activation proceed. Reuses tree paths
-        # rather than walking parents (cheap; assembly paths are cached on
-        # the C++ side). Catches both directions:
-        #   - node_id is/under a selected node (checked rep, click property)
-        #   - node_id is an ancestor of a selected node (checked property,
-        #     click parent rep — the rep loads as a side effect)
-        # Works in both auto and manual load modes since `select_list` is
-        # the raw checkbox state (`state.ui_select_node_*`), updated as soon
-        # as the user toggles a checkbox regardless of load_mode.
         def _is_node_active_able(node_id, select_list):
+            """Return True when the active candidate belongs to a
+            currently-checked subtree. Catches both directions:
+              - node_id is or under a selected node;
+              - node_id is an ancestor of a selected node (e.g. user
+                checks a property and clicks the parent rep — the rep
+                loads as a side effect).
+            Works in both auto and manual load modes since the select
+            list is the raw checkbox state (`ui_select_node_*`)."""
             if not select_list or node_id is None or node_id == 0:
                 return False
             rep_node_id = self._tree.find_representation_node(node_id)
@@ -110,45 +113,38 @@ class Activator:
                     return True
             return False
         self._is_node_active_able = _is_node_active_able
-        
+
         state.setdefault("ui_active_node_reservoir", [])
         state.setdefault("ui_active_node_surface", [])
         state.setdefault("ui_active_node_well", [])
         state.setdefault("ui_active_node_reservoir_type_rep", "")
         state.setdefault("ui_active_node_reservoir_type", "")
         state.setdefault("ui_active_node_reservoir_title", "")
-        # Underlying property kind of the active node — drives the editor
-        # switch in solid_color_panel (continuous LUT vs categorical list).
-        # Resolved directly for plain ContinuousProperty/DiscreteProperty/
-        # CategoricalProperty leaves, and via the C++-emitted `propKind`
-        # attribute for synthetic TS / MR / MRTS leaves.
+        # Underlying property kind of the active node — drives the
+        # editor switch in solid_color_panel (continuous LUT vs
+        # categorical list). Resolved directly for plain
+        # ContinuousProperty / DiscreteProperty / CategoricalProperty
+        # leaves, and via the C++-emitted `propKind` attribute for
+        # synthetic TS / MR / MRTS leaves.
         state.setdefault("active_property_kind", "")
 
-        # Realization widget state
         state.setdefault("realization_selected_index", 0)
         state.setdefault("realization_parent_node_id", None)
-        state.setdefault("realization_ts_node_id", None)  # Set when a RealizationTimeSeries node is active
-        # Must be setdefault'd here so Vue subscribes — without it the slicer's
-        # v_if="realization_labels && realization_labels.length > 0" stays false
-        # forever even after we assign state.realization_labels later.
+        state.setdefault("realization_ts_node_id", None)
+        # setdefault'd here so Vue subscribes — without it the slicer's
+        # v_if="realization_labels && realization_labels.length > 0"
+        # stays false forever even after we assign realization_labels
+        # later.
         state.setdefault("realization_labels", [])
 
-        # Locked LUT range for consistent legend across realizations: (min, max) or None
+        # (min, max) or None — used by the realization slider to keep a
+        # consistent legend across realizations.
         self._realization_locked_range = None
 
         state.setdefault("active_representation_has_properties", False)
 
-        # Saved as attributes (after definition below) so refresh_active()
-        # can re-run them directly. Needed because Trame batches state
-        # mutations within a flush window — a clear-then-restore on
-        # ui_active_node_X collapses to "no change" and the @state.change
-        # callback never fires. Calling the handler explicitly bypasses
-        # the diff check.
         @state.change("ui_active_node_reservoir")
         def on_ui_active_node_reservoir_change(ui_active_node_reservoir, **kwargs):
-            # Top-level timing — fires on EVERY active change (including
-            # resets and non-property activations) so we can see why a click
-            # feels slow even when the active branch below short-circuits.
             _t_total = time.perf_counter()
             _ms = lambda t: int((time.perf_counter() - t) * 1000)
             _ms_tree_lookup = 0
@@ -178,10 +174,10 @@ class Activator:
                     _branch = "cleared"
                     return
                 node_id = ui_active_node_reservoir[0]
-                # Reject activation of a node whose subtree isn't checked.
-                # Trame batches the mutation and re-fires this handler with
-                # the empty value on next flush, going through the reset
-                # branch above.
+                # Reject activation of a node whose subtree isn't
+                # checked. Trame batches the mutation and re-fires this
+                # handler with the empty value on next flush, going
+                # through the reset branch above.
                 if not self._is_node_active_able(node_id, state.ui_select_node_reservoir):
                     state.ui_active_node_reservoir = []
                     _branch = "rejected"
@@ -192,11 +188,11 @@ class Activator:
                 title_node = self._tree.find_title(node_id)
                 _ms_tree_lookup = _ms(_t)
 
-                # Multi-realization synthetic nodes act as property leaves:
-                # the actual array name lives in the propTitle attribute
-                # (resolved below). Plain TimeSeries nodes are also property
-                # leaves (one per property title, the per-timestep nodes were
-                # collapsed in C++ searchProperties).
+                # Multi-realization synthetic nodes act as property
+                # leaves: the actual array name lives in propTitle.
+                # Plain TimeSeries nodes are also property leaves (one
+                # per property title; per-timestep nodes were collapsed
+                # in C++ searchProperties).
                 is_multireal = type_node in ("MultiRealization", "MultiRealizationTimeSeries")
                 is_property = bool(
                     type_node and (
@@ -209,10 +205,6 @@ class Activator:
                 is_ts_property = is_property and (
                     ts_ancestor_id is not None or type_node == "MultiRealizationTimeSeries"
                 )
-                # Resolve the underlying property kind: directly for plain
-                # property nodes, via the C++-emitted `propKind` attribute for
-                # synthetic TS/MR/MRTS leaves. Drives the editor switch in
-                # solid_color_panel (continuous LUT vs categorical list).
                 property_kind = ""
                 if type_node in ("ContinuousProperty", "DiscreteProperty", "CategoricalProperty"):
                     property_kind = type_node
@@ -230,9 +222,9 @@ class Activator:
                     "coe_panels": [] if not is_property else state.coe_panels,
                 })
 
-                # Resolve the active representation (UnstructuredGrid, TriangulatedSet, …)
-                # and, for non-IjkGrid representations, switch the ParaView active source
-                # to its dedicated ExtractBlock proxy. IjkGrid keeps its slicer-based flow.
+                # Resolve the active rep and switch the ParaView active
+                # source to its dedicated ExtractBlock proxy
+                # (non-IjkGrid). IjkGrid keeps its slicer-based flow.
                 rep_node_id = self._tree.find_representation_node(node_id)
                 rep_block_path = ""
                 rep_type = None
@@ -255,9 +247,6 @@ class Activator:
                 state.active_representation_has_properties = rep_has_properties
                 state.active_representation_path = rep_block_path
 
-                # Handle multi-realization nodes (single tree node, slider drives
-                # the source's RealizationIndex which the C++ layer uses to swap
-                # the property values without renaming arrays).
                 if type_node in ("MultiRealization", "MultiRealizationTimeSeries"):
                     is_ts = type_node == "MultiRealizationTimeSeries"
                     state.realization_parent_node_id = node_id
@@ -275,8 +264,9 @@ class Activator:
                     else:
                         self._realization_locked_range = None
 
-                    # Real indices CSV from C++ (e.g. "23,24"). Fall back to 0..N-1
-                    # when the attribute is missing (older data with sequential indices).
+                    # Realization indices CSV from C++ (e.g. "23,24").
+                    # Fall back to 0..N-1 when the attribute is missing
+                    # (older data with sequential indices).
                     indices_csv = self._tree.find_attribute_value(node_id, "realization_indices")
                     realization_count_str = self._tree.find_attribute_value(node_id, "realization_count")
                     try:
@@ -292,8 +282,9 @@ class Activator:
                         labels = ["0"]
 
                     state.ui_range_real = [0, max(0, len(labels) - 1)]
-                    # Lock carries the *value* (e.g. "23") so it survives switches
-                    # between properties whose index sets differ.
+                    # Lock carries the *value* (e.g. "23") so it
+                    # survives a switch to a property whose index set
+                    # differs.
                     initial_index = 0
                     if state.ui_slices_real_locked and getattr(state, 'ui_slices_real_locked_value', None) is not None:
                         locked_value = str(state.ui_slices_real_locked_value)
@@ -304,7 +295,6 @@ class Activator:
                     state.realization_labels = labels
 
                 else:
-                    # Clear realization state for non-Realization nodes
                     state.realization_selected_index = 0
                     state.realization_parent_node_id = None
                     state.ui_range_real = [0, 0]
@@ -312,45 +302,36 @@ class Activator:
                     state.realization_labels = []
                     state.realization_ts_node_id = None
 
-                # If a Property node is selected, configure color mapping.
-                # Multi-realization synthetic nodes act as property leaves:
-                # the C++-emitted array name is in the propTitle attribute
-                # (the title attribute holds the vtk-sanitized variant which
-                # may differ).
+                # Multi-realization synthetic nodes carry the actual
+                # VTK array name in propTitle (the title attribute is
+                # the vtk-sanitized variant which may differ).
                 array_name = title_node
                 if is_multireal:
                     prop_title = self._tree.find_attribute_value(node_id, "propTitle")
                     if prop_title:
                         array_name = prop_title
                 if is_property and array_name:
-                    # Activating a property only refreshes the panel LUT/PWF.
-                    # The actual ColorBy on the rep is owned by
-                    # ui_active_array_by_rep (the eye state) — driven by
-                    # toggle_dataarray_color and the load sync. The
-                    # eye_open_for_this guard further down preserves the
-                    # invariant when this handler re-applies color.
                     try:
                         active_view = pvsimple.GetActiveView()
 
-                        # Non-IjkGrid: the extracted rep source IS the target. No lookup.
                         target_source = rep_source if (rep_type and rep_type != 'IjkGrid') else None
 
                         if target_source is None:
+                            # IjkGrid path — find the visible source.
+                            # Priority order:
+                            #   1. rep_data filter (used in volume mode
+                            #      now; bypasses slicervolume because
+                            #      PV6's vtkExplicitStructuredGridCrop
+                            #      produces degenerate output with the
+                            #      IjkGrid input);
+                            #   2. sliceri/j/k_* (per-axis slice mode);
+                            #   3. slicervolume (legacy fallback);
+                            #   4. IjkGrid_* (legacy).
+                            # The rep_data filter is registered by
+                            # SetExtractRepPath as `rep<sanitized_path>`
+                            # (slashes → underscores).
                             all_sources = pvsimple.GetSources()
 
-                            # IjkGrid path — find the visible source.
-                            # Priority:
-                            #   1. rep_data filter (used in volume mode now;
-                            #      we bypass slicervolume because PV6's
-                            #      vtkExplicitStructuredGridCrop produces
-                            #      degenerate output with the IjkGrid input).
-                            #   2. sliceri/j/k_* (slice mode, individual axis crops)
-                            #   3. slicervolume (legacy fallback if user reverted
-                            #      to the old volume slicer flow)
-                            #   4. IjkGrid_* (legacy)
-                            # The rep_data filter for the IjkGrid is registered
-                            # by SetExtractRepPath as `rep<sanitized_path>`
-                            # (slashes → underscores).
                             expected_rep_data_name = "rep" + (rep_block_path or "").replace('/', '_')
                             for source_id, source in all_sources.items():
                                 if source_id[0] == expected_rep_data_name:
@@ -392,10 +373,11 @@ class Activator:
                             print(f"[PERF active.reservoir] target={target_name!r} rep_type={rep_type!r}")
                             _t = time.perf_counter()
                             pvsimple.SetActiveSource(target_source)
-                            # Force the producer's MTime to advance so the proxy
-                            # info cache (otherwise sticky on TrivialProducer when
-                            # its output is mutated externally by the C++ side)
-                            # is invalidated, then re-run RequestInformation.
+                            # Force the producer's MTime to advance so
+                            # the proxy info cache (otherwise sticky on
+                            # TrivialProducer when its output is mutated
+                            # externally by the C++ side) is invalidated,
+                            # then re-run RequestInformation.
                             try:
                                 target_source.GetClientSideObject().Modified()
                             except Exception:
@@ -406,17 +388,12 @@ class Activator:
                             display = pvsimple.GetDisplayProperties(target_source, view=active_view)
 
                             if display:
-                                # Query the underlying VTK object directly — the
-                                # proxy info cache (target_source.GetCellDataInformation)
-                                # is unreliable when arrays were added in place
-                                # by the C++ pipeline. Going through the
-                                # client-side VTK object is always fresh.
-                                # The rep_data filter outputs single-piece
-                                # (vtkPolyData / vtkUnstructuredGrid /
-                                # vtkExplicitStructuredGrid). _drill_to_inner
-                                # is a no-op for these — kept defensively in
-                                # case a downstream change ever wraps the
-                                # output in a composite.
+                                # Query the underlying VTK object
+                                # directly — the proxy info cache is
+                                # unreliable when arrays are added in
+                                # place by the C++ pipeline. Going
+                                # through the client-side object is
+                                # always fresh.
                                 vtk_out = target_source.GetClientSideObject().GetOutputDataObject(0)
                                 vtk_inner = _drill_to_inner(vtk_out)
                                 vtk_cd = vtk_inner.GetCellData() if vtk_inner is not None and hasattr(vtk_inner, 'GetCellData') else None
@@ -425,20 +402,21 @@ class Activator:
                                 pt_arr = _find_array_in_store(vtk_pd, array_name)
                                 has_cell = cell_arr is not None
                                 has_pt = pt_arr is not None
-                                # If the array was found via the sanitized
-                                # name (spaces/specials stripped), use that
-                                # form for ColorBy / GetColorTransferFunction.
+                                # If the array was found via the
+                                # sanitized name (specials stripped),
+                                # use that form for ColorBy /
+                                # GetColorTransferFunction.
                                 if has_cell or has_pt:
                                     found_arr = cell_arr if has_cell else pt_arr
                                     if found_arr is not None:
                                         actual_name = found_arr.GetName()
                                         if actual_name and actual_name != array_name:
                                             array_name = actual_name
-                                # When the slicer's CellData doesn't have the
-                                # array, dump everything we know to diagnose:
-                                # walk to the slicer's input (the rep_data
-                                # filter for IjkGrid) and check there too.
                                 if not has_cell and not has_pt:
+                                    # Diagnostic: dump everything we
+                                    # know — walk to the slicer's input
+                                    # (the rep_data filter for IjkGrid)
+                                    # and report what arrays it has.
                                     cell_names = []
                                     pt_names = []
                                     if vtk_cd:
@@ -459,7 +437,6 @@ class Activator:
                                         if upstream is not None:
                                             up_obj = upstream.GetClientSideObject() if hasattr(upstream, 'GetClientSideObject') else None
                                             if up_obj is None and hasattr(upstream, 'GetProducer'):
-                                                # OutputPort wrapper case
                                                 up_obj = upstream.GetProducer().GetClientSideObject()
                                             if up_obj is not None:
                                                 up_out = up_obj.GetOutputDataObject(getattr(upstream, 'Port', 0) if hasattr(upstream, 'Port') else 0)
@@ -475,15 +452,12 @@ class Activator:
                                         print(f"[DEBUG active.reservoir] upstream inspect failed: {_e}")
                                 print(f"[PERF active.reservoir] array={array_name!r} has_cell={has_cell} has_pt={has_pt}")
                                 array_type = None
-                                # ColorBy is now driven by the eye state in
-                                # ui_active_array_by_rep, not by activation.
-                                # Activating a node only refreshes the panel
-                                # LUT/PWF (update_color_editor below). We
-                                # still resolve array_type so the LUT range
-                                # computation below works, and we re-apply
-                                # ColorBy here only when the eye is open for
-                                # this exact array (post-load sync — harmless
-                                # if it's already applied).
+                                # ColorBy is owned by the eye state
+                                # (ui_active_array_by_rep), not by
+                                # activation. We re-apply ColorBy here
+                                # only when the eye is open for this
+                                # exact array — harmless if it's
+                                # already applied.
                                 array_node_path = self._tree.find_path(node_id)
                                 eye_open_for_this = (
                                     array_node_path is not None
@@ -501,9 +475,6 @@ class Activator:
                                 _ms_colorby = _ms(_t)
                                 lut = None
                                 if array_type:
-                                    # Hide the previous color bar for this rep
-                                    # unless another rep still references the
-                                    # same array.
                                     prev_array = self._current_array_by_rep.get(rep_block_path)
                                     if eye_open_for_this and prev_array and prev_array != array_name:
                                         still_used = any(
@@ -540,12 +511,12 @@ class Activator:
                                 _t = time.perf_counter()
                                 controller.on_active_proxy_change()
                                 _ms_on_active = _ms(_t)
-                                # `on_data_loaded` is ParaView-Trame TimeControl's
-                                # refresh hook — only useful when activating a
-                                # time-series property (the time slider needs to
-                                # reset its range / labels). For non-TS property
-                                # activations it does heavy Vue work for nothing
-                                # (50-100ms in profiling), so skip it.
+                                # on_data_loaded is ParaView-Trame
+                                # TimeControl's refresh hook — only
+                                # useful for time-series properties (the
+                                # time slider needs to reset its range).
+                                # For non-TS activations it does heavy
+                                # Vue work for nothing (~50-100ms).
                                 _t = time.perf_counter()
                                 if is_ts_property:
                                     controller.on_data_loaded()
@@ -554,17 +525,20 @@ class Activator:
                                 controller.update_color_editor(array_name)
                                 _ms_update_coe = _ms(_t)
 
-                                # Force the LUT range LAST, after every other
-                                # caller (ColorBy internal, on_active_proxy_change,
-                                # update_color_editor) has had a chance to touch
-                                # it. The proxy info cache used by their internal
-                                # RescaleTransferFunctionToDataRange is stale for
-                                # arrays added in place by the C++ pipeline, so
-                                # they silently fall back to [0,1] which makes
-                                # the rendering look like Solid mode. Computing
-                                # the range directly from the VTK array and
-                                # pushing it as the very last operation guarantees
-                                # nothing else can override it within this tick.
+                                # Force the LUT range LAST, after every
+                                # other caller (ColorBy internal,
+                                # on_active_proxy_change,
+                                # update_color_editor) has had a chance
+                                # to touch it. The proxy info cache
+                                # used by their internal
+                                # RescaleTransferFunctionToDataRange is
+                                # stale for arrays added in place by
+                                # the C++ pipeline, so they silently
+                                # fall back to [0,1] and the rendering
+                                # looks like Solid mode. Computing the
+                                # range directly from the VTK array and
+                                # pushing it last guarantees nothing
+                                # else can override it within this tick.
                                 if array_type and lut is not None:
                                     try:
                                         vtk_arr = vtk_cd.GetArray(array_name) if has_cell else vtk_pd.GetArray(array_name)
@@ -575,8 +549,6 @@ class Activator:
                                     except Exception:
                                         pass
 
-                                # Single Render at the very end — after all
-                                # LUT/ColorBy/cache mutations have settled.
                                 _t = time.perf_counter()
                                 pvsimple.Render(view=active_view)
                                 _ms_render = _ms(_t)
@@ -586,8 +558,6 @@ class Activator:
                         traceback.print_exc()
                 _branch = "property" if (is_property and array_name) else "non-property"
             finally:
-                # Always print timing — fires for cleared/rejected/property/
-                # non-property paths so we can see the full activation cost.
                 _ms_total = _ms(_t_total)
                 print(
                     f"[PERF active.reservoir] branch={_branch} "
@@ -642,22 +612,19 @@ class Activator:
                 state.active_representation_path = ""
                 state.active_representation_has_properties = False
 
-        # Stash the three handlers as instance attributes so refresh_active()
-        # below can re-run them directly without going through state mutation
-        # (which Trame would batch / coalesce into a no-op).
+        # Stash the three handlers as instance attributes so
+        # refresh_active() can re-run them directly without going
+        # through state mutation (which Trame would batch / coalesce
+        # into a no-op when the value is unchanged).
         self._reservoir_active_handler = on_ui_active_node_reservoir_change
         self._surface_active_handler = on_ui_active_node_surface_change
         self._well_active_handler = on_ui_active_node_well_change
 
     def notify_active_reps(self, current_rep_paths):
-        """Hide the color bars of reps that are no longer in the active
-        selection. Called by the engine after the load + sync, so we can
-        clean up stale color bars left behind when the user switches between
-        reps (e.g., between two IjkGrids — without this, both grids' bars
-        stack in the view).
-
-        Only hides a bar if NO other still-present rep references the same
-        array (multiple reps can share a LUT/bar)."""
+        """Hide stale color bars left behind when a rep is no longer in
+        the active selection. Only hides a bar if NO other still-present
+        rep references the same array (multiple reps can share a
+        LUT/bar)."""
         if not self._current_array_by_rep:
             return
         view = pvsimple.GetActiveView()
@@ -686,18 +653,18 @@ class Activator:
                 pass
 
     def refresh_active(self):
-        """Re-run the active-node handlers for whatever is currently active.
-        Used after a manual Show: the active state changed BEFORE the load
-        (so the rep didn't exist when the @state.change fired and the ColorBy
-        wiring short-circuited). Now that the rep exists we want to re-run
-        the same logic.
+        """Re-run the active-node handlers for whatever is currently
+        active. Used after a manual Show: the active state changed
+        BEFORE the load (so the rep didn't exist when the @state.change
+        fired and the ColorBy wiring short-circuited). Now that the rep
+        exists we want to re-run the same logic.
 
-        Skip the call when the active node is not consistent with the current
-        selection — VTreeview's `update_selected` will sync ui_active to the
-        new value on the next flush and the handler will fire then. Without
-        this guard we'd cause a wasted reject → reset → cleared → property
-        chain (3 handler fires) for every grid switch.
-        """
+        Skip the call when the active node is not consistent with the
+        current selection — VTreeview's update_selected will sync
+        ui_active to the new value on the next flush and the handler
+        will fire then. Without this guard we'd cause a wasted
+        reject → reset → cleared → property chain (3 handler fires)
+        for every grid switch."""
         try:
             active = state.ui_active_node_reservoir
             if active and self._is_node_active_able(active[0], state.ui_select_node_reservoir):
@@ -724,7 +691,8 @@ class Activator:
             traceback.print_exc()
 
     def _set_active_block_selector(self, path: str):
-        """Set BlockSelectors on the active representation to the given assembly path."""
+        """Set BlockSelectors on the active representation to the given
+        assembly path."""
         try:
             view = pvsimple.GetActiveView()
             source = pvsimple.GetActiveSource()
@@ -736,8 +704,9 @@ class Activator:
             pass
 
     def _activate_rep_source(self, node_id):
-        """Set active_representation_path and activate the matching extracted
-        source for a surface/well tree node. IjkGrid is never expected here."""
+        """Set active_representation_path and activate the matching
+        extracted source for a surface/well tree node. IjkGrid is never
+        expected here."""
         rep_node_id = self._tree.find_representation_node(node_id)
         if rep_node_id is None:
             state.active_representation_path = ""

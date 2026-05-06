@@ -10,26 +10,20 @@ controller = server.controller
 
 
 class Toolbar:
-    """Encapsulates toolbar rendering.
-
-    Designed to be instantiated in the main `ui` function and called with
-    `toolbar.render()` inside the layout.toolbar context manager.
-    """
+    """Top toolbar of the application. Hosts the Load button (manual
+    load mode only) and the Import dialog trigger. Title and logo are
+    rendered by the host layout, not here."""
 
     def __init__(self, local_file_manager, import_dialog):
         self.local_file_manager = local_file_manager
         self.import_dialog = import_dialog
 
     def render(self):
-        # Application icon and title are handled by the layout in view.ui
         with vuetify3.VContainer(classes="fill-height"):
             vuetify3.VSpacer()
 
-            # Load button — only visible in load_mode="manual". Pushes the
-            # current per-tab selections (reservoir/surface/well) to ParaView
-            # in a single shot so the user can stage many checkbox toggles
-            # without paying a load on each click. Visibility on/off is
-            # handled separately via the per-node eye icons in the trees.
+            # Visible only in load_mode="manual" — auto mode pushes
+            # selections on every checkbox toggle.
             vuetify3.VBtn(
                 "Load",
                 v_if="load_mode === 'manual'",
@@ -48,5 +42,4 @@ class Toolbar:
                     click="dialog_visible = true",
                 )
 
-            # Import dialog (renders inside toolbar scope)
             self.import_dialog.render()

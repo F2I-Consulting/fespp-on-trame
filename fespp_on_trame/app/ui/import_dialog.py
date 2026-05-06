@@ -4,12 +4,14 @@ from tempfile import mkdtemp
 from fespp_on_trame.app.io.http import download_file_from_url
 
 
-# Appelé au clic Import.
-# Onglet "files" : XHR multipart inline — évite toute dépendance à une fonction globale
-#   - accède à window via ownerDocument.defaultView (contourne la whitelist Vue 3)
-#   - filtre les fichiers selon upload_file_names (pour la suppression individuelle)
-#   - envoie POST /upload en streaming binary (pas de base64)
-# Onglet "osdu" : déclenche execute_action côté serveur Python
+# Inline JS run on Import-button click.
+#   "files" tab: streams a multipart POST to /upload (or
+#     /api/<sid>/upload behind the proxy). Reaches `window` via
+#     ownerDocument.defaultView so it bypasses Vue 3's template
+#     whitelist; filters the FileList against upload_file_names so
+#     per-file removals stick; sends raw binary, no base64.
+#   "osdu" tab: just toggles execute_action so the Python handler
+#     downloads via download_file_from_url.
 _IMPORT_CLICK_JS = (
     "upload_debug='start';"
     "if (import_tab === 'files') {"
@@ -49,99 +51,72 @@ _IMPORT_CLICK_JS = (
 
 
 class ImportDialog:
-    """Manages both UI rendering and import action logic.
-
-    This class encapsulates:
-    - UI rendering for remote URL import + local file upload
-    - State change handler for execute_action (triggering actual imports)
-
-    The state and controller are injected at initialization.
-    """
+    """Owns both the import dialog UI and the execute_action handler.
+    Three import paths are supported:
+    - remote URL list (HTTP download into a temp dir);
+    - local file upload (handled outside this class — the inline JS
+      above POSTs to /upload directly);
+    - OSDU / ETP connection."""
 
     def __init__(self, state, controller):
-        """Initialize with server state and controller.
-
-        Args:
-            state: Trame server state (shared reactive variables)
-            controller: Trame server controller (callable functions)
-        """
         self.state = state
         self.controller = controller
-        # Register the import action handler on state change
         self.state.change("execute_action")(self._on_execute_action)
-        # Ensure OSDU-related state keys exist and set sensible defaults
         if not hasattr(self.state, "osdu_token_type"):
             self.state.osdu_token_type = "Bearer"
         if not hasattr(self.state, "osdu_proxy_token_type"):
             self.state.osdu_proxy_token_type = "Bearer"
-        # tab default
         if not hasattr(self.state, "import_tab"):
             self.state.import_tab = "files"
-        # Track import button state
         self.state.import_button_disabled = False
-        # Watch for changes that affect import button state
         self.state.change("import_tab", "etp_selected_dataspace")(self._update_import_button_state)
-        # Watch for dataspace selection to trigger the ETP connection
         self.state.change("etp_selected_dataspace")(self._on_dataspace_selected)
 
     def _update_import_button_state(self, **kwargs):
-        """Update the import button disabled state based on current tab and dataspace selection."""
-        # Disable import button if on OSDU tab and no dataspace is selected
+        """Disable the Import button on the OSDU tab as long as no
+        dataspace is selected; always enabled on the Files tab."""
         if self.state.import_tab == "osdu":
             self.state.import_button_disabled = not bool(self.state.etp_selected_dataspace)
         else:
             self.state.import_button_disabled = False
 
     def _on_dataspace_selected(self, etp_selected_dataspace, **kwargs):
-        """Handle dataspace selection change."""
         if etp_selected_dataspace:
             self.controller.select_etp_dataspace(etp_selected_dataspace)
 
     def _on_execute_action(self, execute_action, **kwargs):
-        """Handle file import logic when execute_action changes to True.
-
-        Supports three import modes:
-        1. Import from remote URLs (e.g., from an input field)
-        2. Import from local file uploads
-        3. Import from OSDU/ETP server connection
-        """
+        """Run the right import path when execute_action flips to True.
+        Local-file uploads are NOT handled here — the inline JS above
+        sends a multipart POST to /upload directly. We only handle
+        remote URLs and OSDU here."""
         if not execute_action:
             return
 
-        # Check which tab is active to determine import mode
         current_tab = self.state.import_tab
 
         if current_tab == "osdu":
-            # Case 3: Import from OSDU/ETP server
             self._handle_osdu_import()
         elif self.state.remote_files_location:
-            # Case 1: Import from remote URLs
             list_url = self.state.remote_files_location.split('|')
             temp_dir = mkdtemp()
             epc_paths = []
 
-            # Download files from URLs
             for url in list_url:
                 file_name = download_file_from_url(url, temp_dir)
                 if file_name.lower().endswith('.epc'):
                     epc_paths.append(file_name)
 
-            # Load the collected EPC files
             for epc_path in epc_paths:
                 self.controller.load_epc_file(epc_path)
 
-            # Reset state variables after action completion
             self.state.remote_files_location = None
 
-        # Case 2 (local file upload) est géré directement par l'endpoint /upload
-        # via XHR — pas besoin de traiter state.files ici
-
-        # Ensure the execution flag is reset regardless of the path taken
         self.state.execute_action = False
 
     def _handle_osdu_connect(self):
-        """Handle OSDU/ETP connection (does not close dialog)."""
-        # Validate required fields
+        """Connect to the configured OSDU/ETP server. The dialog stays
+        open so the user can pick a dataspace once the connection is
+        up."""
         if not self.state.osdu_etp_url:
             print("Error: ETP URL is required")
             return
@@ -154,18 +129,15 @@ class ImportDialog:
             print("Error: OSDU Token is required")
             return
 
-        # Prepare connection parameters
         etp_url = self.state.osdu_etp_url
         data_partition = self.state.osdu_data_partition
         token = self.state.osdu_token
         token_type = self.state.osdu_token_type
 
-        # Optional proxy parameters
         proxy_url = self.state.osdu_proxy_url if hasattr(self.state, 'osdu_proxy_url') else None
         proxy_token = self.state.osdu_proxy_token if hasattr(self.state, 'osdu_proxy_token') else None
         proxy_token_type = self.state.osdu_proxy_token_type if hasattr(self.state, 'osdu_proxy_token_type') else "Bearer"
 
-        # Call the controller to establish ETP connection
         self.controller.connect_to_etp(
             etp_url=etp_url,
             data_partition=data_partition,
@@ -175,10 +147,10 @@ class ImportDialog:
             proxy_token=proxy_token,
             proxy_token_type=proxy_token_type
         )
-        # Dialog remains open so user can select dataspace
 
     def _handle_osdu_import(self):
-        """Handle OSDU/ETP data import (called when Import button is clicked)."""
+        """Trigger a forced refresh of the ETP source to pull in the
+        currently-selected dataspace."""
         self.controller.force_etp_refresh()
         self.state.has_data_loaded_once = True
 
@@ -207,9 +179,7 @@ class ImportDialog:
                         vuetify3.VTab("OSDU", value="osdu")
 
                     with vuetify3.VWindow(v_model=("import_tab",), classes="pt-4"):
-                        # --- From Files tab (existing content) ---
                         with vuetify3.VWindowItem(value="files"):
-                            # Remote URL import
                             with vuetify3.VRow(classes="ma-0 mb-4"):
                                 with vuetify3.VCol(cols="12", classes="pa-0"):
                                     with html.Div(classes="d-flex align-center mb-2"):
@@ -228,29 +198,27 @@ class ImportDialog:
 
                             vuetify3.VDivider(classes="mb-4")
 
-                            # Local file upload (HTTP multipart — pas de base64 WebSocket)
+                            # Local file upload via HTTP multipart (no
+                            # base64-over-WebSocket).
                             with vuetify3.VRow(classes="ma-0"):
                                 with vuetify3.VCol(cols="12", classes="pa-0"):
                                     with html.Div(classes="d-flex align-center mb-3"):
                                         vuetify3.VIcon(icon="mdi-folder-upload", class_="mr-0", color="blue-grey-darken-2")
                                         html.Span("Upload Local Files", classes="text-h6 font-weight-regular pl-4")
 
-                                    # Zone drag & drop / clic
-                                    # L'input file invisible recouvre toute la zone :
-                                    # - clic → ouvre nativement le sélecteur de fichiers (0 JS)
-                                    # - drag & drop → accepté nativement par l'input (0 JS custom)
+                                    # Drag & drop zone: an invisible
+                                    # <input type="file"> covers the
+                                    # whole div so click and drop both
+                                    # work natively (no custom JS).
                                     with html.Div(
                                         style="position: relative; border: 2px dashed #90a4ae; border-radius: 8px; padding: 32px 16px; text-align: center;",
                                     ):
-                                        # Contenu visuel (derrière)
                                         vuetify3.VIcon(icon="mdi-upload-multiple", size="48", color="blue-grey-lighten-1")
                                         html.P(
-                                            "Glisser-déposer ou cliquer pour sélectionner (.epc, .h5)",
+                                            "Drop files or click to pick (.epc, .h5)",
                                             style="margin: 8px 0 0; color: #607d8b; font-size: 0.9rem; pointer-events: none;",
                                         )
 
-                                        # Input invisible superposé (devant) — gère clic ET drop nativement
-                                        # change = enregistre les noms dans un tableau (upload au clic Import)
                                         html.Input(
                                             id="fesppFileInput",
                                             type="file",
@@ -268,7 +236,8 @@ class ImportDialog:
                                             ),
                                         )
 
-                                    # Liste des fichiers sélectionnés (un par ligne, suppression individuelle)
+                                    # Selected-files list (one per row,
+                                    # individual remove).
                                     with html.Div(
                                         v_show="upload_file_count > 0 && !upload_uploading",
                                         style="margin-top: 8px; border-radius: 4px; overflow: hidden;",
@@ -277,7 +246,7 @@ class ImportDialog:
                                             style="padding: 6px 10px; background: #e8f5e9; border-bottom: 1px solid #c8e6c9;",
                                         ):
                                             html.Span(
-                                                "{{ upload_file_count }} fichier(s) sélectionné(s)",
+                                                "{{ upload_file_count }} file(s) selected",
                                                 style="color: #2e7d32; font-size: 0.82rem; font-weight: 600;",
                                             )
                                         with html.Div(
@@ -307,7 +276,7 @@ class ImportDialog:
                                                     style="flex-shrink: 0; margin-left: 4px;",
                                                 )
 
-                                    # Barre de progression (visible pendant l'upload)
+                                    # Progress bar — visible during upload.
                                     with html.Div(
                                         v_show="upload_uploading",
                                         style="margin-top: 16px;",
@@ -324,10 +293,8 @@ class ImportDialog:
                                             style="text-align: center; color: #607d8b; font-size: 0.85rem; margin-top: 4px;",
                                         )
 
-                        # --- From OSDU tab ---
                         with vuetify3.VWindowItem(value="osdu"):
                             with vuetify3.VContainer(fluid=True, classes="pa-0"):
-                                # ETP URL
                                 vuetify3.VTextField(
                                     v_model=("osdu_etp_url", None),
                                     label="RDDMS ETP URL",
@@ -337,7 +304,6 @@ class ImportDialog:
                                     color="blue",
                                 )
 
-                                # OSDU Data Partition
                                 vuetify3.VTextField(
                                     v_model=("osdu_data_partition", None),
                                     label="OSDU Data Partition",
@@ -347,7 +313,6 @@ class ImportDialog:
                                     color="blue",
                                 )
 
-                                # ETP Token Type + Token (VSelect + aligned field)
                                 with vuetify3.VRow(classes="ma-0"):
                                     with vuetify3.VCol(cols="6", classes="pa-0 pr-2"):
                                         vuetify3.VSelect(
@@ -371,7 +336,6 @@ class ImportDialog:
                                             color="blue",
                                         )
 
-                                # Proxy connexion expansion wrapped in a subtle card
                                 with vuetify3.VCard(classes="mb-4", outlined=True, elevation=0):
                                     with vuetify3.VCardText(classes="pa-3"):
                                         with vuetify3.VExpansionPanels(style="display: initial;"):
@@ -411,7 +375,6 @@ class ImportDialog:
                                                                 color="blue",
                                                             )
 
-                                # Connect button
                                 with vuetify3.VRow(classes="ma-0 mt-4"):
                                     with vuetify3.VCol(cols="12", classes="pa-0"):
                                         vuetify3.VBtn(
@@ -423,7 +386,8 @@ class ImportDialog:
                                             click=(self._handle_osdu_connect,),
                                         )
 
-                                # Dataspace selector (shown after successful connection)
+                                # Dataspace selector — only shown
+                                # once the ETP connection is up.
                                 with vuetify3.VCard(
                                     v_show="etp_dataspaces && etp_dataspaces.length > 0",
                                     classes="mt-4",
@@ -443,7 +407,6 @@ class ImportDialog:
                                             messages="Choose a dataspace to explore",
                                         )
 
-                # Actions
                 with vuetify3.VCardActions(classes="pa-4 bg-blue-grey-lighten-5"):
                     vuetify3.VSpacer()
                     vuetify3.VBtn(
