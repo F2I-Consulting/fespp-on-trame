@@ -51,38 +51,51 @@ def _nan_opacity_from_state():
     return 0.2
 
 
-def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None):
+def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None,
+                          rep_sources=None):
     """Every display proxy that renders rep_block_path. Used to fan-out
-    ColorBy so the threshold output and its parent source(s) stay in sync
-    even when only one of them is currently visible.
+    ColorBy so chain proxies stay in sync with their parent source even
+    when one of them is hidden.
 
     Match patterns:
-      * UG: rep<sanitized_path> + thr_<sanitized_path>
-      * IJK: rep<sanitized_ijk_path> + slicervolume + sliceri/j/k_*
-        + IjkGrid_* + thr_<id> (only one IJK is active at a time, so
-        any thr_<id> proxy belongs to it)."""
+      * UG: rep<sanitized_path> + every chain proxy registered for the
+        rep (via rep_sources.all_chain_proxies).
+      * IJK: rep<sanitized_ijk_path> + slicervolume + sliceri/j/k_* +
+        IjkGrid_* + every chain proxy (registration name starts with
+        ``thr_`` — only one IJK is active at a time, so any thr_*
+        proxy belongs to it)."""
     if view is None:
         return []
     sanitized = (rep_block_path or "").replace('/', '_')
     expected_rep_filter = "rep" + sanitized
-    expected_thr_for_rep = "thr_" + sanitized
     is_ijk = rep_type == 'IjkGrid'
     sources = []
+    # Pull non-IjkGrid chain proxies directly from rep_sources — name
+    # patterns can collide once chains are nested (thr_grid_a vs
+    # thr_grid_a_b), so the authoritative list is the one the data
+    # layer maintains.
+    chain_set = set()
+    if not is_ijk and rep_sources is not None:
+        try:
+            chain_proxies = rep_sources.all_chain_proxies(rep_block_path)
+        except AttributeError:
+            chain_proxies = []
+        for p in chain_proxies:
+            sources.append(p)
+            chain_set.add(id(p))
     for source_id, source in pvsimple.GetSources().items():
+        if id(source) in chain_set:
+            continue
         name = source_id[0]
-        if name == expected_rep_filter or name == expected_thr_for_rep:
+        if name == expected_rep_filter:
             sources.append(source)
             continue
         if is_ijk:
             if (
                 name == 'slicervolume'
                 or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
+                or name.startswith('thr_')
             ):
-                sources.append(source)
-            elif name.startswith('thr_') and not name.startswith(expected_thr_for_rep):
-                # IJK threshold (thr_<id>) — id-keyed name doesn't carry
-                # a rep prefix, but only one IJK is active so it must
-                # belong to this rep.
                 sources.append(source)
     out = []
     seen_displays = set()
@@ -366,23 +379,22 @@ class Activator:
                         active_view = pvsimple.GetActiveView()
 
                         # Non-IjkGrid: by default the rep_source is the
-                        # render target; if a Threshold filter is active
-                        # for this rep, the source is hidden and the
-                        # threshold output is what's shown — colorize
-                        # that instead.
+                        # render target; if any chain proxy is currently
+                        # visible, that's what the user actually sees —
+                        # colorize the deepest visible one (the others
+                        # are upstream filters in the same pipeline).
                         target_source = None
                         if rep_type and rep_type != 'IjkGrid':
                             target_source = rep_source
-                            if active_view and target_source is not None:
+                            if (
+                                active_view and target_source is not None
+                                and self._rep_sources is not None
+                            ):
                                 disp = pvsimple.GetDisplayProperties(target_source, view=active_view)
                                 if disp and not disp.Visibility:
-                                    expected_thr_name = "thr_" + (rep_block_path or "").replace('/', '_')
-                                    for source_id, source in pvsimple.GetSources().items():
-                                        if source_id[0] == expected_thr_name:
-                                            d = pvsimple.GetDisplayProperties(source, view=active_view)
-                                            if d and d.Visibility:
-                                                target_source = source
-                                                break
+                                    visibles = self._rep_sources.all_visible_thresholds(rep_block_path)
+                                    if visibles:
+                                        target_source = visibles[-1]
 
                         if target_source is None:
                             # IjkGrid path — find the visible source.
@@ -558,6 +570,7 @@ class Activator:
                                     color_displays = _all_displays_for_rep(
                                         rep_block_path, rep_type, active_view,
                                         target_source, display,
+                                        rep_sources=self._rep_sources,
                                     )
                                     for d in color_displays:
                                         try:

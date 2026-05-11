@@ -57,7 +57,8 @@ def _rep_display(rep_path):
 
 def _ijkgrid_displays():
     """For IjkGrid reps there is no ExtractBlock — display is fanned out across
-    several ParaView sources (slicervolume, sliceri/j/k_*, IjkGrid_*). Return
+    several ParaView sources (slicervolume, sliceri/j/k_*, IjkGrid_*) plus any
+    chain proxies (registration name starts with `thr_`). Return
     [(display, source), ...] for every one of them present in the active view."""
     view = pvsimple.GetActiveView()
     if view is None:
@@ -65,7 +66,11 @@ def _ijkgrid_displays():
     out = []
     for source_id, src in pvsimple.GetSources().items():
         name = source_id[0]
-        if name == 'slicervolume' or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_')):
+        if (
+            name == 'slicervolume'
+            or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
+            or name.startswith('thr_')
+        ):
             disp = pvsimple.GetDisplayProperties(src, view=view)
             if disp is not None:
                 out.append((disp, src))
@@ -74,14 +79,29 @@ def _ijkgrid_displays():
 
 def _displays_for_rep(rep_path):
     """Resolve every (display, source, view) the active rep is rendered through.
-    Single entry for ExtractBlock-backed reps, multiple for IjkGrid."""
+    Single entry for ExtractBlock-backed reps, plus all chain proxies attached
+    to the rep. Multiple entries for IjkGrid."""
     if state.ui_active_node_reservoir_type_rep == 'IjkGrid':
         pairs, view = _ijkgrid_displays()
         return [(d, s, view) for (d, s) in pairs]
     display, view, source = _rep_display(rep_path)
-    if display is None:
-        return []
-    return [(display, source, view)]
+    out = []
+    if display is not None:
+        out.append((display, source, view))
+    # Fan out onto every chain proxy for this non-IjkGrid rep.
+    if view is not None and hasattr(controller, "get_rep_chain_proxies"):
+        try:
+            chain_proxies = controller.get_rep_chain_proxies(rep_path) or []
+        except Exception:
+            chain_proxies = []
+        for p in chain_proxies:
+            try:
+                d = pvsimple.GetDisplayProperties(p, view=view)
+                if d is not None:
+                    out.append((d, p, view))
+            except Exception:
+                pass
+    return out
 
 
 def _apply_solid(rep_path, color_hex):

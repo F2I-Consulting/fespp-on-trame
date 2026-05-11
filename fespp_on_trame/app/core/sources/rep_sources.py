@@ -13,7 +13,19 @@ addDataArray) automatically.
 This is the C++ "WithoutCopy" semantics, exposed programmatically via
 the ExtractRepPath / ExtractedRepProducerName proxy properties on
 vtkEPCCollector.
+
+Threshold pipeline (chained, deletable):
+  Each rep owns an *ordered list* of Threshold proxies forming a
+  parent-child chain. Identity = ParaView registration name
+  ``thr_<rep_sanitized>_<array1>[_<array2>...]``. The chain is stored
+  in `_chains[rep_path]` as a list of ChainEntry. Visibility toggling
+  on a node re-parents its children to the node's *current effective
+  input* — hidden ancestors are skipped, so a child can be displayed
+  "complete" (without the upstream filter applied) while its parent
+  stays in the chain definition.
 """
+import re
+
 from trame.app import get_server
 from paraview import simple as pvsimple
 from paraview import servermanager as _sm
@@ -21,6 +33,13 @@ from paraview.servermanager import vtkSMPropertyHelper
 
 server = get_server()
 state = server.state
+
+
+_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
+
+
+def _sanitize(name: str) -> str:
+    return _NAME_INVALID_RE.sub("_", name or "")
 
 
 def _find_registered_proxy(reg_name: str):
@@ -64,25 +83,67 @@ def _apply_default_tint(display, color_hex):
         pass
 
 
+class ChainEntry:
+    """One node in a rep's threshold chain.
+
+    `parent_name` is None when the parent is the rep's source (root of
+    the chain); otherwise it points to another entry by name.
+    `proxy.Input` reflects the *effective* input — when an ancestor is
+    hidden, the proxy is dynamically rewired to skip it. The logical
+    parent (parent_name) remains immutable for the entry's lifetime."""
+
+    __slots__ = ("name", "parent_name", "array", "assoc", "proxy",
+                 "visible", "low", "high", "data_range")
+
+    def __init__(self, name, parent_name, array, assoc, proxy,
+                 visible, low, high, data_range):
+        self.name = name
+        self.parent_name = parent_name
+        self.array = array
+        self.assoc = assoc
+        self.proxy = proxy
+        self.visible = visible
+        self.low = low
+        self.high = high
+        self.data_range = data_range
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "parent_name": self.parent_name,
+            "array": self.array,
+            "visible": self.visible,
+            "low": self.low,
+            "high": self.high,
+            "data_range": list(self.data_range),
+        }
+
+
 class RepSources:
     """Maintains one per-rep ExtractBlock proxy for every non-IjkGrid
     representation that's currently loaded. Each proxy is created
     lazily via SetExtractRepPath on the collector and released when its
-    rep_path leaves the selection."""
+    rep_path leaves the selection.
+
+    Each rep also owns a chained list of Threshold proxies (see
+    `_chains`); chain nodes can be added, deleted, made visible, etc.
+    independently."""
 
     def __init__(self, collector, tree):
         self._collector = collector
         self._tree = tree
         self._sources: dict = {}
-        # Per-rep threshold filter: rep_path -> Threshold proxy.
-        # Lifecycle is tied to the rep — released alongside the rep when
-        # the selector goes away.
-        self._thresholds: dict = {}
+        # Per-rep ordered chain of threshold entries.
+        # rep_path -> list[ChainEntry]
+        self._chains: dict = {}
         # Cache selector path → rep_path | None (None = IjkGrid or
         # unresolved). Tree walks are stable for a given assembly; this
         # avoids re-walking on every selector change when most
         # selectors haven't moved.
         self._selector_cache: dict = {}
+
+    # ------------------------------------------------------------------
+    # Source lifecycle
 
     def _rep_path_for(self, selector_path: str):
         """Return the representation block path for a selector, or None
@@ -136,21 +197,13 @@ class RepSources:
                 rep.Representation = state.representation_active or "Surface"
                 zs = self._current_z_scale()
                 rep.Scale = [1.0, 1.0, zs]
-                # Apply the assigned default solid color now so the rep
-                # is visible in its unique tint even when the user
-                # hasn't activated it yet (key affordance in manual
-                # load mode where many reps appear without per-node
-                # activation). Setting DiffuseColor is harmless even
-                # when ColorArrayName gets set later — ParaView uses
-                # the array if non-empty, otherwise falls back to
-                # DiffuseColor.
                 _apply_default_tint(rep, (state.solid_color_by_rep or {}).get(rep_path))
             pvsimple.Show(proxy=src, view=view)
         return src
 
     def release(self, rep_path: str):
-        # Drop the downstream Threshold first so its Input doesn't dangle.
-        self._delete_threshold(rep_path)
+        # Drop the threshold chain first so its Inputs don't dangle.
+        self._delete_chain(rep_path)
         src = self._sources.pop(rep_path, None)
         if src is None:
             return
@@ -162,20 +215,25 @@ class RepSources:
         except Exception:
             pass
 
-    def _delete_threshold(self, rep_path: str):
-        thr = self._thresholds.pop(rep_path, None)
-        if thr is None:
+    def _delete_chain(self, rep_path: str):
+        chain = self._chains.pop(rep_path, None)
+        if not chain:
             return
         view = pvsimple.GetActiveView()
-        try:
-            if view is not None:
-                pvsimple.Hide(proxy=thr, view=view)
-        except Exception:
-            pass
-        try:
-            pvsimple.Delete(thr)
-        except Exception:
-            pass
+        # Children-first deletion to keep PV happy (no dangling Input).
+        for entry in reversed(chain):
+            try:
+                if view is not None:
+                    pvsimple.Hide(proxy=entry.proxy, view=view)
+            except Exception:
+                pass
+            try:
+                pvsimple.Delete(entry.proxy)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Array introspection
 
     def available_arrays(self, rep_path: str):
         """Return [(assoc, name), ...] for the rep's data arrays."""
@@ -216,100 +274,280 @@ class RepSources:
                 pass
         return None
 
-    def set_threshold(self, rep_path: str, array, low, high, visible):
-        """Create / update / hide the Threshold filter chained on the
-        rep's source. visible=False (or array empty) hides the filter
-        and shows the source again."""
+    def _resolve_assoc(self, rep_path: str, array_name: str):
+        for a, n in self.available_arrays(rep_path):
+            if n == array_name:
+                return a
+        return None
+
+    # ------------------------------------------------------------------
+    # Threshold chain — public API
+
+    def get_chain(self, rep_path: str):
+        """Read-only view of the chain (list of dicts) for the UI."""
+        return [e.to_dict() for e in self._chains.get(rep_path, [])]
+
+    def chain_entries(self, rep_path: str):
+        """Internal — returns the live ChainEntry list."""
+        return self._chains.get(rep_path, [])
+
+    def add_threshold(self, rep_path: str, parent_name, array: str):
+        """Create a new threshold node attached under `parent_name`
+        (or under the rep's source if None). Returns the new node's
+        name, or None on failure."""
         src = self._sources.get(rep_path)
-        if src is None:
-            return
-        view = pvsimple.GetActiveView()
-        assoc = None
-        if array:
-            for a, n in self.available_arrays(rep_path):
-                if n == array:
-                    assoc = a
-                    break
-        active = bool(visible) and bool(array) and assoc is not None
-        if not active:
-            # Hide threshold (if any) and re-show the source.
-            thr = self._thresholds.get(rep_path)
-            if thr is not None and view is not None:
-                try:
-                    pvsimple.Hide(proxy=thr, view=view)
-                except Exception:
-                    pass
-            if view is not None:
-                # Mirror eye-toggle state: only re-show if the rep is not
-                # in the user-hidden set.
-                if rep_path not in (state.ui_hidden_rep_paths or []):
-                    try:
-                        pvsimple.Show(proxy=src, view=view)
-                    except Exception:
-                        pass
-            return
+        if src is None or not array:
+            return None
+        chain = self._chains.setdefault(rep_path, [])
+        if parent_name is not None and not any(e.name == parent_name for e in chain):
+            print(f"[WARNING] add_threshold: unknown parent {parent_name!r}")
+            return None
+        # Forbid duplicates of the same array within a chain — name
+        # collision and no useful effect (just merge ranges instead).
+        for e in chain:
+            if e.array == array:
+                print(f"[WARNING] add_threshold: array {array!r} already in chain")
+                return None
+        assoc = self._resolve_assoc(rep_path, array)
+        if not assoc:
+            return None
 
-        thr = self._thresholds.get(rep_path)
-        if thr is None:
-            try:
-                thr = pvsimple.Threshold(
-                    registrationName=f"thr_{rep_path.replace('/', '_')}",
-                    Input=src,
-                )
-            except Exception as e:
-                print(f"[WARNING] Threshold creation for {rep_path} failed: {e}")
-                return
-            self._thresholds[rep_path] = thr
-            # Inherit the source's representation type and z-scale.
-            if view is not None:
-                try:
-                    src_disp = pvsimple.GetDisplayProperties(src, view=view)
-                    thr_disp = pvsimple.GetRepresentation(proxy=thr, view=view)
-                    if src_disp is not None and thr_disp is not None:
-                        try:
-                            thr_disp.Representation = src_disp.Representation
-                        except Exception:
-                            pass
-                        try:
-                            thr_disp.Scale = list(src_disp.Scale)
-                        except Exception:
-                            pass
-                        # Inherit ColorArrayName if any (the activator
-                        # later re-applies ColorBy properly).
-                        try:
-                            thr_disp.ColorArrayName = list(src_disp.ColorArrayName)
-                            thr_disp.LookupTable = src_disp.LookupTable
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+        rng = self.array_data_range(rep_path, array) or (0.0, 1.0)
+        rep_token = _sanitize(rep_path)
+        if parent_name is None:
+            base_name = f"thr_{rep_token}_{_sanitize(array)}"
+        else:
+            base_name = f"{parent_name}_{_sanitize(array)}"
 
+        # Effective input = parent's effective input (parent.proxy if
+        # parent is visible, else walk up).
+        upstream = self._effective_input_for_parent(rep_path, parent_name)
         try:
-            thr.Scalars = [assoc, array]
-            thr.LowerThreshold = float(low)
-            thr.UpperThreshold = float(high)
-            thr.UpdatePipeline()
+            proxy = pvsimple.Threshold(
+                registrationName=base_name,
+                Input=upstream,
+            )
+            proxy.Scalars = [assoc, array]
+            proxy.LowerThreshold = float(rng[0])
+            proxy.UpperThreshold = float(rng[1])
+            proxy.UpdatePipeline()
         except Exception as e:
-            print(f"[WARNING] Threshold update for {rep_path} failed: {e}")
-            return
+            print(f"[WARNING] Threshold creation for {rep_path}/{array}: {e}")
+            return None
 
-        # Hide the source, show the threshold (subject to the rep's eye).
+        entry = ChainEntry(
+            name=base_name,
+            parent_name=parent_name,
+            array=array,
+            assoc=assoc,
+            proxy=proxy,
+            visible=True,
+            low=float(rng[0]),
+            high=float(rng[1]),
+            data_range=(float(rng[0]), float(rng[1])),
+        )
+        chain.append(entry)
+
+        # Inherit display props from upstream so the chain proxy
+        # mirrors its parent visually (color array + LUT in
+        # property-color mode, DiffuseColor + Opacity in SolidColor
+        # mode) from the moment it appears.
+        view = pvsimple.GetActiveView()
         if view is not None:
             try:
-                pvsimple.Hide(proxy=src, view=view)
+                src_disp = pvsimple.GetDisplayProperties(upstream, view=view)
+                thr_disp = pvsimple.GetRepresentation(proxy=proxy, view=view)
+                if src_disp is not None and thr_disp is not None:
+                    for attr in (
+                        "Representation", "Scale", "ColorArrayName", "LookupTable",
+                        "DiffuseColor", "AmbientColor", "Opacity",
+                    ):
+                        try:
+                            val = getattr(src_disp, attr)
+                            if attr in ("Scale", "ColorArrayName", "DiffuseColor", "AmbientColor"):
+                                val = list(val)
+                            setattr(thr_disp, attr, val)
+                        except Exception:
+                            pass
             except Exception:
                 pass
-            if rep_path not in (state.ui_hidden_rep_paths or []):
-                try:
-                    pvsimple.Show(proxy=thr, view=view)
-                except Exception:
-                    pass
 
+        self._refresh_chain_visibility(rep_path)
+        return base_name
+
+    def delete_threshold(self, rep_path: str, name: str):
+        """Delete the named node, rewiring its children onto the
+        deleted node's parent (transparent "remove from chain")."""
+        chain = self._chains.get(rep_path)
+        if not chain:
+            return False
+        idx = next((i for i, e in enumerate(chain) if e.name == name), -1)
+        if idx < 0:
+            return False
+        target = chain[idx]
+        # Children of `target` adopt target.parent_name as new logical parent.
+        for e in chain:
+            if e.parent_name == name:
+                e.parent_name = target.parent_name
+        chain.pop(idx)
+        view = pvsimple.GetActiveView()
+        try:
+            if view is not None:
+                pvsimple.Hide(proxy=target.proxy, view=view)
+        except Exception:
+            pass
+        try:
+            pvsimple.Delete(target.proxy)
+        except Exception:
+            pass
+        self._refresh_chain_visibility(rep_path)
+        return True
+
+    def set_range(self, rep_path: str, name: str, low: float, high: float):
+        chain = self._chains.get(rep_path)
+        if not chain:
+            return
+        for e in chain:
+            if e.name == name:
+                e.low = float(low)
+                e.high = float(high)
+                try:
+                    e.proxy.LowerThreshold = e.low
+                    e.proxy.UpperThreshold = e.high
+                    e.proxy.UpdatePipeline()
+                except Exception as exc:
+                    print(f"[WARNING] set_range({name}): {exc}")
+                return
+
+    def set_visible(self, rep_path: str, name: str, visible: bool):
+        chain = self._chains.get(rep_path)
+        if not chain:
+            return
+        for e in chain:
+            if e.name == name:
+                e.visible = bool(visible)
+                break
+        else:
+            return
+        self._refresh_chain_visibility(rep_path)
+
+    def all_visible_thresholds(self, rep_path: str):
+        """Visible threshold proxies in chain order — used by the
+        engine to know what to render in place of the rep source."""
+        chain = self._chains.get(rep_path) or []
+        return [e.proxy for e in chain if e.visible]
+
+    def all_chain_proxies(self, rep_path: str):
+        """Every threshold proxy in the chain (visible or not) — used
+        for representation propagation, z-scale, ColorBy fan-out."""
+        return [e.proxy for e in (self._chains.get(rep_path) or [])]
+
+    # Legacy compat shims (deprecated, kept for the engine during
+    # migration). Prefer get_chain / add_threshold / set_range.
     def get_threshold(self, rep_path: str):
-        return self._thresholds.get(rep_path)
+        # Returns the deepest visible chain leaf, or None.
+        visible = self.all_visible_thresholds(rep_path)
+        return visible[-1] if visible else None
 
     def all_thresholds(self):
-        return list(self._thresholds.items())
+        out = []
+        for rep_path, chain in self._chains.items():
+            for e in chain:
+                out.append((rep_path, e.proxy))
+        return out
+
+    # ------------------------------------------------------------------
+    # Chain plumbing
+
+    def _entry_by_name(self, rep_path, name):
+        for e in self._chains.get(rep_path, []) or []:
+            if e.name == name:
+                return e
+        return None
+
+    def _effective_input_for_parent(self, rep_path, parent_name):
+        """Resolve the upstream proxy a new/refreshed child should read
+        from. parent_name=None → rep source. Otherwise walk up the
+        chain skipping hidden ancestors."""
+        if parent_name is None:
+            return self._sources.get(rep_path)
+        cursor = self._entry_by_name(rep_path, parent_name)
+        while cursor is not None and not cursor.visible:
+            cursor = self._entry_by_name(rep_path, cursor.parent_name)
+        if cursor is None:
+            return self._sources.get(rep_path)
+        return cursor.proxy
+
+    def _has_visible_descendant(self, rep_path: str, name: str):
+        """True iff at least one entry transitively rooted at `name`
+        (excluding name itself) is visible."""
+        chain = self._chains.get(rep_path) or []
+        # BFS over the chain.
+        descendants = []
+        for e in chain:
+            cursor = e
+            while cursor is not None and cursor.parent_name != name:
+                cursor = self._entry_by_name(rep_path, cursor.parent_name)
+            if cursor is not None and e is not cursor:
+                # `e` descends from `name` (parent path passes through it).
+                descendants.append(e)
+        # Direct children where parent_name == name:
+        direct = [e for e in chain if e.parent_name == name]
+        for child in direct:
+            if child.visible:
+                return True
+            if self._has_visible_descendant(rep_path, child.name):
+                return True
+        return False
+
+    def _refresh_chain_visibility(self, rep_path: str):
+        """Recompute Input wiring + display.Visibility for every node
+        in the chain. Called after add/delete/set_visible.
+
+        Display rule: an entry is shown iff entry.visible AND it has no
+        visible descendant (otherwise the descendant subsumes the
+        entry's contribution to the rendered scene). The rep source is
+        hidden when at least one chain entry is shown."""
+        chain = self._chains.get(rep_path) or []
+        view = pvsimple.GetActiveView()
+        rep_src = self._sources.get(rep_path)
+        rep_hidden_by_user = rep_path in (state.ui_hidden_rep_paths or [])
+
+        any_shown = False
+        for entry in chain:
+            upstream = self._effective_input_for_parent(rep_path, entry.parent_name)
+            try:
+                if entry.proxy.Input is not upstream:
+                    entry.proxy.Input = upstream
+                    entry.proxy.UpdatePipeline()
+            except Exception as exc:
+                print(f"[WARNING] rewire {entry.name}: {exc}")
+            if view is None:
+                continue
+            try:
+                tip = entry.visible and not self._has_visible_descendant(rep_path, entry.name)
+                show = tip and not rep_hidden_by_user
+                if show:
+                    pvsimple.Show(proxy=entry.proxy, view=view)
+                    any_shown = True
+                else:
+                    pvsimple.Hide(proxy=entry.proxy, view=view)
+            except Exception:
+                pass
+
+        # Show/hide the rep source: hidden when a chain tip is shown,
+        # or when the user barred the rep eye; fully shown otherwise.
+        if view is not None and rep_src is not None:
+            try:
+                if rep_hidden_by_user or any_shown:
+                    pvsimple.Hide(proxy=rep_src, view=view)
+                else:
+                    pvsimple.Show(proxy=rep_src, view=view)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Sync / housekeeping
 
     def release_all(self):
         for path in list(self._sources.keys()):
@@ -353,16 +591,20 @@ class RepSources:
             rep = pvsimple.GetRepresentation(proxy=src, view=view)
             if rep is not None:
                 rep.Scale = [1.0, 1.0, float(zscale)]
-        for thr in self._thresholds.values():
-            rep = pvsimple.GetRepresentation(proxy=thr, view=view)
-            if rep is not None:
-                rep.Scale = [1.0, 1.0, float(zscale)]
+        for chain in self._chains.values():
+            for entry in chain:
+                rep = pvsimple.GetRepresentation(proxy=entry.proxy, view=view)
+                if rep is not None:
+                    rep.Scale = [1.0, 1.0, float(zscale)]
 
     def apply_representation(self, representation_type: str):
         view = pvsimple.GetActiveView()
         if view is None or not representation_type:
             return
-        for src in list(self._sources.values()) + list(self._thresholds.values()):
+        proxies = list(self._sources.values())
+        for chain in self._chains.values():
+            proxies.extend(e.proxy for e in chain)
+        for src in proxies:
             rep = pvsimple.GetRepresentation(proxy=src, view=view)
             if rep is not None:
                 try:

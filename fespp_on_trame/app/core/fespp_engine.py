@@ -653,28 +653,43 @@ def initialize_fespp_engine(
         UI panels (SolidColorPanel, ColorEditor)."""
         return _rep_sources.get(rep_path)
 
+    @controller.set("get_rep_chain_proxies")
+    def get_rep_chain_proxies(rep_path):
+        """Every chain Threshold proxy attached to a non-IjkGrid rep —
+        used by panels (SolidColorPanel) that need to fan-out display
+        edits across the rep + every chain node."""
+        try:
+            return _rep_sources.all_chain_proxies(rep_path)
+        except AttributeError:
+            return []
+
     def _sources_for_rep_path(rep_path):
         """Return every (sources, view) pair that renders the given rep.
         Non-IjkGrid: a single ExtractBlock from _rep_sources. IjkGrid:
         the rep_data filter named "rep<sanitized_path>" plus slicers /
         volume tied to the *currently active* IJK grid.
 
-        When a Threshold is active for a source, return the Threshold
-        proxy in its place — that's what's rendered in the view."""
+        When the rep has a visible threshold chain, return the
+        deepest-visible chain proxy in place of each upstream source —
+        that's what's actually painted in the view."""
         view = pvsimple.GetActiveView()
         if view is None:
             return [], None
         out = []
         src = _rep_sources.get(rep_path)
         if src is not None:
-            thr = _rep_sources.get_threshold(rep_path)
-            out.append(thr if thr is not None else src)
+            visibles = _rep_sources.all_visible_thresholds(rep_path)
+            if visibles:
+                # Deepest visible entry = last appended visible one.
+                out.append(visibles[-1])
+            else:
+                out.append(src)
             return out, view
         expected_rep_filter = "rep" + (rep_path or "").replace('/', '_')
         ijk_node_id = getattr(_ijkGrid, '_node_id', None)
         ijk_path = _tree.find_path(ijk_node_id) if ijk_node_id else None
         is_active_ijk = (ijk_path == rep_path)
-        ijk_thresholds = dict(_ijkGrid._thresholds) if is_active_ijk else {}
+        deepest_leaf = _ijkGrid._deepest_visible_leaf() if is_active_ijk else None
         for sid, s in pvsimple.GetSources().items():
             name = sid[0]
             if name == expected_rep_filter or (
@@ -683,8 +698,10 @@ def initialize_fespp_engine(
                     or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
                 )
             ):
-                thr = ijk_thresholds.get(id(s))
-                out.append(thr if thr is not None else s)
+                proxy = None
+                if deepest_leaf is not None:
+                    proxy = deepest_leaf.pv_proxies.get(id(s))
+                out.append(proxy if proxy is not None else s)
         return out, view
 
     @controller.set("toggle_rep_visibility")
@@ -781,9 +798,10 @@ def initialize_fespp_engine(
 
     def _color_sources_for_rep_path(rep_path):
         """Like _sources_for_rep_path, but returns BOTH the rep source(s)
-        AND any attached Threshold proxies — used for ColorBy / LUT
-        application so the threshold mirrors its parent's coloring even
-        when only one of them is visible at a time."""
+        AND every attached chain proxy (visible or not) — used for
+        ColorBy / LUT application so the chain mirrors its parent's
+        coloring even when a chain entry is hidden and may become
+        visible later."""
         view = pvsimple.GetActiveView()
         if view is None:
             return [], None
@@ -791,9 +809,7 @@ def initialize_fespp_engine(
         src = _rep_sources.get(rep_path)
         if src is not None:
             out.append(src)
-            thr = _rep_sources.get_threshold(rep_path)
-            if thr is not None:
-                out.append(thr)
+            out.extend(_rep_sources.all_chain_proxies(rep_path))
             return out, view
         expected_rep_filter = "rep" + (rep_path or "").replace('/', '_')
         ijk_node_id = getattr(_ijkGrid, '_node_id', None)
@@ -942,174 +958,210 @@ def initialize_fespp_engine(
         pvsimple.Render(view=_view)
         controller.view_update()
 
-    # --- Threshold wiring ------------------------------------------------
-    # _in_threshold_refresh: re-entrancy guard. _refresh_threshold_ui_for_
-    # active_grid() bulk-updates the four ui_threshold_* state vars on a
-    # grid switch, which would otherwise re-trigger the per-var change
-    # handlers below and double-apply (or worse, overwrite the per-grid
-    # dict with the freshly-restored values from another grid).
-    _in_threshold_refresh = [False]
+    # --- Threshold chain wiring -------------------------------------------
+    # The data layer (RepSources / IjkGrid) owns the chain. The engine's
+    # job is to:
+    #   1. Publish the chain to `ui_threshold_chain` so the UI can render it.
+    #   2. Forward UI events (add / delete / set_range / set_visible) into
+    #      the data layer via controller methods.
+    # No per-rep persistence dicts on the state side — chains live with
+    # their rep in the data layer until the rep is unloaded.
 
-    def _save_threshold_setting(grid_path, key_dict_name, value):
-        d = dict(getattr(state, key_dict_name) or {})
-        if value is None:
-            d.pop(grid_path, None)
-        else:
-            d[grid_path] = value
-        setattr(state, key_dict_name, d)
-
-    def _apply_threshold_for_active_grid():
+    def _threshold_provider():
+        """Return (provider, rep_path) for the active grid, or
+        (None, None) if no chain-capable rep is active."""
         rep_type = state.ui_active_node_reservoir_type_rep
         grid_path = state.active_representation_path
-        if not grid_path or rep_type not in ("IjkGrid", "UnstructuredGrid"):
+        if not grid_path:
+            return None, None
+        if rep_type == "IjkGrid":
+            return _ijkGrid, grid_path
+        if rep_type == "UnstructuredGrid":
+            return _rep_sources, grid_path
+        return None, None
+
+    def _hide_unused_scalar_bars():
+        """Hide every scalar bar in the active view whose LUT is no
+        longer referenced by any visible display. Called after chain
+        mutations: creating a Threshold proxy can spawn an extra bar
+        for the filter's Scalars array (e.g. OIL) on top of the active
+        property's bar (e.g. TEMPERATURE) — the user wants only the
+        active property's bar visible. PV's TransferFunctionManager
+        provides the canonical sweep with mode=1 (HIDE_UNUSED)."""
+        view = pvsimple.GetActiveView()
+        if view is None:
             return
-        array = state.ui_threshold_array
-        rng = state.ui_threshold_range or [0.0, 1.0]
-        visible = bool(state.ui_threshold_visible)
         try:
-            if rep_type == "IjkGrid":
-                _ijkGrid.set_threshold(array, rng[0], rng[1], visible)
-            else:
-                _rep_sources.set_threshold(grid_path, array, rng[0], rng[1], visible)
-        except Exception as e:
-            print(f"[WARNING] Threshold apply failed for {grid_path}: {e}")
-            import traceback
-            traceback.print_exc()
+            from paraview.servermanager import vtkSMTransferFunctionManager
+            mgr = vtkSMTransferFunctionManager()
+            mgr.UpdateScalarBars(view.SMProxy, 1)
+        except Exception as exc:
+            print(f"[WARNING] _hide_unused_scalar_bars: {exc}")
+
+    def _publish_threshold_chain():
+        """Push the active rep's chain into ui_threshold_chain so the
+        UI re-renders. Idempotent — call after any chain mutation.
+
+        Each entry is decorated with `_depth` (0 for roots, +1 per
+        ancestor) so the UI can indent each row visually."""
+        provider, rep_path = _threshold_provider()
+        if provider is None:
+            state.ui_threshold_chain = []
+            return
+        if provider is _ijkGrid:
+            chain = provider.get_chain()
+        else:
+            chain = provider.get_chain(rep_path)
+        depth_by_name = {}
+        for entry in chain:
+            parent = entry.get("parent_name")
+            depth_by_name[entry["name"]] = (
+                0 if parent is None else depth_by_name.get(parent, 0) + 1
+            )
+            entry["_depth"] = depth_by_name[entry["name"]]
+        state.ui_threshold_chain = chain
+
+    def _data_range_for_active_grid(array_name):
+        provider, rep_path = _threshold_provider()
+        if provider is None or not array_name:
+            return None
+        if provider is _ijkGrid:
+            return provider.array_data_range(array_name)
+        return provider.array_data_range(rep_path, array_name)
+
+    @controller.set("threshold_add")
+    def threshold_add(parent_name=None, array=None):
+        """Add a threshold under `parent_name` (or the rep root if
+        None). The array defaults to the currently visible active
+        property — that's the only sensible bind point per the user
+        spec (no blind threshold-on-anything VSelect)."""
+        provider, rep_path = _threshold_provider()
+        if provider is None:
+            return
+        if not array:
+            array = state.active_color_array_name or None
+        if not array:
+            print("[WARNING] threshold_add: no active array to bind onto")
+            return
+        if provider is _ijkGrid:
+            new_name = provider.add_threshold(parent_name, array)
+        else:
+            new_name = provider.add_threshold(rep_path, parent_name, array)
+        if new_name is None:
+            return
+        _publish_threshold_chain()
+        # Re-fan the active ColorBy onto the new chain proxy, then
+        # sweep the view for stray bars left behind by the new
+        # display's auto-coloring (#7).
+        if _activator is not None:
+            try:
+                _activator.refresh_active()
+            except Exception:
+                pass
+        _hide_unused_scalar_bars()
         pvsimple.Render(view=_view)
         controller.view_update()
 
-    def _data_range_for_active_grid(array_name):
-        rep_type = state.ui_active_node_reservoir_type_rep
-        grid_path = state.active_representation_path
-        if not grid_path or not array_name:
-            return None
-        if rep_type == "IjkGrid":
-            return _ijkGrid.array_data_range(array_name)
-        if rep_type == "UnstructuredGrid":
-            return _rep_sources.array_data_range(grid_path, array_name)
-        return None
+    @controller.set("threshold_delete")
+    def threshold_delete(name):
+        provider, rep_path = _threshold_provider()
+        if provider is None or not name:
+            return
+        if provider is _ijkGrid:
+            provider.delete_threshold(name)
+        else:
+            provider.delete_threshold(rep_path, name)
+        _publish_threshold_chain()
+        _hide_unused_scalar_bars()
+        pvsimple.Render(view=_view)
+        controller.view_update()
+
+    @controller.set("threshold_set_range")
+    def threshold_set_range(name, low, high):
+        provider, rep_path = _threshold_provider()
+        if provider is None or not name:
+            return
+        try:
+            low = float(low)
+            high = float(high)
+        except (TypeError, ValueError):
+            return
+        if provider is _ijkGrid:
+            provider.set_range(name, low, high)
+        else:
+            provider.set_range(rep_path, name, low, high)
+        _publish_threshold_chain()
+        pvsimple.Render(view=_view)
+        controller.view_update()
+
+    @controller.set("threshold_set_visible")
+    def threshold_set_visible(name, visible):
+        provider, rep_path = _threshold_provider()
+        if provider is None or not name:
+            return
+        if provider is _ijkGrid:
+            provider.set_visible(name, bool(visible))
+        else:
+            provider.set_visible(rep_path, name, bool(visible))
+        _publish_threshold_chain()
+        if _activator is not None:
+            try:
+                _activator.refresh_active()
+            except Exception:
+                pass
+        _hide_unused_scalar_bars()
+        pvsimple.Render(view=_view)
+        controller.view_update()
 
     def _refresh_threshold_ui_for_active_grid():
-        """Repopulate the threshold UI state vars to reflect the active
-        grid: available arrays, plus restored {array, range, visible}
-        from the per-grid persistence dicts."""
-        rep_type = state.ui_active_node_reservoir_type_rep
-        grid_path = state.active_representation_path
-        _in_threshold_refresh[0] = True
-        try:
-            if rep_type not in ("IjkGrid", "UnstructuredGrid") or not grid_path:
-                state.update({
-                    "ui_threshold_arrays": [],
-                    "ui_threshold_array": None,
-                    "ui_threshold_data_range": [0.0, 1.0],
-                    "ui_threshold_range": [0.0, 1.0],
-                    "ui_threshold_visible": False,
-                })
-                return
-            if rep_type == "IjkGrid":
-                arrays = _ijkGrid.available_arrays()
-            else:
-                arrays = _rep_sources.available_arrays(grid_path)
-            items = [
-                {"title": f"{n} ({a.title()})", "value": n}
-                for a, n in arrays
-            ]
-            available_names = {n for _, n in arrays}
-
-            saved_array = (state.ui_threshold_array_by_grid or {}).get(grid_path)
-            saved_range = (state.ui_threshold_range_by_grid or {}).get(grid_path)
-            saved_visible = (state.ui_threshold_visible_by_grid or {}).get(grid_path, False)
-
-            if saved_array and saved_array in available_names:
-                array = saved_array
-            elif arrays:
-                array = arrays[0][1]
-            else:
-                array = None
-
-            if array:
-                rng = _data_range_for_active_grid(array) or (0.0, 1.0)
-            else:
-                rng = (0.0, 1.0)
-            data_range = [float(rng[0]), float(rng[1])]
-            if saved_range and saved_array == array:
-                thr_range = [float(saved_range[0]), float(saved_range[1])]
-            else:
-                thr_range = list(data_range)
-
-            visible = bool(saved_visible) and bool(array)
-
+        """Republish the chain + available arrays on grid switch /
+        property load."""
+        provider, rep_path = _threshold_provider()
+        if provider is None:
             state.update({
-                "ui_threshold_arrays": items,
-                "ui_threshold_array": array,
-                "ui_threshold_data_range": data_range,
-                "ui_threshold_range": thr_range,
-                "ui_threshold_visible": visible,
+                "ui_threshold_chain": [],
+                "ui_threshold_arrays_available": [],
             })
-        finally:
-            _in_threshold_refresh[0] = False
-        # Apply once after the bulk update.
-        _apply_threshold_for_active_grid()
-
-    @state.change("ui_threshold_array")
-    def on_threshold_array(ui_threshold_array, **kwargs):
-        if _in_threshold_refresh[0]:
             return
-        rep_type = state.ui_active_node_reservoir_type_rep
-        grid_path = state.active_representation_path
-        if rep_type not in ("IjkGrid", "UnstructuredGrid") or not grid_path:
-            return
-        # If the array genuinely changed (vs. the dict already had this
-        # value, e.g. deferred fire of a refresh), snap the slider range
-        # back to the array's data range; otherwise leave the saved
-        # range intact.
-        prev_saved = (state.ui_threshold_array_by_grid or {}).get(grid_path)
-        _save_threshold_setting(grid_path, "ui_threshold_array_by_grid", ui_threshold_array)
-        rng = _data_range_for_active_grid(ui_threshold_array)
-        if rng is not None:
-            state.ui_threshold_data_range = [float(rng[0]), float(rng[1])]
+        if provider is _ijkGrid:
+            arrays = provider.available_arrays()
         else:
-            state.ui_threshold_data_range = [0.0, 1.0]
-        if ui_threshold_array != prev_saved:
-            if rng is not None:
-                new_range = [float(rng[0]), float(rng[1])]
-                state.ui_threshold_range = new_range
-                _save_threshold_setting(grid_path, "ui_threshold_range_by_grid", new_range)
-            else:
-                state.ui_threshold_range = [0.0, 1.0]
-                _save_threshold_setting(grid_path, "ui_threshold_range_by_grid", None)
-        _apply_threshold_for_active_grid()
-
-    @state.change("ui_threshold_range")
-    def on_threshold_range(ui_threshold_range, **kwargs):
-        if _in_threshold_refresh[0]:
-            return
-        rep_type = state.ui_active_node_reservoir_type_rep
-        grid_path = state.active_representation_path
-        if rep_type not in ("IjkGrid", "UnstructuredGrid") or not grid_path:
-            return
-        _save_threshold_setting(
-            grid_path, "ui_threshold_range_by_grid",
-            [float(ui_threshold_range[0]), float(ui_threshold_range[1])]
-        )
-        _apply_threshold_for_active_grid()
-
-    @state.change("ui_threshold_visible")
-    def on_threshold_visible(ui_threshold_visible, **kwargs):
-        if _in_threshold_refresh[0]:
-            return
-        rep_type = state.ui_active_node_reservoir_type_rep
-        grid_path = state.active_representation_path
-        if rep_type not in ("IjkGrid", "UnstructuredGrid") or not grid_path:
-            return
-        _save_threshold_setting(
-            grid_path, "ui_threshold_visible_by_grid", bool(ui_threshold_visible)
-        )
-        _apply_threshold_for_active_grid()
+            arrays = provider.available_arrays(rep_path)
+        state.ui_threshold_arrays_available = [n for _, n in arrays]
+        _publish_threshold_chain()
 
     @state.change("active_representation_path", "ui_active_node_reservoir_type_rep")
     def on_active_grid_change(**kwargs):
         _refresh_threshold_ui_for_active_grid()
+
+    @state.change("ui_threshold_pending_action")
+    def _on_threshold_pending_action(ui_threshold_pending_action=None, **_):
+        """Single-entry-point dispatcher for UI threshold events.
+        The UI writes a {action, ...} dict into the sentinel; this
+        handler routes it to the matching controller method, then
+        clears the sentinel so subsequent identical actions still
+        fire (Trame collapses no-op writes)."""
+        if not ui_threshold_pending_action:
+            return
+        action = ui_threshold_pending_action
+        try:
+            kind = action.get("action")
+            if kind == "add":
+                threshold_add(parent_name=action.get("parent"))
+            elif kind == "delete":
+                threshold_delete(action.get("name"))
+            elif kind == "set_range":
+                threshold_set_range(
+                    action.get("name"),
+                    action.get("low"),
+                    action.get("high"),
+                )
+            elif kind == "set_visible":
+                threshold_set_visible(action.get("name"), action.get("visible"))
+            else:
+                print(f"[WARNING] unknown threshold action: {kind!r}")
+        finally:
+            state.ui_threshold_pending_action = None
 
     @state.change("representation_active")
     def _propagate_representation(representation_active, **kwargs):

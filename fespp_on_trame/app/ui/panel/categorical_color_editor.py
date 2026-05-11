@@ -396,7 +396,18 @@ class CategoricalColorEditor(html.Div):
 
     def _apply_color_change(self, index: int, hex_color: str):
         """Apply a single colour-picker change to the LUT and refresh
-        the matching categorical_entries row."""
+        the matching categorical_entries row.
+
+        Per-category alpha (`IndexedOpacities[idx]`) only affects the
+        rendered image when:
+          (a) ``IndexedLookup = 1`` on the LUT (in indexed-mode lookup),
+          (b) ``EnableOpacityMapping = 1``,
+          (c) every display using the LUT actually re-binds it after
+              the property mutation (PV's mapper caches the LUT
+              snapshot).
+        We re-assert (a) and (b) on every change and re-bind every
+        active display's LookupTable below, otherwise the alpha edit
+        silently no-ops on subsequent renders."""
         array_name = state.active_color_array_name or ""
         if not array_name:
             return
@@ -405,7 +416,6 @@ class CategoricalColorEditor(html.Div):
         if lut is None or lut.SMProxy is None:
             return
 
-        # Read via SMProxy to avoid pvsimple's strict __getattr__.
         col_prop = lut.SMProxy.GetProperty("IndexedColors")
         op_prop = lut.SMProxy.GetProperty("IndexedOpacities")
         colors = []
@@ -420,11 +430,44 @@ class CategoricalColorEditor(html.Div):
             colors[index * 3 + 1] = g
             colors[index * 3 + 2] = b
             _set_double_list_property(lut, "IndexedColors", colors)
-        if op_prop is not None:
-            while len(ops) <= index:
-                ops.append(1.0)
-            ops[index] = a
-            _set_double_list_property(lut, "IndexedOpacities", ops)
+        # Always grow the opacity list to cover the modified index;
+        # PV silently treats a too-short list as fully opaque.
+        while len(ops) <= index:
+            ops.append(1.0)
+        ops[index] = a
+        _set_double_list_property(lut, "IndexedOpacities", ops)
+        # Re-assert the indexed-lookup flags after every edit (PV may
+        # reset them when ColorBy is re-applied elsewhere).
+        _set_int_property(lut, "IndexedLookup", 1)
+        _set_int_property(lut, "EnableOpacityMapping", 1)
+
+        # Force every display currently bound to this LUT to refresh
+        # its mapper. Re-assigning .LookupTable triggers PV's mapper
+        # to re-read the LUT including the just-changed
+        # IndexedOpacities; without this, surface rendering keeps
+        # using the cached opacity vector (alpha edits look like
+        # no-ops).
+        view = pvsimple.GetActiveView()
+        if view is not None:
+            for sid, src in pvsimple.GetSources().items():
+                try:
+                    disp = pvsimple.GetDisplayProperties(src, view=view)
+                    if disp is None:
+                        continue
+                    cur_lut = getattr(disp, "LookupTable", None)
+                    if cur_lut is not None and cur_lut.SMProxy is lut.SMProxy:
+                        disp.LookupTable = lut
+                        # Color array bound to this LUT? if so, also
+                        # re-set ColorArrayName to push the update
+                        # through the mapper's full re-config path.
+                        try:
+                            ca = list(disp.ColorArrayName)
+                            if ca and ca[1] == array_name:
+                                disp.ColorArrayName = ca
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
 
         entries = list(state.categorical_entries or [])
         if 0 <= index < len(entries):

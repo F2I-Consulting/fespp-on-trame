@@ -46,20 +46,23 @@ class SlicerControls(html.Div):
         state.setdefault("ui_slices_real_locked", True)
         state.setdefault("ui_slices_real_locked_value", None)
 
-        # Per-grid threshold persistence: dicts keyed by grid rep_path so
-        # switching between two loaded grids restores their own array
-        # selection / range / eye instead of resetting.
-        state.setdefault("ui_threshold_array_by_grid", {})
-        state.setdefault("ui_threshold_range_by_grid", {})
-        state.setdefault("ui_threshold_visible_by_grid", {})
-
-        # Active-grid view (UI-bound). Refreshed when the active node's
-        # rep changes.
-        state.setdefault("ui_threshold_arrays", [])
-        state.setdefault("ui_threshold_array", None)
-        state.setdefault("ui_threshold_data_range", [0.0, 1.0])
-        state.setdefault("ui_threshold_range", [0.0, 1.0])
-        state.setdefault("ui_threshold_visible", False)
+        # Threshold chain for the active rep (refreshed by the engine
+        # whenever the active grid or chain changes). Each entry is a
+        # dict {name, parent_name, array, visible, low, high,
+        # data_range}.
+        state.setdefault("ui_threshold_chain", [])
+        # Array names available on the active rep — used for the UI's
+        # "no array to bind" empty-state hint.
+        state.setdefault("ui_threshold_arrays_available", [])
+        # Sentinel-driven controllers: writing to these triggers the
+        # engine handler below, then the handler resets it. Trame
+        # ignores writes that don't change the value, so we MUST reset
+        # so the next event fires.
+        state.setdefault("ui_threshold_pending_action", None)
+        # Local UI-side range edits: per-name {name: [low, high]}.
+        # Mirror of the chain entries' ranges, debounced through the
+        # slider's @end event below.
+        state.setdefault("ui_threshold_local_ranges", {})
 
         self._mode_var = f"ui_slices_range_mode"
         self._slices_range_active_var = f"ui_slices_range_active"
@@ -360,68 +363,132 @@ class SlicerControls(html.Div):
                 )
 
     def ThresholdControls(self):
-        """Threshold filter UI for the active reservoir grid:
-        - VSelect to pick the data array,
-        - VRangeSlider for [LowerThreshold, UpperThreshold],
-        - eye to enable / disable the threshold filter.
+        """Chained threshold UI for the active reservoir grid.
 
-        State vars (`ui_threshold_*`) are bound to the active grid;
-        per-grid persistence dicts are maintained server-side."""
+        Each chain entry renders as one row: array label + range badge,
+        eye toggle (visibility / re-parenting), VRangeSlider (debounced
+        @end commit), `+` (add child), 🗑️ (delete). Top-level `+`
+        creates a new chain root. Every chain entry's array is fixed at
+        creation time (the active visible property at the moment of
+        the click) — no VSelect, by design (cf. user feedback: a blind
+        threshold is hard to interpret).
+
+        UI events go through a single sentinel state var
+        ``ui_threshold_pending_action`` that the engine consumes and
+        resets — keeps the JS-side terse and the server-side flow
+        unified."""
+        # Header + root-add button.
         with html.Div(style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;"):
-            html.Div("Threshold", classes="text-caption font-weight-bold",
+            html.Div("Thresholds", classes="text-caption font-weight-bold",
                      style="font-size: 0.75rem;")
             vuetify3.VBtn(
-                icon=("ui_threshold_visible ? 'mdi-eye' : 'mdi-eye-off'",),
-                click="ui_threshold_visible = !ui_threshold_visible",
+                icon="mdi-plus",
+                # Disabled when no active visible property — a threshold
+                # without an array to bind onto is meaningless.
+                disabled=("!active_color_array_name",),
+                click=(
+                    "ui_threshold_pending_action = "
+                    "{ action: 'add', parent: null }"
+                ),
                 variant="text", density="compact", size="x-small",
-                color=("ui_threshold_visible ? 'primary' : 'grey'",),
+                color="primary",
                 style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
             )
+            html.Span(
+                "(activate a property first)",
+                v_if="!active_color_array_name && (!ui_threshold_chain || ui_threshold_chain.length === 0)",
+                classes="text-caption text-medium-emphasis ml-1",
+                style="font-size: 0.7rem;",
+            )
 
-        vuetify3.VSelect(
-            v_model=("ui_threshold_array",),
-            items=("ui_threshold_arrays",),
-            density="compact",
-            variant="outlined",
-            hide_details=True,
-            placeholder="Select array",
-            classes="mb-2",
-            style="font-size: 0.75rem;",
+        # Empty state when chain has nothing.
+        html.Div(
+            "No thresholds.",
+            v_if="!ui_threshold_chain || ui_threshold_chain.length === 0",
+            classes="text-caption text-medium-emphasis",
+            style="font-size: 0.7rem;",
         )
 
-        with vuetify3.VRangeSlider(
-            v_if="ui_threshold_array",
-            strict=True,
-            min=("ui_threshold_data_range[0]",),
-            max=("ui_threshold_data_range[1]",),
-            step=("(ui_threshold_data_range[1] - ui_threshold_data_range[0]) / 1000 || 1",),
-            v_model=("ui_threshold_range",),
-            thumb_label=False,
-            hide_details=True,
-            classes="mx-n4",
+        # Per-entry rows. Indentation tracks chain depth: a child sits
+        # one level deeper than its parent_name's row.
+        with html.Div(
+            v_for="(entry, idx) in (ui_threshold_chain || [])",
+            key="entry.name",
+            classes="mb-2",
         ):
-            with html.Template(v_slot_prepend=""):
-                vuetify3.VTextField(
-                    model_value=("ui_threshold_range[0]",),
-                    blur="ui_threshold_range = [parseFloat($event.target.value), ui_threshold_range[1]]",
-                    keydown="$event.key === 'Enter' && (ui_threshold_range = [parseFloat($event.target.value), ui_threshold_range[1]])",
-                    density="compact",
-                    variant="outlined",
-                    hide_details=True,
-                    style="width: 90px; font-size: 0.75rem;",
-                    type="number",
-                    single_line=True,
+            # Header line: array label, eye, +child, delete.
+            # Inline :style object so the per-depth indent merges with
+            # the static flex layout.
+            with html.Div(
+                style=(
+                    "{ display: 'flex', alignItems: 'center', gap: '4px',"
+                    " paddingLeft: ((entry._depth || 0) * 12) + 'px' }",
+                ),
+            ):
+                vuetify3.VBtn(
+                    icon=("entry.visible ? 'mdi-eye' : 'mdi-eye-off'",),
+                    click=(
+                        "ui_threshold_pending_action = "
+                        "{ action: 'set_visible', name: entry.name, visible: !entry.visible }"
+                    ),
+                    variant="text", density="compact", size="x-small",
+                    color=("entry.visible ? 'primary' : 'grey'",),
+                    style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
                 )
-            with html.Template(v_slot_append=""):
-                vuetify3.VTextField(
-                    model_value=("ui_threshold_range[1]",),
-                    blur="ui_threshold_range = [ui_threshold_range[0], parseFloat($event.target.value)]",
-                    keydown="$event.key === 'Enter' && (ui_threshold_range = [ui_threshold_range[0], parseFloat($event.target.value)])",
-                    density="compact",
-                    variant="outlined",
+                html.Span(
+                    "{{ entry.array }}",
+                    classes="text-caption font-weight-medium",
+                    style="font-size: 0.75rem;",
+                )
+                html.Span(
+                    "[{{ entry.low.toFixed(3) }} .. {{ entry.high.toFixed(3) }}]",
+                    classes="text-caption text-medium-emphasis",
+                    style="font-size: 0.7rem;",
+                )
+                vuetify3.VSpacer()
+                vuetify3.VBtn(
+                    icon="mdi-plus",
+                    disabled=("!active_color_array_name",),
+                    click=(
+                        "ui_threshold_pending_action = "
+                        "{ action: 'add', parent: entry.name }"
+                    ),
+                    variant="text", density="compact", size="x-small",
+                    color="primary",
+                    style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
+                )
+                vuetify3.VBtn(
+                    icon="mdi-delete",
+                    click=(
+                        "ui_threshold_pending_action = "
+                        "{ action: 'delete', name: entry.name }"
+                    ),
+                    variant="text", density="compact", size="x-small",
+                    color="grey",
+                    style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
+                )
+
+            # Range slider, indented under the header line.
+            with html.Div(
+                style=(
+                    "{ paddingLeft: ((entry._depth || 0) * 12 + 4) + 'px',"
+                    " paddingRight: '4px' }",
+                ),
+            ):
+                vuetify3.VRangeSlider(
+                    model_value=("[entry.low, entry.high]",),
+                    min=("entry.data_range[0]",),
+                    max=("entry.data_range[1]",),
+                    step=(
+                        "(entry.data_range[1] - entry.data_range[0]) / 1000 || 1",
+                    ),
+                    strict=True,
+                    thumb_label=False,
                     hide_details=True,
-                    style="width: 90px; font-size: 0.75rem;",
-                    type="number",
-                    single_line=True,
+                    end=(
+                        "ui_threshold_pending_action = "
+                        "{ action: 'set_range', name: entry.name,"
+                        " low: $event[0], high: $event[1] }"
+                    ),
                 )
 

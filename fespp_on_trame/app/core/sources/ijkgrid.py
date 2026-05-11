@@ -4,12 +4,50 @@ from paraview.servermanager import vtkSMPropertyHelper
 
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.fespp_tree import Tree
-from fespp_on_trame.app.core.sources.rep_sources import _apply_default_tint, _find_registered_proxy
+from fespp_on_trame.app.core.sources.rep_sources import (
+    _apply_default_tint, _find_registered_proxy, _sanitize,
+)
 
 
 server = get_server()
 state = server.state
 ctrl = server.controller
+
+
+class _IjkChainEntry:
+    """One node in the IjkGrid threshold chain.
+
+    Unlike RepSources where each chain entry has a single PV proxy,
+    an IjkGrid entry must attach to *every* currently-active upstream
+    (rep_data + slicers in slice mode, rep_data + slicervolume in
+    range mode). `pv_proxies` is keyed by id(upstream_source) and
+    holds the per-upstream Threshold proxy."""
+
+    __slots__ = ("name", "parent_name", "array", "assoc",
+                 "visible", "low", "high", "data_range", "pv_proxies")
+
+    def __init__(self, name, parent_name, array, assoc,
+                 visible, low, high, data_range):
+        self.name = name
+        self.parent_name = parent_name
+        self.array = array
+        self.assoc = assoc
+        self.visible = visible
+        self.low = low
+        self.high = high
+        self.data_range = data_range
+        self.pv_proxies = {}  # id(upstream_proxy) -> Threshold proxy
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "parent_name": self.parent_name,
+            "array": self.array,
+            "visible": self.visible,
+            "low": self.low,
+            "high": self.high,
+            "data_range": list(self.data_range),
+        }
 
 
 class IjkGrid:
@@ -18,7 +56,14 @@ class IjkGrid:
     collector) plus an ExplicitStructuredGridCrop per slicer position
     on each axis and one for the volume mode. Only one IJK grid can be
     active at a time; switching grids tears down all sources and
-    rebuilds them."""
+    rebuilds them.
+
+    Threshold pipeline: an *ordered* list of chain entries
+    (`_chain`), each entry attached to every active upstream source
+    via per-upstream Threshold proxies. Children inherit from their
+    parent's per-upstream proxy. Visibility toggling on a chain entry
+    re-parents children to the entry's *current effective* upstream
+    (skipping hidden ancestors)."""
 
     def __init__(self, collector: Collector, tree: Tree):
         self._collector = collector
@@ -36,17 +81,8 @@ class IjkGrid:
         self._src_slicers_k = []
         self._src_slicer_volume = None
 
-        # Threshold pipeline: one Threshold proxy per upstream source
-        # (rep_data in range mode; each slicer crop in slice mode).
-        # Settings (array / low / high / visible) are shared across the
-        # filters so all visible cuts of the active grid use the same
-        # threshold.
-        self._thresholds = {}  # id(src_proxy) -> Threshold proxy
-        self._threshold_assoc = None    # 'CELLS' or 'POINTS'
-        self._threshold_array = None    # str, vtk array name
-        self._threshold_low = 0.0
-        self._threshold_high = 1.0
-        self._threshold_visible = False
+        # Threshold chain (ordered, parent-child by name).
+        self._chain = []  # list[_IjkChainEntry]
 
     def color_array_type(self, name) -> None:
         """Return 'CELLS' / 'POINTS' / 'FIELD' depending on which data
@@ -68,43 +104,55 @@ class IjkGrid:
     def _all_slice_sources(self):
         return self._src_slicers_i + self._src_slicers_j + self._src_slicers_k
 
-    def _delete_threshold_for(self, src):
-        """Delete the Threshold proxy attached to src, if any."""
+    # ------------------------------------------------------------------
+    # Source teardown
+
+    def _delete_chain(self):
+        """Tear down every PV proxy in the chain. Children-first so
+        Inputs don't dangle."""
+        view = pvsimple.GetActiveView()
+        for entry in reversed(self._chain):
+            for proxy in list(entry.pv_proxies.values()):
+                try:
+                    if view is not None:
+                        pvsimple.Hide(proxy=proxy, view=view)
+                except Exception:
+                    pass
+                try:
+                    pvsimple.Delete(proxy)
+                except Exception:
+                    pass
+            entry.pv_proxies.clear()
+        self._chain = []
+
+    def _delete_chain_proxies_for_upstream(self, src):
+        """Drop the per-upstream slot of every chain entry tied to
+        `src` — used when the corresponding slicer is destroyed."""
         if src is None:
             return
-        thr = self._thresholds.pop(id(src), None)
-        if thr is None:
-            return
         view = pvsimple.GetActiveView()
-        try:
-            pvsimple.Hide(proxy=thr, view=view)
-        except Exception:
-            pass
-        try:
-            pvsimple.Delete(thr)
-        except Exception:
-            pass
-
-    def _delete_all_thresholds(self):
-        for thr in list(self._thresholds.values()):
-            view = pvsimple.GetActiveView()
+        sid = id(src)
+        for entry in reversed(self._chain):
+            proxy = entry.pv_proxies.pop(sid, None)
+            if proxy is None:
+                continue
             try:
-                pvsimple.Hide(proxy=thr, view=view)
+                if view is not None:
+                    pvsimple.Hide(proxy=proxy, view=view)
             except Exception:
                 pass
             try:
-                pvsimple.Delete(thr)
+                pvsimple.Delete(proxy)
             except Exception:
                 pass
-        self._thresholds = {}
 
     def _delete_all_sources(self):
         view = pvsimple.GetActiveView()
         pvsimple.SetActiveSource(None)
-        # Thresholds reference the slicer/rep_data proxies; delete them
-        # FIRST so the upstream Delete calls don't trip on dangling
-        # downstream filters.
-        self._delete_all_thresholds()
+        # Chain references slicer/rep_data proxies; delete it FIRST so
+        # the upstream Delete calls don't trip on dangling downstream
+        # filters.
+        self._delete_chain()
         for src in self._all_slice_sources():
             try:
                 pvsimple.Hide(proxy=src, view=view)
@@ -127,6 +175,9 @@ class IjkGrid:
             except Exception:
                 pass
             self._src_extract_init = None
+
+    # ------------------------------------------------------------------
+    # Slicer lifecycle
 
     def _create_slice_source(self, axis: str, idx: int):
         """Create and return a new ExplicitStructuredGridCrop for
@@ -155,13 +206,13 @@ class IjkGrid:
         while len(srcs) < count:
             src = self._create_slice_source(axis, len(srcs))
             srcs.append(src)
-            # If a threshold is currently active, attach one to the new slicer.
-            if self._threshold_visible and self._threshold_array:
-                self._create_threshold_for(src)
+            # New slicer joins the active upstream set — reattach the
+            # chain to it.
+            self._refresh_chain_pipeline()
         view = pvsimple.GetActiveView()
         while len(srcs) > count:
             src = srcs.pop()
-            self._delete_threshold_for(src)
+            self._delete_chain_proxies_for_upstream(src)
             try:
                 pvsimple.Hide(proxy=src, view=view)
                 pvsimple.Delete(src)
@@ -191,11 +242,6 @@ class IjkGrid:
 
             self._node_id = ijkgrid_node_id
             self._property_path = self._tree.find_path(node_id)
-            # Trigger the FESPP-side extract via the proxy property
-            # mechanism (same path as RepSources). The producer's
-            # output preserves the real VTK type
-            # (vtkExplicitStructuredGrid), which
-            # ExplicitStructuredGridCrop below requires.
             ijkgrid_rep_path = self._tree.find_path(ijkgrid_node_id)
             coll_proxy = self._collector.get_source().SMProxy
             vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
@@ -229,10 +275,6 @@ class IjkGrid:
 
             rep_type = state.representation_active or 'Surface'
             grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
-            # Configure the rep_data filter's display too — for volume
-            # mode we display IT directly instead of slicervolume (PV6's
-            # vtkExplicitStructuredGridCrop produces a degenerate 1-cell
-            # output even with OutputWholeExtent set to the full grid).
             for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
                 disp = pvsimple.GetRepresentation(proxy=src, view=view)
                 disp.Representation = rep_type
@@ -266,14 +308,6 @@ class IjkGrid:
 
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.OutputWholeExtent = extent
-            # The slicers ran their first RequestData via Show() above
-            # but at that point OutputWholeExtent was still the default
-            # (often empty / invalid), producing an empty output. Now
-            # that we've set the real extent, force a re-execute so the
-            # cached output reflects the cropped grid (with CellData
-            # arrays propagated from the rep_data filter). Without
-            # this, the slicer's CellData stays empty until something
-            # else triggers UpdatePipeline downstream.
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 try:
                     src.UpdatePipeline()
@@ -322,6 +356,22 @@ class IjkGrid:
             return self._src_extract_init
         return self._src_slicer_volume
 
+    def _active_upstreams(self):
+        """The upstream sources currently rendered (and thus the ones
+        the chain should attach to) for the current slicer mode."""
+        if self._src_extract_init is None:
+            return []
+        out = [self._src_extract_init]
+        if state.ui_slices_range_mode == 'slice':
+            out.extend(self._all_slice_sources())
+        else:
+            if self._src_slicer_volume is not None:
+                out.append(self._src_slicer_volume)
+        return out
+
+    # ------------------------------------------------------------------
+    # Show / hide
+
     def show(self):
         """Show / hide the right combination of sources for the current
         slicer mode. Slice mode displays the per-axis crops; range mode
@@ -333,17 +383,18 @@ class IjkGrid:
         or the volume eye (range mode), we show rep_data — the parent
         un-cropped grid — instead of leaving an empty view.
 
-        When a threshold is enabled, each "would-be visible" source is
-        replaced by its downstream Threshold filter."""
+        When the chain has any visible entry, each "would-be visible"
+        source is replaced by its corresponding Threshold proxy from
+        the deepest visible chain leaf."""
         if self._node_id is None:
             return
         view = pvsimple.GetActiveView()
-        use_threshold = bool(self._threshold_visible and self._threshold_array)
+        deepest_leaf = self._deepest_visible_leaf()
 
         if state.ui_slices_range_mode == 'slice':
             if self._src_slicer_volume is not None:
                 pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
-                self._hide_threshold_for(self._src_slicer_volume, view)
+                self._hide_chain_for(self._src_slicer_volume, view)
 
             vis_i = list(state.ui_slices_i_visible_list or [])
             vis_j = list(state.ui_slices_j_visible_list or [])
@@ -356,25 +407,22 @@ class IjkGrid:
             ):
                 for idx, src in enumerate(axis_srcs):
                     visible = vis_list[idx] if idx < len(vis_list) else True
-                    self._show_source_or_threshold(src, view, visible, use_threshold)
+                    self._show_source_or_chain(src, view, visible, deepest_leaf)
                     if visible:
                         any_visible = True
 
             if self._src_extract_init is not None:
                 # Parent fallback: show rep_data when no slicer is visible.
-                self._show_source_or_threshold(
-                    self._src_extract_init, view, not any_visible, use_threshold,
+                self._show_source_or_chain(
+                    self._src_extract_init, view, not any_visible, deepest_leaf,
                 )
         else:
             for src in self._all_slice_sources():
                 pvsimple.Hide(proxy=src, view=view)
-                self._hide_threshold_for(src, view)
+                self._hide_chain_for(src, view)
 
             primary = self._primary_range_source()
             volume_visible = bool(getattr(state, 'ui_slices_volume_visible', True))
-            # Parent fallback: volume eye OFF means "bypass the crop" —
-            # always show rep_data (the un-cropped parent), regardless of
-            # whether we were on a subset or full extent.
             if not volume_visible:
                 primary = self._src_extract_init
                 volume_visible = True
@@ -382,32 +430,72 @@ class IjkGrid:
             for s in (self._src_extract_init, self._src_slicer_volume):
                 if s is not None and s is not primary:
                     pvsimple.Hide(proxy=s, view=view)
-                    self._hide_threshold_for(s, view)
+                    self._hide_chain_for(s, view)
             if primary is not None:
-                self._show_source_or_threshold(primary, view, volume_visible, use_threshold)
+                self._show_source_or_chain(primary, view, volume_visible, deepest_leaf)
 
-    def _show_source_or_threshold(self, src, view, visible, use_threshold):
-        """Show src OR its downstream Threshold (mutually exclusive),
+    def _show_source_or_chain(self, src, view, visible, deepest_leaf):
+        """Show src OR its corresponding deepest visible threshold leaf,
         gated by the user's eye state for that source."""
-        thr = self._thresholds.get(id(src)) if use_threshold else None
-        if thr is not None:
+        proxy = None
+        if deepest_leaf is not None:
+            proxy = deepest_leaf.pv_proxies.get(id(src))
+        if proxy is not None:
             pvsimple.Hide(proxy=src, view=view)
-            (pvsimple.Show if visible else pvsimple.Hide)(proxy=thr, view=view)
+            (pvsimple.Show if visible else pvsimple.Hide)(proxy=proxy, view=view)
+            # Hide intermediate chain entries' proxies for this upstream.
+            for entry in self._chain:
+                if entry is deepest_leaf:
+                    continue
+                p = entry.pv_proxies.get(id(src))
+                if p is not None:
+                    try:
+                        pvsimple.Hide(proxy=p, view=view)
+                    except Exception:
+                        pass
         else:
-            self._hide_threshold_for(src, view)
+            self._hide_chain_for(src, view)
             (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
 
-    def _hide_threshold_for(self, src, view):
-        thr = self._thresholds.get(id(src))
-        if thr is not None:
-            try:
-                pvsimple.Hide(proxy=thr, view=view)
-            except Exception:
-                pass
+    def _hide_chain_for(self, src, view):
+        for entry in self._chain:
+            p = entry.pv_proxies.get(id(src))
+            if p is not None:
+                try:
+                    pvsimple.Hide(proxy=p, view=view)
+                except Exception:
+                    pass
+
+    def _deepest_visible_leaf(self):
+        """The deepest visible chain entry (i.e. last one in chain
+        order whose own visibility is on AND every ancestor on the
+        path to root is visible). None if nothing is visible. The
+        chain's display always shows the deepest visible entry's
+        output — intermediate ones serve only as filters in the
+        pipeline."""
+        leaf = None
+        for entry in self._chain:
+            if not entry.visible:
+                continue
+            if not self._ancestors_all_visible(entry):
+                continue
+            leaf = entry
+        return leaf
+
+    def _ancestors_all_visible(self, entry):
+        cursor = self._entry_by_name(entry.parent_name)
+        while cursor is not None:
+            if not cursor.visible:
+                return False
+            cursor = self._entry_by_name(cursor.parent_name)
+        return True
+
+    # ------------------------------------------------------------------
+    # Array introspection
 
     def available_arrays(self):
         """Return [(assoc, name), ...] for the active grid's data arrays.
-        Used by the engine to populate the threshold VSelect."""
+        Used by the engine to populate the threshold UI."""
         src = self._src_extract_init
         if src is None:
             return []
@@ -447,137 +535,249 @@ class IjkGrid:
                 pass
         return None
 
-    def set_threshold(self, array, low, high, visible):
-        """Drive the per-source Threshold filters from the UI state.
-        Rebuilds the filter set whenever the array changes (Threshold's
-        Scalars property can change but it's simpler to recreate, and the
-        underlying VTK caches the upstream output)."""
-        if self._node_id is None:
+    def _resolve_assoc(self, array_name):
+        for a, n in self.available_arrays():
+            if n == array_name:
+                return a
+        return None
+
+    # ------------------------------------------------------------------
+    # Chain — public API
+
+    def get_chain(self):
+        return [e.to_dict() for e in self._chain]
+
+    def chain_entries(self):
+        return self._chain
+
+    def add_threshold(self, parent_name, array):
+        """Append a chain entry under `parent_name` (or root if None).
+        Creates per-upstream PV proxies on the spot."""
+        if self._src_extract_init is None or not array:
+            return None
+        if parent_name is not None and not any(e.name == parent_name for e in self._chain):
+            print(f"[WARNING] add_threshold: unknown parent {parent_name!r}")
+            return None
+        for e in self._chain:
+            if e.array == array:
+                print(f"[WARNING] add_threshold: array {array!r} already in chain")
+                return None
+        assoc = self._resolve_assoc(array)
+        if not assoc:
+            return None
+
+        ijkgrid_node_id = self._node_id
+        rep_path = self._tree.find_path(ijkgrid_node_id) if ijkgrid_node_id else "ijk"
+        rep_token = _sanitize(rep_path)
+        if parent_name is None:
+            base_name = f"thr_{rep_token}_{_sanitize(array)}"
+        else:
+            base_name = f"{parent_name}_{_sanitize(array)}"
+
+        rng = self.array_data_range(array) or (0.0, 1.0)
+        entry = _IjkChainEntry(
+            name=base_name,
+            parent_name=parent_name,
+            array=array,
+            assoc=assoc,
+            visible=True,
+            low=float(rng[0]),
+            high=float(rng[1]),
+            data_range=(float(rng[0]), float(rng[1])),
+        )
+        self._chain.append(entry)
+        self._refresh_chain_pipeline()
+        self.show()
+        return base_name
+
+    def delete_threshold(self, name):
+        idx = next((i for i, e in enumerate(self._chain) if e.name == name), -1)
+        if idx < 0:
+            return False
+        target = self._chain[idx]
+        # Children of target adopt target.parent_name as new logical parent.
+        for e in self._chain:
+            if e.parent_name == name:
+                e.parent_name = target.parent_name
+        self._chain.pop(idx)
+        view = pvsimple.GetActiveView()
+        for proxy in list(target.pv_proxies.values()):
+            try:
+                if view is not None:
+                    pvsimple.Hide(proxy=proxy, view=view)
+            except Exception:
+                pass
+            try:
+                pvsimple.Delete(proxy)
+            except Exception:
+                pass
+        target.pv_proxies.clear()
+        self._refresh_chain_pipeline()
+        self.show()
+        return True
+
+    def set_range(self, name, low, high):
+        for e in self._chain:
+            if e.name == name:
+                e.low = float(low)
+                e.high = float(high)
+                for proxy in e.pv_proxies.values():
+                    try:
+                        proxy.LowerThreshold = e.low
+                        proxy.UpperThreshold = e.high
+                        proxy.UpdatePipeline()
+                    except Exception as exc:
+                        print(f"[WARNING] set_range({name}): {exc}")
+                return
+
+    def set_visible(self, name, visible):
+        for e in self._chain:
+            if e.name == name:
+                e.visible = bool(visible)
+                break
+        else:
             return
-        prev_array = self._threshold_array
-        new_assoc = None
-        if array:
-            for assoc, name in self.available_arrays():
-                if name == array:
-                    new_assoc = assoc
-                    break
-
-        self._threshold_array = array if new_assoc else None
-        self._threshold_assoc = new_assoc
-        self._threshold_low = float(low) if low is not None else 0.0
-        self._threshold_high = float(high) if high is not None else 1.0
-        self._threshold_visible = bool(visible) and bool(self._threshold_array)
-
-        # Recreate when the array changes — Scalars on Threshold can be
-        # mutated in place but recreating side-steps any stale cached
-        # output and keeps the registrationName tied to the source id.
-        if array != prev_array:
-            self._delete_all_thresholds()
-
-        if self._threshold_visible:
-            for src in self._sources_for_threshold_attach():
-                thr = self._thresholds.get(id(src))
-                if thr is None:
-                    self._create_threshold_for(src)
-                else:
-                    self._update_threshold_props(thr)
+        self._refresh_chain_pipeline()
         self.show()
 
-    def refresh_threshold_pipeline(self):
-        """Re-attach thresholds to the current set of "active sources" —
-        called when the slicer mode flips (the source set changes)."""
-        if not (self._threshold_visible and self._threshold_array):
-            self._delete_all_thresholds()
-            return
-        target_srcs = self._sources_for_threshold_attach()
-        target_ids = {id(s) for s in target_srcs}
-        for src_id in list(self._thresholds.keys()):
-            if src_id not in target_ids:
-                thr = self._thresholds.pop(src_id)
-                view = pvsimple.GetActiveView()
-                try:
-                    pvsimple.Hide(proxy=thr, view=view)
-                except Exception:
-                    pass
-                try:
-                    pvsimple.Delete(thr)
-                except Exception:
-                    pass
-        for src in target_srcs:
-            if id(src) not in self._thresholds:
-                self._create_threshold_for(src)
-            else:
-                self._update_threshold_props(self._thresholds[id(src)])
-
-    def _sources_for_threshold_attach(self):
-        # Always attach to rep_data — it's the fallback rendered when
-        # the user hides every per-axis slicer (slice mode) or the volume
-        # eye (range mode), and we want the threshold to follow.
-        out = []
-        if self._src_extract_init is not None:
-            out.append(self._src_extract_init)
-        if state.ui_slices_range_mode == 'slice':
-            out.extend(self._all_slice_sources())
-        else:
-            if self._src_slicer_volume is not None:
-                out.append(self._src_slicer_volume)
-        return out
-
-    def _create_threshold_for(self, src):
-        if src is None or not self._threshold_array or not self._threshold_assoc:
-            return None
-        try:
-            thr = pvsimple.Threshold(
-                registrationName=f"thr_{id(src)}",
-                Input=src,
-            )
-        except Exception as e:
-            print(f"[WARNING] Threshold creation failed: {e}")
-            return None
-        self._thresholds[id(src)] = thr
-        self._update_threshold_props(thr)
-        # Mirror the source's CURRENT display state (representation,
-        # ColorArrayName, LUT, scale) directly. self._title only tracks
-        # the property the IjkGrid was loaded with (set_node_id) — it's
-        # stale after the user switches active property through the
-        # tree eye, so reading the source's display is the authoritative
-        # source.
-        view = pvsimple.GetActiveView()
-        try:
-            src_disp = pvsimple.GetDisplayProperties(src, view=view)
-            thr_disp = pvsimple.GetRepresentation(proxy=thr, view=view)
-            if src_disp is not None and thr_disp is not None:
-                for attr, as_list in (
-                    ("Representation", False),
-                    ("Scale", True),
-                    ("ColorArrayName", True),
-                    ("LookupTable", False),
-                ):
-                    try:
-                        val = getattr(src_disp, attr)
-                        if as_list:
-                            val = list(val)
-                        setattr(thr_disp, attr, val)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        return thr
-
-    def _update_threshold_props(self, thr):
-        if thr is None or not self._threshold_array or not self._threshold_assoc:
-            return
-        try:
-            thr.Scalars = [self._threshold_assoc, self._threshold_array]
-            thr.LowerThreshold = float(self._threshold_low)
-            thr.UpperThreshold = float(self._threshold_high)
-            thr.UpdatePipeline()
-        except Exception as e:
-            print(f"[WARNING] Threshold property update failed: {e}")
+    def all_visible_threshold_proxies(self):
+        """Every PV proxy that's actually rendering threshold output —
+        used by the engine for ColorBy fan-out / visibility scans."""
+        leaf = self._deepest_visible_leaf()
+        if leaf is None:
+            return []
+        return list(leaf.pv_proxies.values())
 
     def all_threshold_sources(self):
-        """Used by the engine / activator to walk threshold proxies."""
-        return list(self._thresholds.values())
+        """Every chain PV proxy (visible or not) — used for
+        representation propagation."""
+        out = []
+        for entry in self._chain:
+            out.extend(entry.pv_proxies.values())
+        return out
+
+    # ------------------------------------------------------------------
+    # Chain plumbing
+
+    def _entry_by_name(self, name):
+        if name is None:
+            return None
+        for e in self._chain:
+            if e.name == name:
+                return e
+        return None
+
+    def _effective_upstream_for(self, entry, src):
+        """For chain entry `entry` and active upstream source `src`,
+        resolve the actual PV proxy its Threshold should read from.
+        Walk up the chain skipping hidden ancestors; fall back to the
+        upstream source itself."""
+        cursor = self._entry_by_name(entry.parent_name)
+        while cursor is not None:
+            if cursor.visible:
+                proxy = cursor.pv_proxies.get(id(src))
+                if proxy is not None:
+                    return proxy
+                break
+            cursor = self._entry_by_name(cursor.parent_name)
+        return src
+
+    def _refresh_chain_pipeline(self):
+        """Sync the per-entry per-upstream PV proxy set with the
+        currently-active upstream sources, then rewire each proxy's
+        Input to reflect visibility-aware parenting.
+
+        Called when:
+          - entries are added / removed,
+          - visibility changes,
+          - the slicer mode flips (active upstream set changes)."""
+        upstreams = self._active_upstreams()
+        upstream_ids = {id(s) for s in upstreams}
+        view = pvsimple.GetActiveView()
+
+        for entry in self._chain:
+            # Drop slots for upstreams that are no longer active.
+            for sid in list(entry.pv_proxies.keys()):
+                if sid not in upstream_ids:
+                    proxy = entry.pv_proxies.pop(sid)
+                    try:
+                        if view is not None:
+                            pvsimple.Hide(proxy=proxy, view=view)
+                    except Exception:
+                        pass
+                    try:
+                        pvsimple.Delete(proxy)
+                    except Exception:
+                        pass
+            # Create / update slots for currently-active upstreams.
+            for src in upstreams:
+                effective = self._effective_upstream_for(entry, src)
+                proxy = entry.pv_proxies.get(id(src))
+                if proxy is None:
+                    try:
+                        proxy = pvsimple.Threshold(
+                            registrationName=f"{entry.name}__{id(src)}",
+                            Input=effective,
+                        )
+                    except Exception as exc:
+                        print(f"[WARNING] Threshold create {entry.name}: {exc}")
+                        continue
+                    entry.pv_proxies[id(src)] = proxy
+                    self._inherit_display(proxy, src)
+                else:
+                    try:
+                        if proxy.Input is not effective:
+                            proxy.Input = effective
+                    except Exception as exc:
+                        print(f"[WARNING] Threshold rewire {entry.name}: {exc}")
+                # Push current Scalars + bounds.
+                try:
+                    proxy.Scalars = [entry.assoc, entry.array]
+                    proxy.LowerThreshold = float(entry.low)
+                    proxy.UpperThreshold = float(entry.high)
+                    proxy.UpdatePipeline()
+                except Exception as exc:
+                    print(f"[WARNING] Threshold props {entry.name}: {exc}")
+
+    def _inherit_display(self, thr_proxy, src):
+        """Copy Representation / Scale / ColorArrayName / LookupTable /
+        DiffuseColor / Opacity from src's display onto thr_proxy's
+        display so the threshold output mirrors its parent visually
+        (both in property-color mode and SolidColor mode) from the
+        moment it appears."""
+        view = pvsimple.GetActiveView()
+        if view is None:
+            return
+        try:
+            src_disp = pvsimple.GetDisplayProperties(src, view=view)
+            thr_disp = pvsimple.GetRepresentation(proxy=thr_proxy, view=view)
+            if src_disp is None or thr_disp is None:
+                return
+            for attr, as_list in (
+                ("Representation", False),
+                ("Scale", True),
+                ("ColorArrayName", True),
+                ("LookupTable", False),
+                ("DiffuseColor", True),
+                ("AmbientColor", True),
+                ("Opacity", False),
+            ):
+                try:
+                    val = getattr(src_disp, attr)
+                    if as_list:
+                        val = list(val)
+                    setattr(thr_disp, attr, val)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Mode-flip / slicer-add hook. Kept for engine compatibility.
+    def refresh_threshold_pipeline(self):
+        self._refresh_chain_pipeline()
+
+    # ------------------------------------------------------------------
+    # NaN / colors
 
     def _nan_opacity_from_state(self):
         """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""

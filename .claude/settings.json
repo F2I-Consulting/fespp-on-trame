@@ -41,7 +41,20 @@
       "Bash(python -c \"import trame_server; print\\(trame_server.__file__\\)\")",
       "Read(//opt/**)",
       "Bash(python -c \"import inspect; from aiohttp.web_runner import AppRunner; print\\(inspect.getsource\\(AppRunner.setup\\)\\)\")",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "PowerShell(python -c \"import py_compile; mods = ['fespp_on_trame/app/core/sources/rep_sources.py', 'fespp_on_trame/app/core/sources/ijkgrid.py', 'fespp_on_trame/app/core/fespp_engine.py', 'fespp_on_trame/app/core/fespp_active.py', 'fespp_on_trame/app/ui/panel/slicers.py', 'fespp_on_trame/app/ui/panel/solid_color_panel.py', 'fespp_on_trame/app/ui/panel/categorical_color_editor.py']; [py_compile.compile\\(m, doraise=True\\) for m in mods]; print\\('all OK'\\)\")",
+      "PowerShell(Get-Command python, py, python3 -ErrorAction SilentlyContinue)",
+      "PowerShell($py = \"C:\\\\Users\\\\cedri\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python39\\\\python.exe\"; if \\(Test-Path $py\\) { & $py --version } else { \"missing\" })",
+      "PowerShell($py = \"C:\\\\Users\\\\cedri\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python39\\\\python.exe\"; & $py -c \"import py_compile, sys; mods = ['fespp_on_trame/app/core/sources/rep_sources.py', 'fespp_on_trame/app/core/sources/ijkgrid.py', 'fespp_on_trame/app/core/fespp_engine.py', 'fespp_on_trame/app/core/fespp_active.py', 'fespp_on_trame/app/ui/panel/slicers.py', 'fespp_on_trame/app/ui/panel/solid_color_panel.py', 'fespp_on_trame/app/ui/panel/categorical_color_editor.py']; ok = True; ok = all\\([py_compile.compile\\(m, doraise=True\\) is not None or True for m in mods]\\); print\\('all OK' if ok else 'failed'\\)\")",
+      "PowerShell($py = \"C:\\\\Users\\\\cedri\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python39\\\\python.exe\"; & $py -m pytest tests/unit -x --no-header -q 2>&1 | Select-Object -Last 20)",
+      "Bash(git -C \"e:\\\\Dev\\\\fespp-on-trame\\\\devIA\\\\fespp-on-trame\" log --oneline -5 -- tests/unit/test_fespp_tree.py)",
+      "Bash(git -C \"e:\\\\Dev\\\\fespp-on-trame\\\\devIA\\\\fespp-on-trame\" stash)",
+      "Bash(\"C:\\\\Users\\\\cedri\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python39\\\\python.exe\" -m pytest tests/unit/test_fespp_tree.py -x --no-header -q)",
+      "Bash(git -C \"e:\\\\Dev\\\\fespp-on-trame\\\\devIA\\\\fespp-on-trame\" stash pop)",
+      "Bash(git -C \"e:\\\\Dev\\\\fespp-on-trame\\\\devIA\\\\fespp-on-trame\" stash show --name-only)",
+      "Bash(git -C \"e:\\\\Dev\\\\fespp-on-trame\\\\devIA\\\\fespp-on-trame\" stash show -p)",
+      "Bash(git -C \"e:\\\\Dev\\\\fespp-on-trame\\\\devIA\\\\fespp-on-trame\" checkout -- .claude/settings.json)",
+      "PowerShell($py = \"C:\\\\Users\\\\cedri\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python39\\\\python.exe\"; & $py -c \"import py_compile; mods = ['fespp_on_trame/app/core/sources/rep_sources.py', 'fespp_on_trame/app/core/sources/ijkgrid.py', 'fespp_on_trame/app/core/fespp_engine.py', 'fespp_on_trame/app/core/fespp_active.py', 'fespp_on_trame/app/ui/panel/slicers.py', 'fespp_on_trame/app/ui/panel/solid_color_panel.py', 'fespp_on_trame/app/ui/panel/categorical_color_editor.py']; [py_compile.compile\\(m, doraise=True\\) for m in mods]; print\\('all OK'\\)\")"
     ]
   }
 }
