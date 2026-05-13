@@ -1,6 +1,5 @@
 from trame.app import get_server
 
-from fespp_on_trame.app.core.sources.ijkgrid import IjkGrid
 from fespp_on_trame.app.core.well.fespp_wellhead import Wellhead
 from fespp_on_trame.app.core.common.timeseries import TimeSeries
 from fespp_on_trame.app.core.fespp_tree import Tree
@@ -15,8 +14,7 @@ class Selector:
     `state.fespp_data_selectors`. Also creates / destroys companion
     objects (Wellhead, TimeSeries) tied to specific node kinds."""
 
-    def __init__(self, ijkgrid: IjkGrid, tree: Tree):
-        self._ijkgrid = ijkgrid
+    def __init__(self, tree: Tree):
         self._tree = tree
 
         self._selection_path_reservoir = []
@@ -130,13 +128,10 @@ class Selector:
                 path_selectors.append(path)
         self._selection_path_reservoir = path_selectors
 
-        # Slicers attach to a single active IjkGrid. Clear the active
-        # one when the reservoir tab is fully unchecked; the actual
-        # set_node_id when it's set is done by fespp_engine on the
-        # fespp_data_selectors change handler.
-        if self._ijkgrid is not None:
-            if not list_selected:
-                self._ijkgrid.set_node_id(None)
+        # IjkGrid teardown on empty selection is handled implicitly by
+        # the fespp_data_selectors change handler — when the reservoir
+        # selection drops a grid, _on_change_fespp_data_selectors_impl
+        # tears down its IjkGrid instance.
 
         state.fespp_data_selectors = (
             self._selection_path_reservoir

@@ -223,11 +223,7 @@ def initialize_fespp_engine(
     _push_tree_hierarchy_mode(state.tree_hierarchy_mode)
     _rep_sources = RepSources(_collector, _tree)
 
-    # Selector tear-down of IjkGrids is now handled implicitly by the
-    # fespp_data_selectors change handler (instances absent from the
-    # new selection get destroyed). Pass None until Phase 4 reworks
-    # Selector's signature.
-    _selector = Selector(None, _tree)
+    _selector = Selector(_tree)
     _activator = fespp_active.Activator(
         _tree, _rep_sources, ijk_lookup=_ijkgrid_by_rep_path,
     )
