@@ -674,6 +674,20 @@ class IjkGrid:
             return []
         return list(leaf.pv_proxies.values())
 
+    def all_render_sources(self):
+        """Every PV source proxy created by this grid: rep_data, the
+        per-axis slicers, the volume crop, and every chain proxy.
+        Lets callers (Activator, engine fan-out) enumerate this grid's
+        own sources without having to glob registration names."""
+        out = []
+        if self._src_extract_init is not None:
+            out.append(self._src_extract_init)
+        out.extend(self._all_slice_sources())
+        if self._src_slicer_volume is not None:
+            out.append(self._src_slicer_volume)
+        out.extend(self.all_threshold_sources())
+        return out
+
     def all_threshold_sources(self):
         """Every chain PV proxy (visible or not) — used for
         representation propagation."""

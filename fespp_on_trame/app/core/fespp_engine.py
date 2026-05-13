@@ -228,7 +228,9 @@ def initialize_fespp_engine(
     # new selection get destroyed). Pass None until Phase 4 reworks
     # Selector's signature.
     _selector = Selector(None, _tree)
-    _activator = fespp_active.Activator(_tree, _rep_sources)
+    _activator = fespp_active.Activator(
+        _tree, _rep_sources, ijk_lookup=_ijkgrid_by_rep_path,
+    )
 
     state.setdefault("ui_select_node_reservoir", [])
     state.setdefault("ui_select_node_surface", [])

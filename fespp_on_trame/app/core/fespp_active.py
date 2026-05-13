@@ -52,18 +52,19 @@ def _nan_opacity_from_state():
 
 
 def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None,
-                          rep_sources=None):
+                          rep_sources=None, ijk_lookup=None):
     """Every display proxy that renders rep_block_path. Used to fan-out
     ColorBy so chain proxies stay in sync with their parent source even
     when one of them is hidden.
 
-    Match patterns:
-      * UG: rep<sanitized_path> + every chain proxy registered for the
-        rep (via rep_sources.all_chain_proxies).
-      * IJK: rep<sanitized_ijk_path> + slicervolume + sliceri/j/k_* +
-        IjkGrid_* + every chain proxy (registration name starts with
-        ``thr_`` — only one IJK is active at a time, so any thr_*
-        proxy belongs to it)."""
+    Source resolution:
+      * UG: rep<sanitized_path> filter + every chain proxy registered
+        for the rep (via rep_sources.all_chain_proxies).
+      * IJK: every source owned by the matching IjkGrid instance
+        (rep_data + slicers + volume + chain proxies), resolved via
+        ijk_lookup(rep_block_path). This is per-grid so we never grab
+        sources from a different IJK grid that happens to be loaded
+        in parallel."""
     if view is None:
         return []
     sanitized = (rep_block_path or "").replace('/', '_')
@@ -83,20 +84,24 @@ def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, ta
         for p in chain_proxies:
             sources.append(p)
             chain_set.add(id(p))
+    elif is_ijk and ijk_lookup is not None:
+        ijk = ijk_lookup(rep_block_path)
+        if ijk is not None:
+            try:
+                for s in ijk.all_render_sources():
+                    sources.append(s)
+                    chain_set.add(id(s))
+            except Exception:
+                pass
+    # rep<sanitized_path> filter — for UG it's the ExtractBlock; for
+    # IJK it's the rep_data extractor which the lookup above may have
+    # already added (chain_set dedupes).
     for source_id, source in pvsimple.GetSources().items():
         if id(source) in chain_set:
             continue
-        name = source_id[0]
-        if name == expected_rep_filter:
+        if source_id[0] == expected_rep_filter:
             sources.append(source)
-            continue
-        if is_ijk:
-            if (
-                name == 'slicervolume'
-                or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
-                or name.startswith('thr_')
-            ):
-                sources.append(source)
+            chain_set.add(id(source))
     out = []
     seen_displays = set()
     if target_display is not None:
@@ -137,9 +142,13 @@ class Activator:
     owned by ui_active_array_by_rep (the eye state) — this class just
     refreshes the panel and re-applies ColorBy when the eye is open."""
 
-    def __init__(self, tree: Tree, rep_sources=None):
+    def __init__(self, tree: Tree, rep_sources=None, ijk_lookup=None):
         self._tree = tree
         self._rep_sources = rep_sources
+        # Callable resolving rep_path → IjkGrid instance (or None).
+        # Lets us enumerate a specific grid's sources without globbing
+        # registration names across the global proxy manager.
+        self._ijk_lookup = ijk_lookup
 
         # Track the array currently colorized per rep. ParaView keys
         # color bars by LUT (one per array name globally), so when a rep
@@ -397,62 +406,39 @@ class Activator:
                                         target_source = visibles[-1]
 
                         if target_source is None:
-                            # IjkGrid path — find the visible source.
+                            # IjkGrid path — pick the visible source from
+                            # the matching IjkGrid instance only (no
+                            # global GetSources glob, otherwise we could
+                            # latch onto a sibling grid's slicer).
                             # Priority order:
-                            #   0. thr_* (threshold filter active —
-                            #      replaces rep_data / slicers when on);
+                            #   0. visible threshold proxy;
                             #   1. rep_data filter (used in volume mode
-                            #      now; bypasses slicervolume because
-                            #      PV6's vtkExplicitStructuredGridCrop
-                            #      produces degenerate output with the
-                            #      IjkGrid input);
-                            #   2. sliceri/j/k_* (per-axis slice mode);
-                            #   3. slicervolume (legacy fallback);
-                            #   4. IjkGrid_* (legacy).
-                            # The rep_data filter is registered by
-                            # SetExtractRepPath as `rep<sanitized_path>`
-                            # (slashes → underscores).
-                            all_sources = pvsimple.GetSources()
-
-                            for source_id, source in all_sources.items():
-                                if source_id[0].startswith('thr_'):
-                                    display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                    if display and display.Visibility:
-                                        target_source = source
-                                        break
-
-                            if not target_source:
-                                expected_rep_data_name = "rep" + (rep_block_path or "").replace('/', '_')
-                                for source_id, source in all_sources.items():
-                                    if source_id[0] == expected_rep_data_name:
-                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                        if display and display.Visibility:
-                                            target_source = source
-                                            break
-
-                            if not target_source:
-                                for source_id, source in all_sources.items():
-                                    if source_id[0].startswith(('sliceri_', 'slicerj_', 'slicerk_')):
-                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                        if display and display.Visibility:
-                                            target_source = source
-                                            break
-
-                            if not target_source:
-                                for source_id, source in all_sources.items():
-                                    if source_id[0] == 'slicervolume':
-                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                        if display and display.Visibility:
-                                            target_source = source
-                                            break
-
-                            if not target_source:
-                                for source_id, source in all_sources.items():
-                                    if source_id[0].startswith('IjkGrid_'):
-                                        display = pvsimple.GetDisplayProperties(source, view=active_view)
-                                        if display and display.Visibility:
-                                            target_source = source
-                                            break
+                            #      at full extent — PV6's
+                            #      vtkExplicitStructuredGridCrop produces
+                            #      degenerate output with the IjkGrid
+                            #      input);
+                            #   2. per-axis slicers (slice mode);
+                            #   3. slicervolume (cropped range mode).
+                            ijk = self._ijk_lookup(rep_block_path) if self._ijk_lookup else None
+                            if ijk is not None:
+                                def _pick_visible(proxies):
+                                    for p in proxies:
+                                        if p is None:
+                                            continue
+                                        try:
+                                            d = pvsimple.GetDisplayProperties(p, view=active_view)
+                                        except Exception:
+                                            d = None
+                                        if d is not None and d.Visibility:
+                                            return p
+                                    return None
+                                target_source = _pick_visible(ijk.all_threshold_sources())
+                                if target_source is None:
+                                    target_source = _pick_visible([ijk._src_extract_init])
+                                if target_source is None:
+                                    target_source = _pick_visible(ijk._all_slice_sources())
+                                if target_source is None:
+                                    target_source = _pick_visible([ijk._src_slicer_volume])
 
                         if target_source and active_view:
                             target_name = ""
@@ -571,6 +557,7 @@ class Activator:
                                         rep_block_path, rep_type, active_view,
                                         target_source, display,
                                         rep_sources=self._rep_sources,
+                                        ijk_lookup=self._ijk_lookup,
                                     )
                                     for d in color_displays:
                                         try:
