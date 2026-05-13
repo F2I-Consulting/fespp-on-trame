@@ -51,12 +51,16 @@ class _IjkChainEntry:
 
 
 class IjkGrid:
-    """Slicer / volume rendering for the *currently active* IJK grid.
-    Owns one rep_data filter (the EnergisticsExtractor on the
-    collector) plus an ExplicitStructuredGridCrop per slicer position
-    on each axis and one for the volume mode. Only one IJK grid can be
-    active at a time; switching grids tears down all sources and
-    rebuilds them.
+    """Slicer / volume rendering for one IJK grid.
+
+    Multi-instance: the engine maintains one IjkGrid per loaded IJK
+    grid; each owns its own rep_data filter, per-axis crops, volume
+    crop, threshold chain, and slicer/range UI state. The "active"
+    grid (driven by `state.active_representation_path`) is the one
+    whose state is mirrored into the trame `ui_slices_*` /
+    `ui_range_*` / `ui_slices_range_*` vars and whose properties are
+    edited by the slicer/threshold panels. Non-active grids continue
+    rendering independently with their stored state.
 
     Threshold pipeline: an *ordered* list of chain entries
     (`_chain`), each entry attached to every active upstream source
@@ -74,6 +78,9 @@ class IjkGrid:
         self._current_array_type = None
         self._current_property_type = None
         self._current_extent = None  # [x0,x1,y0,y1,z0,z1]
+        # Per-grid token used to suffix PV registration names so
+        # multiple IjkGrids don't collide on slicer / volume names.
+        self._rep_token = ""
 
         self._src_extract_init = None
         self._src_slicers_i = []
@@ -83,6 +90,23 @@ class IjkGrid:
 
         # Threshold chain (ordered, parent-child by name).
         self._chain = []  # list[_IjkChainEntry]
+
+        # Per-instance slicer / range UI state. The engine mirrors this
+        # into the trame state vars when this grid is the active one.
+        self._slices_i_list = []
+        self._slices_j_list = []
+        self._slices_k_list = []
+        self._slices_i_visible_list = []
+        self._slices_j_visible_list = []
+        self._slices_k_visible_list = []
+        self._slices_range_i = None
+        self._slices_range_j = None
+        self._slices_range_k = None
+        self._range_i = None
+        self._range_j = None
+        self._range_k = None
+        self._range_mode = "slice"
+        self._volume_visible = True
 
     def color_array_type(self, name) -> None:
         """Return 'CELLS' / 'POINTS' / 'FIELD' depending on which data
@@ -183,7 +207,7 @@ class IjkGrid:
         """Create and return a new ExplicitStructuredGridCrop for
         (axis, idx)."""
         src = pvsimple.ExplicitStructuredGridCrop(
-            registrationName=f'slicer{axis}_{idx}',
+            registrationName=f'slicer{axis}_{idx}__{self._rep_token}',
             Input=self._src_extract_init,
         )
         if self._current_extent:
@@ -243,6 +267,7 @@ class IjkGrid:
             self._node_id = ijkgrid_node_id
             self._property_path = self._tree.find_path(node_id)
             ijkgrid_rep_path = self._tree.find_path(ijkgrid_node_id)
+            self._rep_token = _sanitize(ijkgrid_rep_path or "")
             coll_proxy = self._collector.get_source().SMProxy
             vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
             coll_proxy.UpdateVTKObjects()
@@ -259,13 +284,13 @@ class IjkGrid:
             view = pvsimple.GetActiveView()
             for axis in ('i', 'j', 'k'):
                 src = pvsimple.ExplicitStructuredGridCrop(
-                    registrationName=f'slicer{axis}_0',
+                    registrationName=f'slicer{axis}_0__{self._rep_token}',
                     Input=self._src_extract_init,
                 )
                 getattr(self, f'_src_slicers_{axis}').append(src)
 
             self._src_slicer_volume = pvsimple.ExplicitStructuredGridCrop(
-                registrationName='slicervolume',
+                registrationName=f'slicervolume__{self._rep_token}',
                 Input=self._src_extract_init,
             )
 
@@ -291,20 +316,21 @@ class IjkGrid:
             mid_j = (extent[2] + extent[3]) // 2
             mid_k = (extent[4] + extent[5]) // 2
 
-            state.update({
-                "ui_range_i": [extent[0], extent[1]],
-                "ui_range_j": [extent[2], extent[3]],
-                "ui_range_k": [extent[4], extent[5]],
-            })
-            state.ui_slices_i_list = [mid_i]
-            state.ui_slices_j_list = [mid_j]
-            state.ui_slices_k_list = [mid_k]
-            state.ui_slices_i_visible_list = [True]
-            state.ui_slices_j_visible_list = [True]
-            state.ui_slices_k_visible_list = [True]
-            state.ui_slices_range_i = [extent[0], extent[1]]
-            state.ui_slices_range_j = [extent[2], extent[3]]
-            state.ui_slices_range_k = [extent[4], extent[5]]
+            # Initialise this grid's own slicer / range state. The
+            # engine pushes these into the trame UI vars when this
+            # grid becomes the active one.
+            self._range_i = [extent[0], extent[1]]
+            self._range_j = [extent[2], extent[3]]
+            self._range_k = [extent[4], extent[5]]
+            self._slices_i_list = [mid_i]
+            self._slices_j_list = [mid_j]
+            self._slices_k_list = [mid_k]
+            self._slices_i_visible_list = [True]
+            self._slices_j_visible_list = [True]
+            self._slices_k_visible_list = [True]
+            self._slices_range_i = [extent[0], extent[1]]
+            self._slices_range_j = [extent[2], extent[3]]
+            self._slices_range_k = [extent[4], extent[5]]
 
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.OutputWholeExtent = extent
@@ -341,9 +367,9 @@ class IjkGrid:
         if not self._current_extent:
             return True
         full = self._current_extent
-        ri = state.ui_slices_range_i or [full[0], full[1]]
-        rj = state.ui_slices_range_j or [full[2], full[3]]
-        rk = state.ui_slices_range_k or [full[4], full[5]]
+        ri = self._slices_range_i or [full[0], full[1]]
+        rj = self._slices_range_j or [full[2], full[3]]
+        rk = self._slices_range_k or [full[4], full[5]]
         return (
             int(ri[0]) <= full[0] and int(ri[1]) >= full[1]
             and int(rj[0]) <= full[2] and int(rj[1]) >= full[3]
@@ -362,7 +388,7 @@ class IjkGrid:
         if self._src_extract_init is None:
             return []
         out = [self._src_extract_init]
-        if state.ui_slices_range_mode == 'slice':
+        if self._range_mode == 'slice':
             out.extend(self._all_slice_sources())
         else:
             if self._src_slicer_volume is not None:
@@ -391,14 +417,14 @@ class IjkGrid:
         view = pvsimple.GetActiveView()
         deepest_leaf = self._deepest_visible_leaf()
 
-        if state.ui_slices_range_mode == 'slice':
+        if self._range_mode == 'slice':
             if self._src_slicer_volume is not None:
                 pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
                 self._hide_chain_for(self._src_slicer_volume, view)
 
-            vis_i = list(state.ui_slices_i_visible_list or [])
-            vis_j = list(state.ui_slices_j_visible_list or [])
-            vis_k = list(state.ui_slices_k_visible_list or [])
+            vis_i = list(self._slices_i_visible_list or [])
+            vis_j = list(self._slices_j_visible_list or [])
+            vis_k = list(self._slices_k_visible_list or [])
             any_visible = False
             for axis_srcs, vis_list in (
                 (self._src_slicers_i, vis_i),
@@ -422,7 +448,7 @@ class IjkGrid:
                 self._hide_chain_for(src, view)
 
             primary = self._primary_range_source()
-            volume_visible = bool(getattr(state, 'ui_slices_volume_visible', True))
+            volume_visible = bool(self._volume_visible)
             if not volume_visible:
                 primary = self._src_extract_init
                 volume_visible = True
@@ -814,28 +840,44 @@ class IjkGrid:
                 pass
 
     def update_block_visibility(self):
-        """Mirror the property selection on the parent multiblock's
-        BlockSelectors (excluding the property path itself, which is
-        rendered through the per-axis slicers)."""
-        if self._property_path is not None and self._property_path in state.fespp_data_selectors:
-            blockSelectors = state.fespp_data_selectors.copy()
-            blockSelectors.remove(self._property_path)
-            self._collector.get_representation().BlockSelectors = blockSelectors
-            print(f"Updated block selectors for {self._property_path}: {blockSelectors}")
+        """Drop this grid's property path from the parent multiblock's
+        BlockSelectors — the property is rendered through this grid's
+        slicers, not the parent rep. Cumulative-safe across multiple
+        IjkGrid instances: starts from the engine's reset marker
+        ['/data'] (rehydrating from `state.fespp_data_selectors`) and
+        otherwise pops just its own path so earlier removals stay
+        intact."""
+        if self._property_path is None:
+            return
+        if self._property_path not in (state.fespp_data_selectors or []):
+            return
+        rep = self._collector.get_representation()
+        current = list(rep.BlockSelectors or [])
+        # Engine sets BlockSelectors=['/data'] before grids are
+        # initialised; rehydrate from the full selectors on first call.
+        if current == ['/data']:
+            current = list(state.fespp_data_selectors or [])
+        if self._property_path in current:
+            current = [p for p in current if p != self._property_path]
+            rep.BlockSelectors = current
 
-    def update_slices(self, slices_i_list, slices_j_list, slices_k_list):
+    def apply_slice_positions(self, slices_i_list, slices_j_list, slices_k_list):
         """Sync the per-axis slicer sources with the position lists,
         creating / deleting sources as needed and updating
-        OutputWholeExtent on each one."""
+        OutputWholeExtent on each one. Mirrors the lists into the
+        instance's stored state."""
         if self._node_id is None:
             return
+        self._slices_i_list = list(slices_i_list)
+        self._slices_j_list = list(slices_j_list)
+        self._slices_k_list = list(slices_k_list)
         self._sync_slice_sources('i', len(slices_i_list))
         self._sync_slice_sources('j', len(slices_j_list))
         self._sync_slice_sources('k', len(slices_k_list))
 
-        ri = state.ui_range_i
-        rj = state.ui_range_j
-        rk = state.ui_range_k
+        ri = self._range_i or [0, 0]
+        rj = self._range_j or [0, 0]
+        rk = self._range_k or [0, 0]
 
         for idx, pos in enumerate(slices_i_list):
             self._src_slicers_i[idx].OutputWholeExtent = [pos, pos, rj[0], rj[1], rk[0], rk[1]]
@@ -844,10 +886,53 @@ class IjkGrid:
         for idx, pos in enumerate(slices_k_list):
             self._src_slicers_k[idx].OutputWholeExtent = [ri[0], ri[1], rj[0], rj[1], pos, pos]
 
-    def update_volume(self, range_i, range_j, range_k):
-        if self._node_id is not None and self._src_slicer_volume is not None:
-            self._src_slicer_volume.OutputWholeExtent = [
-                range_i[0], range_i[1],
-                range_j[0], range_j[1],
-                range_k[0], range_k[1],
-            ]
+    def apply_slice_visibility(self, vis_i, vis_j, vis_k):
+        self._slices_i_visible_list = list(vis_i or [])
+        self._slices_j_visible_list = list(vis_j or [])
+        self._slices_k_visible_list = list(vis_k or [])
+
+    def apply_range(self, range_i, range_j, range_k):
+        self._slices_range_i = list(range_i)
+        self._slices_range_j = list(range_j)
+        self._slices_range_k = list(range_k)
+        if self._node_id is None or self._src_slicer_volume is None:
+            return
+        self._src_slicer_volume.OutputWholeExtent = [
+            range_i[0], range_i[1],
+            range_j[0], range_j[1],
+            range_k[0], range_k[1],
+        ]
+
+    def apply_mode(self, mode):
+        if not mode or self._range_mode == mode:
+            return
+        self._range_mode = mode
+        # Mode flip changes the active upstream set — rebuild chain
+        # attachments before the next show().
+        self.refresh_threshold_pipeline()
+
+    def apply_volume_visible(self, visible):
+        self._volume_visible = bool(visible)
+
+    def to_ui_state(self):
+        """Snapshot of this grid's slicer/range state, suitable for
+        `state.update()`. Returns None when the grid hasn't been
+        initialised yet (no extent known)."""
+        if self._node_id is None or not self._current_extent:
+            return None
+        return {
+            "ui_range_i": list(self._range_i or []),
+            "ui_range_j": list(self._range_j or []),
+            "ui_range_k": list(self._range_k or []),
+            "ui_slices_i_list": list(self._slices_i_list),
+            "ui_slices_j_list": list(self._slices_j_list),
+            "ui_slices_k_list": list(self._slices_k_list),
+            "ui_slices_i_visible_list": list(self._slices_i_visible_list),
+            "ui_slices_j_visible_list": list(self._slices_j_visible_list),
+            "ui_slices_k_visible_list": list(self._slices_k_visible_list),
+            "ui_slices_range_i": list(self._slices_range_i or []),
+            "ui_slices_range_j": list(self._slices_range_j or []),
+            "ui_slices_range_k": list(self._slices_range_k or []),
+            "ui_slices_range_mode": self._range_mode,
+            "ui_slices_volume_visible": self._volume_visible,
+        }
