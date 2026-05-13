@@ -147,7 +147,42 @@ def initialize_fespp_engine(
 
     _collector = Collector()
     _etp_connector = ETPConnector()
-    _ijkGrid = IjkGrid(_collector, _tree)
+    # Multi-instance IjkGrid: one entry per loaded IJK grid (keyed by
+    # the grid's tree node id). The "active" grid — resolved via
+    # state.active_representation_path — is the one whose slicer /
+    # range / threshold state is mirrored into the trame UI vars.
+    _ijkgrids: dict = {}
+
+    def _ensure_ijkgrid_for(ijkgrid_node_id):
+        ijk = _ijkgrids.get(ijkgrid_node_id)
+        if ijk is None:
+            ijk = IjkGrid(_collector, _tree)
+            _ijkgrids[ijkgrid_node_id] = ijk
+        return ijk
+
+    def _ijkgrid_by_rep_path(rep_path):
+        if not rep_path:
+            return None
+        for ijk in _ijkgrids.values():
+            if ijk._node_id is None:
+                continue
+            if _tree.find_path(ijk._node_id) == rep_path:
+                return ijk
+        return None
+
+    def _active_ijkgrid():
+        return _ijkgrid_by_rep_path(state.active_representation_path)
+
+    def _push_active_ijk_state_to_ui():
+        """Mirror the currently-active IjkGrid's slicer/range state into
+        the trame UI vars. Called on active-grid change and after grid
+        creation in the load handler."""
+        active = _active_ijkgrid()
+        if active is None:
+            return
+        snap = active.to_ui_state()
+        if snap:
+            state.update(snap)
 
     # Switch the FESPP collector to "explicit selection" mode: a selector
     # path is taken literally for non-grouping nodes (selecting a grid
@@ -188,7 +223,11 @@ def initialize_fespp_engine(
     _push_tree_hierarchy_mode(state.tree_hierarchy_mode)
     _rep_sources = RepSources(_collector, _tree)
 
-    _selector = Selector(_ijkGrid, _tree)
+    # Selector tear-down of IjkGrids is now handled implicitly by the
+    # fespp_data_selectors change handler (instances absent from the
+    # new selection get destroyed). Pass None until Phase 4 reworks
+    # Selector's signature.
+    _selector = Selector(None, _tree)
     _activator = fespp_active.Activator(_tree, _rep_sources)
 
     state.setdefault("ui_select_node_reservoir", [])
@@ -414,17 +453,34 @@ def initialize_fespp_engine(
         print(f"[PERF py] representation.Assembly+BlockSelectors+Visibility=0: {_ms(_t)}ms")
 
         _t = _time.perf_counter()
-        if len(state.ui_select_node_reservoir) > 0:
-            for reservoir_node_id in state.ui_select_node_reservoir:
-                if _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid') is not None:
-                    try:
-                        _ijkGrid.set_node_id(reservoir_node_id)
-                    except Exception as e:
-                        import traceback
-                        print(f"[WARNING] _ijkGrid.set_node_id failed: {e}")
-                        traceback.print_exc()
-                    break
-        _ijkGrid.update_block_visibility()
+        # Compute the desired set of IjkGrid instances from the reservoir
+        # selection, dedupe per grid (first property per grid wins), and
+        # tear down any instance no longer needed.
+        desired_ijk_ids = set()
+        chosen_prop_for_grid = {}  # ijkgrid_node_id -> first matching property node id
+        for reservoir_node_id in state.ui_select_node_reservoir or []:
+            ijk_id = _tree.find_parent_node_id_with_type(reservoir_node_id, 'IjkGrid')
+            if ijk_id is None:
+                continue
+            desired_ijk_ids.add(ijk_id)
+            chosen_prop_for_grid.setdefault(ijk_id, reservoir_node_id)
+        for gone_id in list(_ijkgrids.keys()):
+            if gone_id not in desired_ijk_ids:
+                try:
+                    _ijkgrids[gone_id].set_node_id(None)
+                except Exception as e:
+                    print(f"[WARNING] tear down ijkgrid {gone_id} failed: {e}")
+                del _ijkgrids[gone_id]
+        for ijk_id, prop_node_id in chosen_prop_for_grid.items():
+            ijk = _ensure_ijkgrid_for(ijk_id)
+            try:
+                ijk.set_node_id(prop_node_id)
+            except Exception as e:
+                import traceback
+                print(f"[WARNING] _ijkGrid.set_node_id failed: {e}")
+                traceback.print_exc()
+        for ijk in _ijkgrids.values():
+            ijk.update_block_visibility()
         print(f"[PERF py] ijkGrid handling: {_ms(_t)}ms")
 
         # Reserve a distinct chip color for every newly-loaded rep.
@@ -476,29 +532,33 @@ def initialize_fespp_engine(
                 pass
         # IjkGrid's rep_data filter is created by SetExtractRepPath
         # inside IjkGrid.set_node_id, so it isn't tracked by _rep_sources.
-        # Bump it (and the chained slicers) only when the IJK grid is in
-        # the current selection — otherwise we'd poke at stale references
-        # of the previous IJK grid's filter, which can hang or error.
-        # UpdatePipelineInformation is cheap (REQUEST_INFO only); the
-        # actual RequestData happens lazily on the next render.
+        # Bump every active grid's extractor + slicers so freshly-added
+        # properties become visible to ColorBy without waiting for the
+        # next render. UpdatePipelineInformation is cheap (REQUEST_INFO
+        # only); the actual RequestData happens lazily on the next render.
         _t_ijk = _time.perf_counter()
-        ijk_extract = getattr(_ijkGrid, '_src_extract_init', None)
-        ijk_node_id = getattr(_ijkGrid, '_node_id', None)
-        ijk_path = _tree.find_path(ijk_node_id) if ijk_node_id else None
-        ijk_in_selection = bool(
-            ijk_path
-            and any(s == ijk_path or s.startswith(ijk_path + '/') for s in (state.fespp_data_selectors or []))
-        )
-        if ijk_extract is not None and ijk_in_selection:
+        ijk_paths_in_selection = []
+        for ijk in _ijkgrids.values():
+            ijk_extract = getattr(ijk, '_src_extract_init', None)
+            ijk_node_id = getattr(ijk, '_node_id', None)
+            ijk_path = _tree.find_path(ijk_node_id) if ijk_node_id else None
+            ijk_in_selection = bool(
+                ijk_path
+                and any(s == ijk_path or s.startswith(ijk_path + '/') for s in (state.fespp_data_selectors or []))
+            )
+            if ijk_in_selection and ijk_path:
+                ijk_paths_in_selection.append(ijk_path)
+            if ijk_extract is None or not ijk_in_selection:
+                continue
             try:
                 ijk_extract.GetClientSideObject().Modified()
                 ijk_extract.UpdatePipelineInformation()
             except Exception:
                 pass
             try:
-                slicer_sources = list(_ijkGrid._all_slice_sources())
-                if _ijkGrid._src_slicer_volume is not None:
-                    slicer_sources.append(_ijkGrid._src_slicer_volume)
+                slicer_sources = list(ijk._all_slice_sources())
+                if ijk._src_slicer_volume is not None:
+                    slicer_sources.append(ijk._src_slicer_volume)
                 for slc in slicer_sources:
                     try:
                         slc.GetClientSideObject().Modified()
@@ -507,7 +567,7 @@ def initialize_fespp_engine(
                         pass
             except Exception:
                 pass
-        print(f"[PERF py] ijk bumps: {_ms(_t_ijk)}ms (in_selection={ijk_in_selection})")
+        print(f"[PERF py] ijk bumps: {_ms(_t_ijk)}ms (grids_in_selection={len(ijk_paths_in_selection)})")
         print(f"[PERF py] _rep_sources.sync: {_ms(_t)}ms")
 
         # Tell the activator which reps are still actively displayed so
@@ -515,8 +575,8 @@ def initialize_fespp_engine(
         # grids — without this, the previous grid's color bar stays
         # alongside the new grid's bar).
         present_paths = set(p for p, _ in _rep_sources.items())
-        if ijk_in_selection and ijk_path:
-            present_paths.add(ijk_path)
+        for p in ijk_paths_in_selection:
+            present_paths.add(p)
         if _activator is not None:
             try:
                 _activator.notify_active_reps(present_paths)
@@ -617,6 +677,14 @@ def initialize_fespp_engine(
         except Exception as _e:
             print(f"[WARNING] threshold UI refresh after load failed: {_e}")
 
+        # Mirror the active grid's stored slicer/range state into the
+        # UI vars. Idempotent — when the active grid hasn't changed
+        # since the last push, this just re-asserts the same values.
+        try:
+            _push_active_ijk_state_to_ui()
+        except Exception as _e:
+            print(f"[WARNING] push active ijk state failed: {_e}")
+
         # Single Render at the very end. The parent multiblock was hidden
         # earlier, so this only paints the new ExtractBlock reps + IJK
         # slicers.
@@ -637,9 +705,11 @@ def initialize_fespp_engine(
         except (TypeError, ValueError):
             zscale = 1.0
         _rep_sources.apply_z_scale(zscale)
-        ijk_srcs = list(_ijkGrid._all_slice_sources())
-        if _ijkGrid._src_slicer_volume is not None:
-            ijk_srcs.append(_ijkGrid._src_slicer_volume)
+        ijk_srcs = []
+        for ijk in _ijkgrids.values():
+            ijk_srcs.extend(ijk._all_slice_sources())
+            if ijk._src_slicer_volume is not None:
+                ijk_srcs.append(ijk._src_slicer_volume)
         for src in ijk_srcs:
             rep = pvsimple.GetRepresentation(proxy=src, view=_view)
             if rep is not None:
@@ -666,8 +736,9 @@ def initialize_fespp_engine(
     def _sources_for_rep_path(rep_path):
         """Return every (sources, view) pair that renders the given rep.
         Non-IjkGrid: a single ExtractBlock from _rep_sources. IjkGrid:
-        the rep_data filter named "rep<sanitized_path>" plus slicers /
-        volume tied to the *currently active* IJK grid.
+        the rep_data filter named "rep<sanitized_path>" plus the per-axis
+        slicers and the volume crop owned by the matching IjkGrid
+        instance.
 
         When the rep has a visible threshold chain, return the
         deepest-visible chain proxy in place of each upstream source —
@@ -686,18 +757,22 @@ def initialize_fespp_engine(
                 out.append(src)
             return out, view
         expected_rep_filter = "rep" + (rep_path or "").replace('/', '_')
-        ijk_node_id = getattr(_ijkGrid, '_node_id', None)
-        ijk_path = _tree.find_path(ijk_node_id) if ijk_node_id else None
-        is_active_ijk = (ijk_path == rep_path)
-        deepest_leaf = _ijkGrid._deepest_visible_leaf() if is_active_ijk else None
+        ijk = _ijkgrid_by_rep_path(rep_path)
+        deepest_leaf = ijk._deepest_visible_leaf() if ijk is not None else None
+        # rep_data filter (created by SetExtractRepPath, lives in the
+        # "sources" group with a fixed name).
         for sid, s in pvsimple.GetSources().items():
-            name = sid[0]
-            if name == expected_rep_filter or (
-                is_active_ijk and (
-                    name == 'slicervolume'
-                    or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
-                )
-            ):
+            if sid[0] == expected_rep_filter:
+                proxy = None
+                if deepest_leaf is not None:
+                    proxy = deepest_leaf.pv_proxies.get(id(s))
+                out.append(proxy if proxy is not None else s)
+        # Slicers + volume owned by THIS IjkGrid instance.
+        if ijk is not None:
+            grid_sources = list(ijk._all_slice_sources())
+            if ijk._src_slicer_volume is not None:
+                grid_sources.append(ijk._src_slicer_volume)
+            for s in grid_sources:
                 proxy = None
                 if deepest_leaf is not None:
                     proxy = deepest_leaf.pv_proxies.get(id(s))
@@ -812,21 +887,16 @@ def initialize_fespp_engine(
             out.extend(_rep_sources.all_chain_proxies(rep_path))
             return out, view
         expected_rep_filter = "rep" + (rep_path or "").replace('/', '_')
-        ijk_node_id = getattr(_ijkGrid, '_node_id', None)
-        ijk_path = _tree.find_path(ijk_node_id) if ijk_node_id else None
-        is_active_ijk = (ijk_path == rep_path)
         for sid, s in pvsimple.GetSources().items():
-            name = sid[0]
-            if name == expected_rep_filter or (
-                is_active_ijk and (
-                    name == 'slicervolume'
-                    or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
-                )
-            ):
+            if sid[0] == expected_rep_filter:
                 out.append(s)
-        if is_active_ijk:
+        ijk = _ijkgrid_by_rep_path(rep_path)
+        if ijk is not None:
+            out.extend(ijk._all_slice_sources())
+            if ijk._src_slicer_volume is not None:
+                out.append(ijk._src_slicer_volume)
             try:
-                out.extend(_ijkGrid.all_threshold_sources())
+                out.extend(ijk.all_threshold_sources())
             except Exception:
                 pass
         return out, view
@@ -922,39 +992,44 @@ def initialize_fespp_engine(
                 vis_list.pop()
             setattr(state, vis_var, vis_list)
 
-        if _ijkGrid is not None:
-            _ijkGrid.update_slices(
+        active = _active_ijkgrid()
+        if active is not None:
+            active.apply_slice_positions(
                 ui_slices_i_list or [],
                 ui_slices_j_list or [],
                 ui_slices_k_list or [],
             )
-            _ijkGrid.show()
+            active.show()
         pvsimple.Render(view=_view)
         controller.view_update()
 
     @state.change("ui_slices_range_i", "ui_slices_range_j", "ui_slices_range_k")
     def update_range_slicer(ui_slices_range_i, ui_slices_range_j, ui_slices_range_k, **kwargs):
-        if _ijkGrid is not None:
-            _ijkGrid.update_volume(ui_slices_range_i, ui_slices_range_j, ui_slices_range_k)
-            _ijkGrid.show()
+        active = _active_ijkgrid()
+        if active is not None:
+            active.apply_range(ui_slices_range_i, ui_slices_range_j, ui_slices_range_k)
+            active.show()
         pvsimple.Render(view=_view)
         controller.view_update()
 
     @state.change("ui_slices_range_mode")
-    def update_mode_slicer(**kwargs):
-        if _ijkGrid is not None:
+    def update_mode_slicer(ui_slices_range_mode=None, **kwargs):
+        active = _active_ijkgrid()
+        if active is not None:
             # Mode flip changes the set of "active sources" — re-attach
             # thresholds to the right ones (rep_data in range, slicers
             # in slice).
-            _ijkGrid.refresh_threshold_pipeline()
-            _ijkGrid.show()
+            active.apply_mode(ui_slices_range_mode or 'slice')
+            active.show()
         pvsimple.Render(view=_view)
         controller.view_update()
 
     @state.change("ui_slices_volume_visible")
-    def update_volume_visible(**kwargs):
-        if _ijkGrid is not None:
-            _ijkGrid.show()
+    def update_volume_visible(ui_slices_volume_visible=None, **kwargs):
+        active = _active_ijkgrid()
+        if active is not None:
+            active.apply_volume_visible(ui_slices_volume_visible)
+            active.show()
         pvsimple.Render(view=_view)
         controller.view_update()
 
@@ -975,7 +1050,8 @@ def initialize_fespp_engine(
         if not grid_path:
             return None, None
         if rep_type == "IjkGrid":
-            return _ijkGrid, grid_path
+            ijk = _ijkgrid_by_rep_path(grid_path)
+            return (ijk, grid_path) if ijk is not None else (None, None)
         if rep_type == "UnstructuredGrid":
             return _rep_sources, grid_path
         return None, None
@@ -1008,7 +1084,7 @@ def initialize_fespp_engine(
         if provider is None:
             state.ui_threshold_chain = []
             return
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             chain = provider.get_chain()
         else:
             chain = provider.get_chain(rep_path)
@@ -1025,7 +1101,7 @@ def initialize_fespp_engine(
         provider, rep_path = _threshold_provider()
         if provider is None or not array_name:
             return None
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             return provider.array_data_range(array_name)
         return provider.array_data_range(rep_path, array_name)
 
@@ -1043,7 +1119,7 @@ def initialize_fespp_engine(
         if not array:
             print("[WARNING] threshold_add: no active array to bind onto")
             return
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             new_name = provider.add_threshold(parent_name, array)
         else:
             new_name = provider.add_threshold(rep_path, parent_name, array)
@@ -1067,7 +1143,7 @@ def initialize_fespp_engine(
         provider, rep_path = _threshold_provider()
         if provider is None or not name:
             return
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             provider.delete_threshold(name)
         else:
             provider.delete_threshold(rep_path, name)
@@ -1086,7 +1162,7 @@ def initialize_fespp_engine(
             high = float(high)
         except (TypeError, ValueError):
             return
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             provider.set_range(name, low, high)
         else:
             provider.set_range(rep_path, name, low, high)
@@ -1099,7 +1175,7 @@ def initialize_fespp_engine(
         provider, rep_path = _threshold_provider()
         if provider is None or not name:
             return
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             provider.set_visible(name, bool(visible))
         else:
             provider.set_visible(rep_path, name, bool(visible))
@@ -1123,7 +1199,7 @@ def initialize_fespp_engine(
                 "ui_threshold_arrays_available": [],
             })
             return
-        if provider is _ijkGrid:
+        if isinstance(provider, IjkGrid):
             arrays = provider.available_arrays()
         else:
             arrays = provider.available_arrays(rep_path)
@@ -1133,6 +1209,12 @@ def initialize_fespp_engine(
     @state.change("active_representation_path", "ui_active_node_reservoir_type_rep")
     def on_active_grid_change(**kwargs):
         _refresh_threshold_ui_for_active_grid()
+        # Mirror the new active grid's stored slicer/range state into
+        # the UI vars so the panels re-attach to it. Idempotent.
+        try:
+            _push_active_ijk_state_to_ui()
+        except Exception as _e:
+            print(f"[WARNING] push active ijk state failed: {_e}")
 
     @state.change("ui_threshold_pending_action")
     def _on_threshold_pending_action(ui_threshold_pending_action=None, **_):
@@ -1186,14 +1268,16 @@ def initialize_fespp_engine(
             proxies.extend(thr for _, thr in _rep_sources.all_thresholds())
         except Exception:
             pass
-        # IjkGrid: rep_data + slicers + slicervolume + their thresholds.
+        # IjkGrid: rep_data + slicers + slicervolume + their thresholds,
+        # across every active grid.
         try:
-            if _ijkGrid._src_extract_init is not None:
-                proxies.append(_ijkGrid._src_extract_init)
-            if _ijkGrid._src_slicer_volume is not None:
-                proxies.append(_ijkGrid._src_slicer_volume)
-            proxies.extend(_ijkGrid._all_slice_sources())
-            proxies.extend(_ijkGrid.all_threshold_sources())
+            for ijk in _ijkgrids.values():
+                if ijk._src_extract_init is not None:
+                    proxies.append(ijk._src_extract_init)
+                if ijk._src_slicer_volume is not None:
+                    proxies.append(ijk._src_slicer_volume)
+                proxies.extend(ijk._all_slice_sources())
+                proxies.extend(ijk.all_threshold_sources())
         except Exception:
             pass
         for p in proxies:
@@ -1228,9 +1312,20 @@ def initialize_fespp_engine(
             state.ui_slices_real_locked_value = labels[ui_slices_real]
 
     @state.change("ui_slices_i_visible_list", "ui_slices_j_visible_list", "ui_slices_k_visible_list")
-    def update_slices_visibility(**kwargs):
-        if _ijkGrid is not None:
-            _ijkGrid.show()
+    def update_slices_visibility(
+        ui_slices_i_visible_list=None,
+        ui_slices_j_visible_list=None,
+        ui_slices_k_visible_list=None,
+        **kwargs,
+    ):
+        active = _active_ijkgrid()
+        if active is not None:
+            active.apply_slice_visibility(
+                ui_slices_i_visible_list or [],
+                ui_slices_j_visible_list or [],
+                ui_slices_k_visible_list or [],
+            )
+            active.show()
         pvsimple.Render(view=_view)
         controller.view_update()
 
@@ -1362,7 +1457,8 @@ def initialize_fespp_engine(
     @state.change("view_reset_camera")
     def view_reset_camera(view_reset_camera, **kwargs):
         if view_reset_camera == True:
-            _ijkGrid.update_block_visibility()
+            for ijk in _ijkgrids.values():
+                ijk.update_block_visibility()
             controller.view_reset_camera()
             controller.view_update()
             state.view_reset_camera = False
