@@ -302,12 +302,6 @@ class RepSources:
         if parent_name is not None and not any(e.name == parent_name for e in chain):
             print(f"[WARNING] add_threshold: unknown parent {parent_name!r}")
             return None
-        # Forbid duplicates of the same array within a chain — name
-        # collision and no useful effect (just merge ranges instead).
-        for e in chain:
-            if e.array == array:
-                print(f"[WARNING] add_threshold: array {array!r} already in chain")
-                return None
         assoc = self._resolve_assoc(rep_path, array)
         if not assoc:
             return None
@@ -318,6 +312,18 @@ class RepSources:
             base_name = f"thr_{rep_token}_{_sanitize(array)}"
         else:
             base_name = f"{parent_name}_{_sanitize(array)}"
+
+        # Multiple thresholds on the same array under the same parent
+        # are valid — their outputs render in parallel (UNION of the
+        # ranges), which is the only way to display two disjoint
+        # intervals of the same property. The chain entry name is the
+        # PV registration name, so we have to suffix duplicates.
+        existing_names = {e.name for e in chain}
+        if base_name in existing_names:
+            suffix = 2
+            while f"{base_name}_{suffix}" in existing_names:
+                suffix += 1
+            base_name = f"{base_name}_{suffix}"
 
         # Effective input = parent's effective input (parent.proxy if
         # parent is visible, else walk up).

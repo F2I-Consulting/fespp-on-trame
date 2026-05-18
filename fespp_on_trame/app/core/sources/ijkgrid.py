@@ -584,10 +584,6 @@ class IjkGrid:
         if parent_name is not None and not any(e.name == parent_name for e in self._chain):
             print(f"[WARNING] add_threshold: unknown parent {parent_name!r}")
             return None
-        for e in self._chain:
-            if e.array == array:
-                print(f"[WARNING] add_threshold: array {array!r} already in chain")
-                return None
         assoc = self._resolve_assoc(array)
         if not assoc:
             return None
@@ -599,6 +595,18 @@ class IjkGrid:
             base_name = f"thr_{rep_token}_{_sanitize(array)}"
         else:
             base_name = f"{parent_name}_{_sanitize(array)}"
+
+        # Multiple thresholds on the same array under the same parent
+        # are valid — their outputs render in parallel (UNION of the
+        # ranges). Suffix the entry name to avoid PV registration-name
+        # collisions when the user adds two intervals of the same
+        # property to the same chain level.
+        existing_names = {e.name for e in self._chain}
+        if base_name in existing_names:
+            suffix = 2
+            while f"{base_name}_{suffix}" in existing_names:
+                suffix += 1
+            base_name = f"{base_name}_{suffix}"
 
         rng = self.array_data_range(array) or (0.0, 1.0)
         entry = _IjkChainEntry(
