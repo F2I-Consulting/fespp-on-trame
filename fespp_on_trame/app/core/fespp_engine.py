@@ -1077,7 +1077,13 @@ def initialize_fespp_engine(
         UI re-renders. Idempotent — call after any chain mutation.
 
         Each entry is decorated with `_depth` (0 for roots, +1 per
-        ancestor) so the UI can indent each row visually."""
+        ancestor) so the UI can indent each row visually, AND the
+        flat list is reordered into a DFS traversal of the implicit
+        parent_name → children tree so siblings stay grouped under
+        their parent's subtree — without this step, adding a child
+        to t1 after a root t2 has been added would place the new
+        entry at the tail of the list, making it look indented under
+        t2 even though parent_name points to t1."""
         provider, rep_path = _threshold_provider()
         if provider is None:
             state.ui_threshold_chain = []
@@ -1093,7 +1099,21 @@ def initialize_fespp_engine(
                 0 if parent is None else depth_by_name.get(parent, 0) + 1
             )
             entry["_depth"] = depth_by_name[entry["name"]]
-        state.ui_threshold_chain = chain
+        # DFS reorder: emit each entry right after its parent's
+        # subtree. Children of the same parent keep their relative
+        # insertion order.
+        children_by_parent: dict = {}
+        for entry in chain:
+            children_by_parent.setdefault(entry.get("parent_name"), []).append(entry)
+        ordered: list = []
+
+        def _emit(parent_name):
+            for child in children_by_parent.get(parent_name, []):
+                ordered.append(child)
+                _emit(child["name"])
+
+        _emit(None)
+        state.ui_threshold_chain = ordered
 
     def _data_range_for_active_grid(array_name):
         provider, rep_path = _threshold_provider()
