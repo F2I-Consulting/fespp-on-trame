@@ -381,19 +381,29 @@ class SlicerControls(html.Div):
         with html.Div(style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;"):
             html.Div("Thresholds", classes="text-caption font-weight-bold",
                      style="font-size: 0.75rem;")
-            vuetify3.VBtn(
-                icon="mdi-plus",
-                # Disabled when no active visible property — a threshold
-                # without an array to bind onto is meaningless.
-                disabled=("!active_color_array_name",),
-                click=(
-                    "ui_threshold_pending_action = "
-                    "{ action: 'add', parent: null }"
-                ),
-                variant="text", density="compact", size="x-small",
-                color="primary",
-                style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
-            )
+            # ∪ (union) icon — clicking adds a parallel threshold
+            # filter at root level. Multiple root-level entries on
+            # the same property render in parallel = union of their
+            # ranges in 3D. Tooltip spells out the semantic for users
+            # who don't recognise set-theory glyphs.
+            with vuetify3.VTooltip(location="bottom"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        icon="mdi-set-all",
+                        v_bind="props",
+                        # Disabled when no active visible property — a
+                        # threshold without an array to bind onto is
+                        # meaningless.
+                        disabled=("!active_color_array_name",),
+                        click=(
+                            "ui_threshold_pending_action = "
+                            "{ action: 'add', parent: null }"
+                        ),
+                        variant="text", density="compact", size="x-small",
+                        color="primary",
+                        style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
+                    )
+                html.Span("Add union — show cells matching this range OR any existing root range")
             html.Span(
                 "(activate a property first)",
                 v_if="!active_color_array_name && (!ui_threshold_chain || ui_threshold_chain.length === 0)",
@@ -446,17 +456,26 @@ class SlicerControls(html.Div):
                     style="font-size: 0.7rem;",
                 )
                 vuetify3.VSpacer()
-                vuetify3.VBtn(
-                    icon="mdi-plus",
-                    disabled=("!active_color_array_name",),
-                    click=(
-                        "ui_threshold_pending_action = "
-                        "{ action: 'add', parent: entry.name }"
-                    ),
-                    variant="text", density="compact", size="x-small",
-                    color="primary",
-                    style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
-                )
+                # ∩ (intersection) icon — clicking adds a Threshold
+                # filter chained downstream of `entry`. Its output is
+                # the intersection of the parent's cells and the new
+                # range. Tooltip spells it out for users who don't
+                # recognise the set-theory glyph.
+                with vuetify3.VTooltip(location="bottom"):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VBtn(
+                            icon="mdi-set-center",
+                            v_bind="props",
+                            disabled=("!active_color_array_name",),
+                            click=(
+                                "ui_threshold_pending_action = "
+                                "{ action: 'add', parent: entry.name }"
+                            ),
+                            variant="text", density="compact", size="x-small",
+                            color="primary",
+                            style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
+                        )
+                    html.Span("Add intersection — narrow this entry's cells further with a chained range")
                 vuetify3.VBtn(
                     icon="mdi-delete",
                     click=(
