@@ -385,7 +385,9 @@ class SlicerControls(html.Div):
             # filter at root level. Multiple root-level entries on
             # the same property render in parallel = union of their
             # ranges in 3D. Tooltip spells out the semantic for users
-            # who don't recognise set-theory glyphs.
+            # who don't recognise set-theory glyphs. Sized large
+            # enough that the 3 overlapping circles of mdi-set-all
+            # stay readable.
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(
@@ -399,9 +401,9 @@ class SlicerControls(html.Div):
                             "ui_threshold_pending_action = "
                             "{ action: 'add', parent: null }"
                         ),
-                        variant="text", density="compact", size="x-small",
+                        variant="text", density="compact", size="small",
                         color="primary",
-                        style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
+                        style="margin: 0; padding: 0; min-width: 36px; width: 36px; height: 36px;",
                     )
                 html.Span("Add union — show cells matching this range OR any existing root range")
             html.Span(
@@ -460,7 +462,8 @@ class SlicerControls(html.Div):
                 # filter chained downstream of `entry`. Its output is
                 # the intersection of the parent's cells and the new
                 # range. Tooltip spells it out for users who don't
-                # recognise the set-theory glyph.
+                # recognise the set-theory glyph. Sized large enough
+                # to keep the centered-overlap glyph readable.
                 with vuetify3.VTooltip(location="bottom"):
                     with vuetify3.Template(v_slot_activator="{ props }"):
                         vuetify3.VBtn(
@@ -471,9 +474,9 @@ class SlicerControls(html.Div):
                                 "ui_threshold_pending_action = "
                                 "{ action: 'add', parent: entry.name }"
                             ),
-                            variant="text", density="compact", size="x-small",
+                            variant="text", density="compact", size="small",
                             color="primary",
-                            style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
+                            style="margin: 0; padding: 0; min-width: 32px; width: 32px; height: 32px;",
                         )
                     html.Span("Add intersection — narrow this entry's cells further with a chained range")
                 vuetify3.VBtn(
