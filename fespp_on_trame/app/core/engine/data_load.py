@@ -182,7 +182,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
         state, tree, present_paths,
     )
-    _update_active_array_maps(state, present_paths, last_array_for_rep, prev_loaded_set)
+    _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
 
     controller.view_replace
     state.view_update = True
@@ -328,7 +328,7 @@ def _update_data_array_tracking(state, tree, present_paths):
     return last_array_for_rep, prev_loaded_set
 
 
-def _update_active_array_maps(state, present_paths, last_array_for_rep, prev_loaded_set):
+def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set):
     """Recompute `ui_active_array_by_rep` (global) and
     `ui_active_array_by_rep_by_view` (per-panel).
 
@@ -345,7 +345,16 @@ def _update_active_array_maps(state, present_paths, last_array_for_rep, prev_loa
 
     The global `ui_active_array_by_rep` mirrors the active panel's
     bucket via the same rule, so legacy consumers (Activator,
-    solid_color_panel) keep reading a coherent value."""
+    solid_color_panel) keep reading a coherent value.
+
+    MR properties carry an extra hook: when auto-activated, the
+    panel's realization bucket
+    (`ui_active_realization_by_array_by_view`) is seeded with the
+    smallest available index — otherwise the resolver can't find any
+    array name (only suffixed `<title>_real_<idx>` arrays exist) and
+    the rep stays in SolidColor on first load."""
+    from fespp_on_trame.app.core.engine import realization_dispatch
+
     active_panel_id = getattr(state, "fespp_active_panel_id", "") or None
     loaded_arrays_set = set(state.ui_loaded_array_paths or [])
     prev_active = dict(state.ui_active_array_by_rep or {})
@@ -359,14 +368,14 @@ def _update_active_array_maps(state, present_paths, last_array_for_rep, prev_loa
         elif prev_arr in loaded_arrays_set:
             new_active[r_path] = prev_arr
         # else: SolidColor (omit entry).
-    if new_active != prev_active:
-        state.ui_active_array_by_rep = new_active
 
     by_view = state.ui_active_array_by_rep_by_view or {}
-    if not by_view:
-        return
     new_by_view = {}
-    changed = False
+    by_view_changed = False
+    # Track per-panel MR auto-activations so we can seed the realization
+    # bucket in lockstep — without the idx, apply_color_array can't
+    # resolve to a suffixed VTK array name.
+    mr_seeds: dict = {}  # {panel_id: {array_path: default_idx}}
     for pid, pmap in by_view.items():
         prev_pmap = dict(pmap or {})
         new_pmap = {}
@@ -377,11 +386,39 @@ def _update_active_array_maps(state, present_paths, last_array_for_rep, prev_loa
             newly_added = last_arr is not None and last_arr not in prev_loaded_set
             if newly_added and is_active_panel:
                 new_pmap[r_path] = last_arr
+                if realization_dispatch.is_multirealization_property(tree, last_arr):
+                    default_idx = realization_dispatch.default_realization_for(
+                        state, tree, last_arr,
+                    )
+                    if default_idx is not None:
+                        mr_seeds.setdefault(pid, {})[last_arr] = default_idx
             elif prev_arr_p in loaded_arrays_set:
                 new_pmap[r_path] = prev_arr_p
             # else: SolidColor — omit entry.
         new_by_view[pid] = new_pmap
         if new_pmap != prev_pmap:
-            changed = True
-    if changed:
+            by_view_changed = True
+
+    # CRITICAL: the realization bucket MUST be written BEFORE the
+    # active-array buckets (global + per-view) because their state.change
+    # handlers (on_active_array_change, on_active_array_by_view_change)
+    # read the realization bucket to resolve the suffixed VTK array name.
+    # If the active-array writes fire first, the handlers see real_idx=None
+    # for any new MR auto-activation and the rep stays in SolidColor.
+    if mr_seeds:
+        real_by_view = dict(state.ui_active_realization_by_array_by_view or {})
+        real_changed = False
+        for pid, seeds in mr_seeds.items():
+            bucket = dict(real_by_view.get(pid, {}) or {})
+            for array_path, idx in seeds.items():
+                if bucket.get(array_path) is None:
+                    bucket[array_path] = idx
+                    real_changed = True
+            real_by_view[pid] = bucket
+        if real_changed:
+            state.ui_active_realization_by_array_by_view = real_by_view
+
+    if new_active != prev_active:
+        state.ui_active_array_by_rep = new_active
+    if by_view and by_view_changed:
         state.ui_active_array_by_rep_by_view = new_by_view

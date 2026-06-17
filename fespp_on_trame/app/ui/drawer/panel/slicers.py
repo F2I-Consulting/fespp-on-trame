@@ -16,11 +16,11 @@ IJK_TAB_VISIBLE = "ui_active_node_reservoir_type_rep === 'IjkGrid'"
 class SlicerControls:
     """IJK slicer body — axis crop (range mode) and per-axis multi-
     position cuts (slice mode). Rendered inside the SlicersPanel's IJK
-    tab. Threshold and realization now live in their own homes
-    (`ThresholdPanel` in the attributes drawer; `RealizationControl`
-    in the tools band) because their scopes differ:
-      - threshold: per-rep, value-based filter (not a cut)
-      - realization: scene-wide, swaps property values across every rep
+    tab. Threshold lives in its own home (`ThresholdPanel` in the
+    attributes drawer) because it's a per-rep value-based filter, not
+    a cut. Realization is now per-view: each render panel's overlay
+    carries a `PerViewRealizationPicker` populated from the per-view
+    MR specs computed by `realization_dispatch.recompute_panel_mr_specs`.
     """
 
     _mode_var = "ui_slices_range_mode"

@@ -47,3 +47,8 @@ __pycache__/
 doc/elba.md
 doc/elba.pdf
 .claude/
+
+# Personal reference notes — accumulated knowledge about ParaView /
+# RESQML, kept local so they don't leak into team-wide docs.
+/PARAVIEW.md
+/RESQML.md

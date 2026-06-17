@@ -26,6 +26,7 @@ from fespp_on_trame.app.core.engine import (
     slice_dispatch,
     clip_dispatch,
     time_realization,
+    realization_dispatch,
     data_load,
     etp,
     visibility,
@@ -241,6 +242,7 @@ def initialize_fespp_engine(
     def _on_active_array_change(ui_active_array_by_rep, **_):
         active_array.on_active_array_change(
             state, controller, _source_registry, _tree, ui_active_array_by_rep,
+            server=server,
         )
 
     @state.change("ui_active_array_by_rep_by_view")
@@ -386,6 +388,134 @@ def initialize_fespp_engine(
             state, controller, _source_registry, _view, mode,
         )
 
+    # ------------------------------------------------------------------
+    # Per-view multi-realization wiring.
+    # Loading is driven by the assembly tree: each MR / MR+TS parent is
+    # a grouping; checking it loads every realization child as a
+    # distinct suffixed VTK array `<title>_real_<idx>`. This block only
+    # tracks which realization each panel's ColorBy binds to.
+
+    def _refresh_panel_mr_specs(**_):
+        """Recompute the per-panel MR specs map that drives the
+        RealizationPicker widget. Hooked on every state change that
+        could affect the result — eye click (active_array_by_view),
+        realization picker (active_realization_by_view), and tree
+        rebuild (loaded reps changed). Idempotent — only writes when
+        the new value differs from the current."""
+        new_specs = realization_dispatch.recompute_panel_mr_specs(state, _tree)
+        if new_specs != (state.ui_panel_active_mr_specs_by_id or {}):
+            state.ui_panel_active_mr_specs_by_id = new_specs
+
+    def _refresh_mr_derived(**_):
+        """Recompute the panel_has_mr_by_id and ui_global_mr_specs
+        aggregates from `ui_panel_active_mr_specs_by_id`. Hooked on the
+        per-panel specs map so the derivations stay coherent without
+        each consumer doing its own aggregation."""
+        new_has = realization_dispatch.recompute_panel_has_mr(state)
+        if new_has != (state.panel_has_mr_by_id or {}):
+            state.panel_has_mr_by_id = new_has
+        new_global = realization_dispatch.recompute_global_mr_specs(state)
+        if new_global != (state.ui_global_mr_specs or []):
+            state.ui_global_mr_specs = new_global
+        _refresh_global_selected()
+
+    def _refresh_global_selected(**_):
+        """Clamp `ui_global_mr_selected_path` to a valid value and
+        publish the matching spec. Hooked on changes to either the
+        user pick or the underlying specs list so the widget always
+        reads a coherent (path, spec) pair."""
+        path, spec = realization_dispatch.resolve_global_selected(state)
+        if path != (state.ui_global_mr_selected_path or ""):
+            state.ui_global_mr_selected_path = path
+        if spec != (state.ui_global_mr_selected_spec or None):
+            state.ui_global_mr_selected_spec = spec
+
+    state.change("ui_active_array_by_rep_by_view")(_refresh_panel_mr_specs)
+    state.change("ui_active_realization_by_array_by_view")(_refresh_panel_mr_specs)
+    state.change("ui_loaded_rep_paths")(_refresh_panel_mr_specs)
+    state.change("ui_panel_active_mr_specs_by_id")(_refresh_mr_derived)
+    state.change("ui_global_mr_selected_path")(_refresh_global_selected)
+
+    @server.trigger("set_view_realization")
+    def set_view_realization(panel_id, array_path, idx):
+        """Trigger handler for the per-view RealizationPicker widget.
+        Updates `ui_active_realization_by_array_by_view` and re-applies
+        ColorBy on the target view so the new realization renders
+        immediately. Loading is already handled at tree-selection time
+        (MR parent is a grouping → all realization children are loaded
+        as suffixed VTK arrays), so no plugin reconcile is needed."""
+        try:
+            panel_id_str = str(panel_id)
+            array_path_str = str(array_path)
+            idx_int = int(idx)
+        except (TypeError, ValueError) as exc:
+            print(f"[WARNING] set_view_realization invalid args: {exc}")
+            return
+        prev = realization_dispatch.get_active_realization_for_view(
+            state, panel_id_str, array_path_str,
+        )
+        if prev == idx_int:
+            # No-op — slider clicked on the already-active value.
+            return
+        realization_dispatch.set_active_realization_for_view(
+            state, panel_id_str, array_path_str, idx_int,
+        )
+
+        # Re-apply ColorBy on the target view so the new suffixed
+        # array gets bound. Look up the rep this array belongs to
+        # via the tree.
+        node_id = _tree.find_node_id(array_path_str)
+        if node_id is None:
+            return
+        r_id = _tree.find_representation_node(node_id)
+        r_path = _tree.find_path(r_id) if r_id is not None else None
+        if not r_path:
+            return
+        from fespp_on_trame.app.core.engine import panel_resolver
+        target_view, html_view = panel_resolver.resolve_view_and_html_view(
+            server, panel_id_str,
+        )
+        from fespp_on_trame.app.core.engine import source_resolver
+        source_resolver.apply_color_array(
+            _source_registry, _tree, r_path, array_path_str,
+            view=target_view, realization_idx=idx_int,
+        )
+        if target_view is not None:
+            try:
+                pvsimple.Render(view=target_view)
+            except Exception:
+                pass
+        if html_view is not None:
+            try:
+                html_view.update()
+            except Exception:
+                pass
+        else:
+            try:
+                controller.view_update()
+            except Exception:
+                pass
+
+    @server.trigger("set_global_realization")
+    def set_global_realization(array_path, idx):
+        """Trigger handler for the global RealizationPicker in the tools
+        band. Dispatches `set_view_realization` to every panel that has
+        `array_path` active in its ColorBy — effectively a 'set this
+        realization everywhere' shortcut, equivalent to clicking each
+        per-view picker in turn."""
+        try:
+            array_path_str = str(array_path)
+            idx_int = int(idx)
+        except (TypeError, ValueError) as exc:
+            print(f"[WARNING] set_global_realization invalid args: {exc}")
+            return
+        specs_by_panel = state.ui_panel_active_mr_specs_by_id or {}
+        for panel_id, specs in specs_by_panel.items():
+            for spec in specs or []:
+                if spec.get("array_path") == array_path_str:
+                    set_view_realization(panel_id, array_path_str, idx_int)
+                    break
+
     @state.change("ui_threshold_pending_action")
     def _on_threshold_pending_action(ui_threshold_pending_action=None, **_):
         threshold_dispatch.on_threshold_pending_action(
@@ -398,12 +528,6 @@ def initialize_fespp_engine(
     def _propagate_representation(representation_active, **kwargs):
         slicer_dispatch.propagate_representation(_source_registry, representation_active)
 
-    @state.change("ui_slices_real")
-    def update_realization_slider(ui_slices_real, **kwargs):
-        time_realization.update_realization_slider(
-            state, controller, _collector, _view, ui_slices_real,
-        )
-
     @state.change("ui_slices_i_visible_list", "ui_slices_j_visible_list", "ui_slices_k_visible_list")
     def update_slices_visibility(
         ui_slices_i_visible_list=None,
@@ -415,10 +539,6 @@ def initialize_fespp_engine(
             state, controller, _source_registry, _view,
             ui_slices_i_visible_list, ui_slices_j_visible_list, ui_slices_k_visible_list,
         )
-
-    @state.change("ui_slices_real_locked")
-    def update_real_lock(ui_slices_real_locked, **kwargs):
-        time_realization.update_real_lock(state, ui_slices_real_locked)
 
     @state.change("time_index")
     def changeTimeLabel(**kwargs):

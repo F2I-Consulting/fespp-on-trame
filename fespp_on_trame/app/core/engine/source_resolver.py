@@ -154,8 +154,16 @@ def displays_for_rep_path(source_registry, rep_path, view=None):
     return out
 
 
-def resolve_array_for_path(source_registry, tree, rep_path, array_path):
-    """See module docstring."""
+def resolve_array_for_path(source_registry, tree, rep_path, array_path,
+                            realization_idx=None):
+    """See module docstring.
+
+    `realization_idx` (default None) — when set on a multi-realization
+    `array_path`, the resolver looks up the suffixed VTK array name
+    `<sanitized_title>_real_<realization_idx>` first. Falls back to
+    the legacy unsuffixed name when not set or not found, preserving
+    the single-realization global-cursor behaviour for non-MR
+    properties and for MR properties without per-property selection."""
     node_id = tree.find_node_id(array_path)
     if node_id is None:
         return None, None
@@ -163,7 +171,8 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path):
     # MultiRealization synthetic nodes carry the actual VTK array
     # name in propTitle, not title.
     kind = tree.find_type(node_id) or ""
-    if kind in ("MultiRealization", "MultiRealizationTimeSeries"):
+    is_mr = kind in ("MultiRealization", "MultiRealizationTimeSeries")
+    if is_mr:
         pt = tree.find_attribute_value(node_id, "propTitle")
         if pt:
             title = pt
@@ -180,6 +189,24 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path):
                 candidate_sources.append(s)
                 break
     sanitized = _NAME_INVALID_RE.sub("", title)
+
+    # Per-property MR path: look up the suffixed array name first.
+    # Falls through to the legacy lookup when the suffixed array
+    # isn't present (e.g. the plugin hasn't loaded it yet, or this
+    # build lacks Phase 2/3 of the contract).
+    if is_mr and realization_idx is not None:
+        suffixed = f"{sanitized}_real_{int(realization_idx)}"
+        for s in candidate_sources:
+            try:
+                cell_info = s.GetCellDataInformation()
+                if cell_info and cell_info.GetArray(suffixed):
+                    return "CELLS", suffixed
+                point_info = s.GetPointDataInformation()
+                if point_info and point_info.GetArray(suffixed):
+                    return "POINTS", suffixed
+            except Exception:
+                pass
+
     for s in candidate_sources:
         try:
             cell_info = s.GetCellDataInformation()
@@ -215,10 +242,19 @@ def hide_unused_scalar_bars(view=None):
         print(f"[WARNING] hide_unused_scalar_bars: {exc}")
 
 
-def apply_color_array(source_registry, tree, rep_path, array_path, view=None):
-    """See module docstring."""
+def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
+                       realization_idx=None):
+    """See module docstring.
+
+    `realization_idx` — when `array_path` is a multi-realization
+    property and a specific realization is selected for the target
+    view, this is the integer index. Threaded through to
+    `resolve_array_for_path` so the suffixed VTK array name
+    "<title>_real_<idx>" is used for the ColorBy call. Defaults to
+    None (legacy behaviour: resolver picks the unsuffixed name)."""
     displays = displays_for_rep_path(source_registry, rep_path, view=view)
     if not displays:
+        print(f"[APC_DEBUG] apply_color_array({rep_path}, {array_path}): no displays for view={view}")
         return
     if not array_path:
         for d in displays:
@@ -232,14 +268,19 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None):
             except Exception:
                 pass
         return
-    assoc, name = resolve_array_for_path(source_registry, tree, rep_path, array_path)
+    assoc, name = resolve_array_for_path(
+        source_registry, tree, rep_path, array_path,
+        realization_idx=realization_idx,
+    )
+    print(f"[APC_DEBUG] apply_color_array({rep_path}, {array_path}, real_idx={realization_idx})"
+          f" -> assoc={assoc} name={name} n_displays={len(displays)}")
     if not assoc or not name:
         return
     for d in displays:
         try:
             pvsimple.ColorBy(d, (assoc, name))
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[APC_DEBUG]   ColorBy raised: {exc}")
     # `pvsimple.ColorBy` doesn't show the scalar bar — and a prior
     # `hide_unused_scalar_bars` sweep may have unbound the bar from
     # the view's representation list, in which case a raw

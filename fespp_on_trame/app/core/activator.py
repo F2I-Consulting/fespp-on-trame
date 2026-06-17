@@ -172,15 +172,6 @@ class Activator:
         # synthetic TS / MR / MRTS leaves.
         state.setdefault("active_property_kind", "")
 
-        state.setdefault("realization_selected_index", 0)
-        state.setdefault("realization_parent_node_id", None)
-        state.setdefault("realization_ts_node_id", None)
-        # setdefault'd here so Vue subscribes — without it the slicer's
-        # v_if="realization_labels && realization_labels.length > 0"
-        # stays false forever even after we assign realization_labels
-        # later.
-        state.setdefault("realization_labels", [])
-
         state.setdefault("active_representation_has_properties", False)
 
         @state.change("ui_active_node_reservoir")
@@ -302,11 +293,6 @@ class Activator:
 
             rep_block_path, rep_type, rep_source = self._activate_reservoir_rep(node_id)
 
-            if is_multireal:
-                self._apply_multirealization_state(node_id, type_node)
-            else:
-                self._reset_realization_state()
-
             # Multi-realization synthetic nodes carry the actual VTK
             # array name in propTitle (the title attribute is the
             # vtk-sanitized variant which may differ).
@@ -377,57 +363,6 @@ class Activator:
         state.active_representation_has_properties = rep_has_properties
         state.active_representation_path = rep_block_path
         return rep_block_path, rep_type, rep_source
-
-    def _apply_multirealization_state(self, node_id, type_node):
-        """Configure the realization slider from a
-        MultiRealization(TimeSeries) node — labels (from
-        `realization_indices` CSV or fallback to 0..N-1), locked range,
-        initial index honoring the user's locked value."""
-        is_ts = type_node == "MultiRealizationTimeSeries"
-        state.realization_parent_node_id = node_id
-        state.realization_ts_node_id = node_id if is_ts else None
-        if is_ts:
-            state.ptc_show_vcr = True
-
-        # Realization indices CSV from C++ (e.g. "23,24"). Fall back to
-        # 0..N-1 when the attribute is missing (older data with
-        # sequential indices).
-        indices_csv = self._tree.find_attribute_value(node_id, "realization_indices")
-        realization_count_str = self._tree.find_attribute_value(node_id, "realization_count")
-        try:
-            realization_count = int(realization_count_str) if realization_count_str else 1
-        except (ValueError, TypeError):
-            realization_count = 1
-
-        if indices_csv:
-            labels = [s.strip() for s in indices_csv.split(",") if s.strip()]
-        else:
-            labels = [str(i) for i in range(realization_count)]
-        if not labels:
-            labels = ["0"]
-
-        state.ui_range_real = [0, max(0, len(labels) - 1)]
-        # Lock carries the *value* (e.g. "23") so it survives a switch
-        # to a property whose index set differs.
-        initial_index = 0
-        if state.ui_slices_real_locked and getattr(state, 'ui_slices_real_locked_value', None) is not None:
-            locked_value = str(state.ui_slices_real_locked_value)
-            if locked_value in labels:
-                initial_index = labels.index(locked_value)
-        state.realization_selected_index = initial_index
-        state.ui_slices_real = initial_index
-        state.realization_labels = labels
-
-    def _reset_realization_state(self):
-        """Wipe realization slider state — fires for any active node
-        that's not a MultiRealization(TimeSeries) leaf, so the slider
-        disappears / collapses to a single index."""
-        state.realization_selected_index = 0
-        state.realization_parent_node_id = None
-        state.ui_range_real = [0, 0]
-        state.ui_slices_real = 0
-        state.realization_labels = []
-        state.realization_ts_node_id = None
 
     def _resolve_color_target_source(self, rep_block_path, rep_type, rep_source, active_view):
         """Find the visible source to color for a property activation.

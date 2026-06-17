@@ -15,7 +15,7 @@ from trame.app import get_server
 from trame.widgets import html, vuetify3
 
 from .time_control import FesppTimeControl
-from .realization_control import RealizationControl
+from .realization_picker import GlobalRealizationPicker
 
 
 server = get_server()
@@ -37,7 +37,7 @@ class ToolsBand:
             # Left-of-center spacer (keeps the center group centered).
             html.Div(style="flex: 1;")
             self._render_global_time_control()
-            self._render_realization_control()
+            self._render_global_realization_picker()
             html.Div(style="flex: 1;")
             self._render_settings_cog()
 
@@ -58,18 +58,19 @@ class ToolsBand:
                 time_expression="ui_time_label",
             )
 
-    def _render_realization_control(self):
-        """Scene-wide realization slider, shown only when at least one
-        multi-realization property is loaded. Same justification as the
-        global TC: realization swaps property values across every rep
-        in the collector, so it doesn't belong in the per-rep attributes
-        drawer."""
+    def _render_global_realization_picker(self):
+        """Global RealizationPicker — dispatches to every panel that
+        has the targeted MR property active in its ColorBy. Auto-shows
+        when `ui_global_mr_specs` is non-empty (computed by the engine
+        as the union of every panel's active MR properties). One row
+        per unique MR property, with a `mixed` badge surfacing when
+        panels disagree on the active index."""
         with html.Div(
-            v_if="realization_labels && realization_labels.length > 0",
-            classes="d-flex align-center ml-2",
+            v_if="ui_global_mr_specs && ui_global_mr_specs.length > 0",
+            classes="d-flex align-center",
             style="flex: 0 0 auto;",
         ):
-            RealizationControl().render()
+            GlobalRealizationPicker().render()
 
     def _render_settings_cog(self):
         """Right-side cog opening the global settings modal.

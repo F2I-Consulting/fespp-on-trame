@@ -7,6 +7,7 @@ from trame.widgets import paraview, vuetify3 as vuetify3, html
 import ptc
 
 from ..widget.time_control import FesppTimeControl
+from ..widget.realization_picker import PerViewRealizationPicker
 from ..widget.view_link_menu import ViewLinkMenu
 from ..widget.per_view_camera_toolbar import PerViewCameraToolbar
 
@@ -115,26 +116,44 @@ class FesppMultiView(ptc.MultiView):
             The user can then diverge per-panel from there.
           - Empty render panel (replicate=False): empty — nothing
             visible, nothing coloured.
-          - Diff: empty."""
+          - Diff: empty.
+
+        Active-realization bucket (per (panel, array_path) → idx):
+          - Same shape as the active-array bucket. Must mirror it on
+            replicate, otherwise an MR property carried over without
+            its idx makes `apply_color_array` look up the unsuffixed
+            name (which no longer exists — every MR is suffixed
+            `_real_<idx>`) and the new panel falls back to SolidColor.
+            Empty for the non-replicate cases."""
         st = self.server.state
         hidden_by_view = dict(st.ui_hidden_rep_paths_by_view or {})
         active_by_view = dict(st.ui_active_array_by_rep_by_view or {})
+        real_by_view = dict(st.ui_active_realization_by_array_by_view or {})
         if kind == "diff":
             hidden_by_view[panel_id] = []
             active_by_view[panel_id] = {}
+            real_by_view[panel_id] = {}
         elif kind == "render" and not replicate:
             # Empty panel — every loaded rep starts in the hidden
             # bucket so all chips appear closed in the tree.
             hidden_by_view[panel_id] = list(st.ui_loaded_rep_paths or [])
             active_by_view[panel_id] = {}
+            real_by_view[panel_id] = {}
         elif ref_panel_id and ref_panel_id in hidden_by_view:
             hidden_by_view[panel_id] = list(hidden_by_view.get(ref_panel_id, []) or [])
             active_by_view[panel_id] = dict(active_by_view.get(ref_panel_id, {}) or {})
+            real_by_view[panel_id] = dict(real_by_view.get(ref_panel_id, {}) or {})
         else:
             hidden_by_view[panel_id] = list(st.ui_hidden_rep_paths or [])
             active_by_view[panel_id] = dict(st.ui_active_array_by_rep or {})
+            # First view has no ref-bucket to copy from; if the legacy
+            # global active_realization map exists, mirror it (it's
+            # written by toggle_dataarray_color when the active panel
+            # picks an MR), else leave empty.
+            real_by_view[panel_id] = dict(real_by_view.get(panel_id, {}) or {})
         st.ui_hidden_rep_paths_by_view = hidden_by_view
         st.ui_active_array_by_rep_by_view = active_by_view
+        st.ui_active_realization_by_array_by_view = real_by_view
 
     def add_view(
         self,
@@ -262,6 +281,7 @@ class FesppMultiView(ptc.MultiView):
                 self._render_diff_chrome(panel_id)
             else:
                 self._render_panel_time_control(panel_id, pv_view)
+                self._render_panel_realization_picker(panel_id)
                 # Camera chrome (magnet + reset/orient/2D-3D) on the
                 # top-left of the 3D area. Render panels only — diff
                 # panels have their own action buttons.
@@ -714,6 +734,42 @@ class FesppMultiView(ptc.MultiView):
         except Exception:
             pass
 
+    def _render_panel_realization_picker(self, panel_id):
+        """Per-view RealizationPicker — shown when:
+          - at least one MR property is active on this panel's ColorBy
+            (`panel_has_mr_by_id[panel_id]`), AND
+          - the per-panel user toggle `show_panel_mr_<panel_id>` is on.
+        The widget binds to `ui_panel_active_mr_specs_by_id[panel_id]`,
+        recomputed server-side on every relevant state change.
+
+        Vertical position is reactive: when the TC widget is visible
+        (TS active AND user toggle on), MR sits at top:52px just below
+        it. Otherwise MR climbs to top:4px so the panel never wastes
+        the top slot. The condition mirrors the TC's own v_if in
+        `_render_panel_time_control`."""
+        mr_visible_var = f"show_panel_mr_{panel_id}"
+        tc_visible_var = f"show_panel_tc_{panel_id}"
+        self.server.state.setdefault(mr_visible_var, True)
+        per_panel_show = (
+            f"!!(panel_has_mr_by_id && panel_has_mr_by_id['{panel_id}'])"
+            f" && {mr_visible_var}"
+        )
+        tc_actually_shown = (
+            f"!!(panel_has_ts_by_id && panel_has_ts_by_id['{panel_id}'])"
+            f" && {tc_visible_var}"
+        )
+        with html.Div(
+            v_if=(per_panel_show, False),
+            style=(
+                f"`position: absolute; left: 50%;"
+                f" transform: translateX(-50%);"
+                f" top: ${{({tc_actually_shown}) ? 52 : 4}}px;"
+                f" z-index: 2;"
+                f" pointer-events: none;`"
+            ,),
+        ):
+            PerViewRealizationPicker(panel_id).render()
+
     def _render_panel_time_control(self, panel_id, pv_view):
         """Per-view TimeControl docked at the top of a render panel.
         Writes view.ViewTime on this specific view only (no TimeKeeper
@@ -727,10 +783,11 @@ class FesppMultiView(ptc.MultiView):
         widget without unloading anything — driven by the eye-icon
         button in the panel action bar.
 
-        Per-view realization is not implemented: the FESPP collector
-        is scene-wide (`SetPropertyWithName("RealizationIndex")` swaps
-        data under the same VTK array name globally), so the MR
-        widget lives only in the global tools band."""
+        Per-view realization is handled by `PerViewRealizationPicker`
+        in the panel overlay (see `_render_panel_realization_picker`)
+        — each panel's ColorBy binds to its own suffixed VTK array
+        `<title>_real_<idx>`, so different realizations can be shown
+        side by side in different panels."""
         tc_visible_var = f"show_panel_tc_{panel_id}"
         self.server.state.setdefault(tc_visible_var, True)
         html_view = self._html_views.get(panel_id)
@@ -827,12 +884,11 @@ class FesppMultiView(ptc.MultiView):
             click="$event.stopPropagation()",
         ):
             tc_visible_var = f"show_panel_tc_{panel_id}"
+            mr_visible_var = f"show_panel_mr_{panel_id}"
             # TC toggle — icon mirrors the current `show_panel_tc_<id>`
             # value: clock when the TC is visible in the panel, clock-
             # remove when hidden. Greyed out when the panel has no TS
-            # property active (`panel_has_ts_by_id`). Realization has
-            # no equivalent toggle here because it's scene-wide — only
-            # one global widget lives in the tools band.
+            # property active (`panel_has_ts_by_id`).
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(
@@ -850,6 +906,27 @@ class FesppMultiView(ptc.MultiView):
                         click=f"{tc_visible_var} = !{tc_visible_var}",
                     )
                 html.Span("Toggle in-view TimeControl")
+            # MR toggle — sibling of the TC toggle. Layers icon mirrors
+            # the current `show_panel_mr_<id>` value, off variant when
+            # hidden. Greyed out when the panel has no MR property
+            # active (`panel_has_mr_by_id`).
+            with vuetify3.VTooltip(location="bottom"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        icon=(
+                            f"{mr_visible_var} ? 'mdi-layers-triple'"
+                            " : 'mdi-layers-triple-outline'",
+                        ),
+                        v_bind="props",
+                        variant="text",
+                        size="small",
+                        color="white",
+                        disabled=(
+                            f"!(panel_has_mr_by_id && panel_has_mr_by_id['{panel_id}'])",
+                        ),
+                        click=f"{mr_visible_var} = !{mr_visible_var}",
+                    )
+                html.Span("Toggle in-view Realization picker")
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(

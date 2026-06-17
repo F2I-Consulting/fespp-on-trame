@@ -1,23 +1,17 @@
-"""Time / realization dispatch — extracted from
-`boot.initialize_fespp_engine`.
+"""Time dispatch — global TimeKeeper labelling for the UI.
 
-Two unrelated but adjacent UI domains:
+`change_time_label` keeps `state.ui_time_label` aligned with the
+tree-attached `timeXXX.XXXXXX` label (or the formatted raw float when
+no custom label was attached). `register_per_view_time_label` does the
+same wiring for each panel's own slider so per-view readouts match the
+global format.
 
-  - **Time** — the global TimeKeeper drives every render view's
-    `ViewTime`. `change_time_label` keeps `state.ui_time_label`
-    aligned with the tree-attached `timeXXX.XXXXXX` label (or the
-    formatted raw float when no custom label was attached).
-    `register_per_view_time_label` does the same wiring for each
-    panel's own slider so per-view readouts match the global
-    format.
-
-  - **Realization** — `update_realization_slider` drives the
-    collector's `RealizationIndex` from `state.ui_slices_real` (a
-    slider position into `state.realization_labels`); the C++ layer
-    swaps the property values under the same VTK array name, so
-    ParaView's color mapping follows for free.
-    `update_real_lock` stores the locked value so the lock survives
-    a switch to a property whose index set differs."""
+Realization handling moved out of this module: the legacy global
+cursor (`ui_slices_real` → collector.set_realization_index) is gone.
+Per-view realization selection is owned by
+`fespp_on_trame.app.core.engine.realization_dispatch` (state map
+`ui_active_realization_by_array_by_view`).
+"""
 from paraview import simple as pvsimple
 
 
@@ -61,41 +55,5 @@ def register_per_view_time_label(state, tree, time_value_var, label_var):
             setattr(state, label_var, "")
     state.change(time_value_var)(_on_change)
     # Seed once so the label is already populated when the panel
-    # first renders (the @change handler only fires on subsequent
-    # mutations).
+    # first renders.
     _on_change()
-
-
-def update_realization_slider(state, controller, collector, view, ui_slices_real):
-    """Realization slider → drive the collector's RealizationIndex.
-    `ui_slices_real` is the slider position (0..N-1); the actual
-    realization index lives in `realization_labels[ui_slices_real]`
-    (e.g. "23"). The C++ layer swaps the property values under the
-    same array name, so ParaView's color mapping follows."""
-    labels = state.realization_labels or []
-    if not labels or ui_slices_real >= len(labels):
-        return
-    try:
-        real_index = int(labels[ui_slices_real])
-    except (ValueError, TypeError):
-        return
-    if ui_slices_real != state.realization_selected_index:
-        state.realization_selected_index = ui_slices_real
-        collector.set_realization_index(real_index)
-        pvsimple.Render(view=view)
-        controller.view_update()
-    if state.ui_slices_real_locked:
-        state.ui_slices_real_locked_value = labels[ui_slices_real]
-
-
-def update_real_lock(state, ui_slices_real_locked):
-    """Store the locked realization *value* (e.g. "23") so the lock
-    survives a switch to a property whose index set differs."""
-    if ui_slices_real_locked:
-        labels = state.realization_labels or []
-        pos = state.ui_slices_real
-        state.ui_slices_real_locked_value = (
-            labels[pos] if 0 <= pos < len(labels) else None
-        )
-    else:
-        state.ui_slices_real_locked_value = None

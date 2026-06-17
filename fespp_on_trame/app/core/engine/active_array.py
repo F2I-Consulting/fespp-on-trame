@@ -19,11 +19,13 @@ Three concerns covered:
     its eye)."""
 from paraview import simple as pvsimple
 
-from fespp_on_trame.app.core.engine import panel_resolver, source_resolver
+from fespp_on_trame.app.core.engine import (
+    panel_resolver, source_resolver, realization_dispatch,
+)
 
 
 def on_active_array_change(state, controller, source_registry, tree,
-                           ui_active_array_by_rep):
+                           ui_active_array_by_rep, server=None):
     """Drive ColorBy on every loaded rep from the active-array map.
 
     Also enforces per-view visibility AFTER each ColorBy: sources
@@ -33,14 +35,34 @@ def on_active_array_change(state, controller, source_registry, tree,
     `displays_for_rep_path → GetDisplayProperties`, with PV's
     default `Vis=1 Rep='Outline'`. Without this enforcement they
     paint phantom outlines on top of an otherwise-empty / hidden
-    panel."""
+    panel.
+
+    For MR properties, the realization choice is read from the
+    active panel's `ui_active_realization_by_array_by_view` bucket
+    (the legacy flat `ui_active_array_by_rep` map mirrors that panel,
+    so reading from the active panel's realization bucket keeps the
+    flat map and the per-view realization in sync). When `server` is
+    not provided the realization lookup is skipped — the resolver
+    falls back to the legacy unsuffixed VTK array name."""
     view = pvsimple.GetActiveView()
     loaded = list(state.ui_loaded_rep_paths or [])
     active_map = ui_active_array_by_rep or {}
     hidden_set = set(state.ui_hidden_rep_paths or [])
+
+    active_panel_id = None
+    panel_realizations: dict = {}
+    if server is not None:
+        active_panel_id = panel_resolver.active_panel_id(server)
+        if active_panel_id is not None:
+            by_view = state.ui_active_realization_by_array_by_view or {}
+            panel_realizations = by_view.get(active_panel_id) or {}
+
     for rep_path in loaded:
+        array_path = active_map.get(rep_path)
+        realization_idx = panel_realizations.get(array_path) if array_path else None
         source_resolver.apply_color_array(
-            source_registry, tree, rep_path, active_map.get(rep_path),
+            source_registry, tree, rep_path, array_path,
+            realization_idx=realization_idx,
         )
         if rep_path in hidden_set and view is not None:
             displays = source_resolver.displays_for_rep_path(
@@ -91,20 +113,34 @@ def apply_panel_coloring(state, source_registry, tree, panel_id, view):
     by_view = state.ui_active_array_by_rep_by_view or {}
     panel_map = by_view.get(panel_id) or {}
     if not panel_map or view is None:
+        print(f"[APC_DEBUG] apply_panel_coloring({panel_id}) skipped:"
+              f" panel_map empty={not panel_map} view=None={view is None}")
         return
+    realizations_by_view = state.ui_active_realization_by_array_by_view or {}
+    panel_realizations = realizations_by_view.get(panel_id) or {}
+    print(f"[APC_DEBUG] apply_panel_coloring({panel_id})"
+          f" panel_map={panel_map} realizations={panel_realizations}")
     shown_bars: set = set()
     for rep_path, array_path in panel_map.items():
         if not rep_path or not array_path:
             continue
+        realization_idx = panel_realizations.get(array_path)
+        print(f"[APC_DEBUG]   rep={rep_path} array={array_path}"
+              f" real_idx={realization_idx}")
         source_resolver.apply_color_array(
             source_registry, tree, rep_path, array_path, view=view,
+            realization_idx=realization_idx,
         )
         # Color bar: per-array (LUT is keyed by array name globally),
         # one visible bar per array per view. Skip dups when several
-        # reps share the same array.
+        # reps share the same array. For MR properties, the suffixed
+        # name `<title>_real_<idx>` gives each realization its own
+        # LUT — so view A on real 3 and view B on real 7 keep
+        # independent color bars even when both color by "K".
         try:
             assoc, name = source_resolver.resolve_array_for_path(
                 source_registry, tree, rep_path, array_path,
+                realization_idx=realization_idx,
             )
         except Exception:
             assoc, name = None, None
@@ -168,7 +204,18 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
         panel's bucket; consumed by Activator / solid_color_panel
         which still read the flat map.
     ColorBy is applied on the target view's displays only — other
-    panels keep their independent coloring."""
+    panels keep their independent coloring.
+
+    For multi-realization (`MultiRealization` /
+    `MultiRealizationTimeSeries`) properties, a per-view realization
+    choice is tracked in
+    `state.ui_active_realization_by_array_by_view`. On first
+    activation in a panel the choice defaults to the smallest
+    available index. The plugin loads every realization that's
+    materialised in the tree (parent selection propagates to all
+    children), so each view's ColorBy just picks its own suffixed
+    VTK array `<title>_real_<idx>` without sharing with other
+    views."""
     if not array_path:
         return
     node_id = tree.find_node_id(array_path)
@@ -184,7 +231,10 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
 
     by_view = dict(state.ui_active_array_by_rep_by_view or {})
     panel_map = dict(by_view.get(bucket_key, {}) or {})
-    if panel_map.get(r_path) == array_path:
+    # Remember the previous array (if any) so we can release its
+    # realization slot when it's replaced or deactivated.
+    prev_array_path = panel_map.get(r_path)
+    if prev_array_path == array_path:
         panel_map.pop(r_path, None)
         new_value = None
     else:
@@ -192,6 +242,36 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
         new_value = array_path
     by_view[bucket_key] = panel_map
     state.ui_active_array_by_rep_by_view = by_view
+
+    # MR bookkeeping — set / clear the per-view realization choice and
+    # reconcile with the plugin when the (path, idx) union shifts.
+    prev_is_mr_drop = (
+        prev_array_path is not None
+        and prev_array_path != new_value
+        and realization_dispatch.is_multirealization_property(tree, prev_array_path)
+    )
+    if prev_is_mr_drop:
+        realization_dispatch.clear_active_realization_for_view(
+            state, bucket_key, prev_array_path,
+        )
+
+    new_realization_idx = None
+    new_is_mr = (
+        new_value is not None
+        and realization_dispatch.is_multirealization_property(tree, new_value)
+    )
+    if new_is_mr:
+        new_realization_idx = realization_dispatch.get_active_realization_for_view(
+            state, bucket_key, new_value,
+        )
+        if new_realization_idx is None:
+            new_realization_idx = realization_dispatch.default_realization_for(
+                state, tree, new_value,
+            )
+            if new_realization_idx is not None:
+                realization_dispatch.set_active_realization_for_view(
+                    state, bucket_key, new_value, new_realization_idx,
+                )
 
     # Mirror to legacy global iff this is the active panel.
     active = panel_resolver.active_panel_id(server)
@@ -236,9 +316,12 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     # explicitly here (rather than relying on @state.change of the
     # global map) because the per-view map mutation alone wouldn't
     # trigger the legacy active-view-only handler for a non-active
-    # panel.
+    # panel. For MR properties, the per-view realization choice
+    # threads through so the resolver picks the suffixed VTK array
+    # name (`<title>_real_<idx>`).
     source_resolver.apply_color_array(
         source_registry, tree, r_path, new_value, view=view,
+        realization_idx=new_realization_idx,
     )
     # When deactivating (new_value is None), the scalar bar for the
     # old array is orphaned in this view — sweep stale bars so the

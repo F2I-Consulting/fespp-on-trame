@@ -61,6 +61,59 @@ def init_state_defaults(state):
     # properties doesn't show a useless TC.
     state.setdefault("panel_has_ts_by_id", {})
 
+    # Per-view realization choice for MultiRealization properties.
+    # Shape: {panel_id: {array_path: realization_index}}. Each panel
+    # tracks which realization is active for each MR property it
+    # currently colors by. The plugin loads every realization that's
+    # selected in the tree (the MR parent is a grouping that
+    # propagates to children); this map only drives which suffixed
+    # VTK array `<title>_real_<idx>` the panel's ColorBy binds to.
+    # Empty for non-MR properties (their realization choice is N/A).
+    state.setdefault("ui_active_realization_by_array_by_view", {})
+
+    # Per-panel specs of active MR properties, computed from the maps
+    # above by `realization_dispatch.recompute_panel_mr_specs`. Drives
+    # the per-view RealizationPicker widget. Shape:
+    #   {panel_id: [{
+    #       "array_path": str,
+    #       "title": str,
+    #       "available_indices": [int, ...],
+    #       "current_idx": int,
+    #   }, ...]}
+    # Empty for panels with no MR property active. Recomputed on
+    # changes to ui_active_array_by_rep_by_view or
+    # ui_active_realization_by_array_by_view.
+    state.setdefault("ui_panel_active_mr_specs_by_id", {})
+
+    # Per-panel "has at least one MR property active" flag — derived
+    # from `ui_panel_active_mr_specs_by_id` by
+    # `realization_dispatch.recompute_panel_has_mr`. Drives the
+    # per-view MR toggle button's enabled state in the panel action
+    # bar (disabled when the panel has no MR active to toggle).
+    state.setdefault("panel_has_mr_by_id", {})
+
+    # Aggregated MR specs across every panel — drives the global
+    # RealizationPicker in the tools band. Shape mirrors
+    # `ui_panel_active_mr_specs_by_id` entries but uses a single
+    # synthetic "_global" bucket key and adds a `mixed` flag set when
+    # panels disagree on the active index for a given property. Empty
+    # when no panel has an MR active. Computed by
+    # `realization_dispatch.recompute_global_mr_specs`.
+    state.setdefault("ui_global_mr_specs", [])
+
+    # User pick in the global RealizationPicker's property dropdown.
+    # Falls back to the first available spec when empty / stale;
+    # clamping happens server-side in
+    # `realization_dispatch.resolve_global_selected`.
+    state.setdefault("ui_global_mr_selected_path", "")
+
+    # Selected spec resolved from (ui_global_mr_specs,
+    # ui_global_mr_selected_path). The widget binds every control
+    # (buttons / index dropdown / slider) to this spec so the whole
+    # row reflects the currently-picked property. None when no MR is
+    # available.
+    state.setdefault("ui_global_mr_selected_spec", None)
+
     # --- Diff feature ----------------------------------------------
     state.setdefault("diff_array_a_path", None)
     state.setdefault("diff_array_b_path", None)
@@ -139,10 +192,9 @@ def init_state_defaults(state):
 
     # --- IJK slicer panel ------------------------------------------
     # Per-axis crop ranges + multi-slicer position lists, threshold
-    # chain state, realization slider state. Previously set by
-    # `SlicerControls.__init__`; moved here so the new SlicersPanel
-    # parent (with tabs) doesn't need to instantiate the legacy class
-    # just to seed defaults.
+    # chain state. Previously set by `SlicerControls.__init__`; moved
+    # here so the new SlicersPanel parent (with tabs) doesn't need to
+    # instantiate the legacy class just to seed defaults.
     state.setdefault("ui_range_i", [0, 0])
     state.setdefault("ui_range_j", [0, 0])
     state.setdefault("ui_range_k", [0, 0])
@@ -157,14 +209,10 @@ def init_state_defaults(state):
     state.setdefault("ui_slices_range_j", [0, 0])
     state.setdefault("ui_slices_range_k", [0, 0])
     state.setdefault("ui_slices_range_mode", "range")
-    state.setdefault("ui_range_real", [0, 0])
-    state.setdefault("ui_slices_real", 0)
     state.setdefault("ui_slices_i_visible_list", [True])
     state.setdefault("ui_slices_j_visible_list", [True])
     state.setdefault("ui_slices_k_visible_list", [True])
     state.setdefault("ui_slices_volume_visible", True)
-    state.setdefault("ui_slices_real_locked", True)
-    state.setdefault("ui_slices_real_locked_value", None)
     state.setdefault("ui_threshold_chain", [])
     state.setdefault("ui_threshold_arrays_available", [])
     state.setdefault("ui_threshold_pending_action", None)

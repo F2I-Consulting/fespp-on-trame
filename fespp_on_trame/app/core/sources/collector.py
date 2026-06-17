@@ -10,8 +10,16 @@ EPC_COLLECTOR_GUI_NAME = "EPCCollector"
 
 class Collector:
     """Thin wrapper around the FESPP EPCCollector ParaView source.
-    Exposes the proxy, the file-loading entry point, and the
-    realization-index setter."""
+
+    Per-property multi-realization selection is driven entirely through
+    the assembly tree: each `MultiRealization` / `MultiRealizationTimeSeries`
+    node carries one child per realization index (type=Properties or
+    type=TimeSeries). Checking the parent (a grouping) propagates to
+    every realization child; checking a single child loads only that
+    realization. Loaded realizations expose VTK arrays suffixed
+    `<title>_real_<idx>` so multiple realizations of the same property
+    co-exist on the partition — that's what makes per-view divergence
+    possible (each view's ColorBy picks a different suffixed array)."""
 
     def __init__(self):
         self._collector = pvsimple.EPCCollector(registrationName=EPC_COLLECTOR_GUI_NAME)
@@ -51,16 +59,6 @@ class Collector:
         self._collector.UpdatePipelineInformation()
         controller.update_data_information()
         return True
-
-    def set_realization_index(self, index: int):
-        """Set the active realization index. RealizationIndex is exposed
-        as a StringVectorProperty dropdown on the XML proxy (so the
-        user only sees indices that actually exist); the C++ setter
-        parses the string back to int. SetPropertyWithName is used
-        because ParaView aliases the Python attribute to the XML
-        `label` ("Realization"), not the `name` ("RealizationIndex")."""
-        self._collector.SetPropertyWithName("RealizationIndex", str(index))
-        self._collector.UpdatePipeline()
 
     def show(self):
         pvsimple.Show(proxy=self._collector, view=pvsimple.GetActiveView())

@@ -248,7 +248,10 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
-                            SlicersPanel(with_ijk=False).render()
+                            # SLICE/CLIP UI HIDDEN — SlicersPanel with
+                            # `with_ijk=False` would render an empty body
+                            # once Slice and Clip tabs are commented out.
+                            # SlicersPanel(with_ijk=False).render()
                             RepresentationTypePanel()
                             SolidColorPanel()
 
@@ -264,6 +267,7 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
-                            SlicersPanel(with_ijk=False).render()
+                            # SLICE/CLIP UI HIDDEN — see surface tab note.
+                            # SlicersPanel(with_ijk=False).render()
                             RepresentationTypePanel()
                             SolidColorPanel()
