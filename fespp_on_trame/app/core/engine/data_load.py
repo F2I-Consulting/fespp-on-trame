@@ -38,7 +38,6 @@ from fespp_on_trame.app.core import element_type
 def run(state, controller, server, view, tree, collector, etp_connector,
         source_registry, activator,
         refresh_threshold_ui, push_active_ijk_state):
-    print("FESPP data selectors changed:", state.fespp_data_selectors)
     active_source = etp_connector if etp_connector.is_connected else collector
     if active_source is None:
         return
