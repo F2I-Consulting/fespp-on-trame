@@ -221,7 +221,7 @@ def on_active_array_by_view_change(state, tree, ui_active_array_by_rep_by_view):
             if node_id is None:
                 continue
             type_node = tree.find_type(node_id)
-            if type_node in ("TimeSeries", "MultiRealizationTimeSeries"):
+            if element_type.for_kind(type_node).is_time_series():
                 has_ts = True
                 break
             if tree.find_parent_node_id_with_type(node_id, "TimeSeries") is not None:

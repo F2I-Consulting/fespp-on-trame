@@ -153,8 +153,8 @@ class Tree():
         data["treeview"]["icon"] = get_primary_icon(node_type, node_prop_kind)
         # is_ts / is_mr drive the secondary badges in tree_views.py
         # (clock + "MR" chip). Only synthetic node types have them.
-        data["treeview"]["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
-        data["treeview"]["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
+        data["treeview"]["is_ts"] = _et.for_kind(node_type).is_time_series()
+        data["treeview"]["is_mr"] = _et.for_kind(node_type).is_multi_realization()
         data["treeview"]["is_grouping"] = is_grouping
         data["treeview"]["eye"] = eye
         if is_grouping:
@@ -171,7 +171,7 @@ class Tree():
         children_count = self._data_assembly.GetNumberOfChildren(node_id)
         # Multi-realization synthetic nodes are leaves: don't expose
         # their internals.
-        if children_count > 0 and node_type not in ("MultiRealization", "MultiRealizationTimeSeries"):
+        if children_count > 0 and not _et.for_kind(node_type).is_multi_realization():
             data["treeview"]["children"] = []
             for i in range(children_count):
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
@@ -267,8 +267,8 @@ class Tree():
                 treeview["rep_path"] = top_rep_path
                 treeview["type"] = node_type
                 treeview["icon"] = get_primary_icon(node_type, node_prop_kind)
-                treeview["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
-                treeview["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
+                treeview["is_ts"] = _et.for_kind(node_type).is_time_series()
+                treeview["is_mr"] = _et.for_kind(node_type).is_multi_realization()
                 # eye token (rep / array / marker / None) — drives which eye
                 # block the tree view renders. Keyed on the node's own kind
                 # (NOT dispatch_kind, which is only for tab routing). A
@@ -280,7 +280,7 @@ class Tree():
                     treeview["disabled"] = True
 
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
-                if children_count > 0 and node_type not in ("MultiRealization", "MultiRealizationTimeSeries"):
+                if children_count > 0 and not _et.for_kind(node_type).is_multi_realization():
                     treeview["children"] = []
                     for i in range(children_count):
                         subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)

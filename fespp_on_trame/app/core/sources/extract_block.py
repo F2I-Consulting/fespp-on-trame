@@ -187,7 +187,7 @@ def _kind_from_tree(tree, rep_path, array_name):
         if not element_type.for_kind(kind).is_property():
             continue
         title = tree.find_title(nid) or ""
-        if kind in ("MultiRealization", "MultiRealizationTimeSeries"):
+        if element_type.for_kind(kind).is_multi_realization():
             pt = tree.find_attribute_value(nid, "propTitle")
             if pt:
                 title = pt

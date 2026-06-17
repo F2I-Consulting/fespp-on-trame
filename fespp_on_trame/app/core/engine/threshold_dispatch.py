@@ -78,7 +78,7 @@ def _find_property_path_by_title(tree, rep_path, array_title):
         if not for_kind(kind).is_property():
             continue
         child_title = tree.find_title(child_id) or ""
-        if kind in ("MultiRealization", "MultiRealizationTimeSeries"):
+        if for_kind(kind).is_multi_realization():
             pt = tree.find_attribute_value(child_id, "propTitle")
             if pt:
                 child_title = pt

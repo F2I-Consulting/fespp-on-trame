@@ -384,7 +384,8 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
     # MultiRealization synthetic nodes carry the actual VTK array
     # name in propTitle, not title.
     kind = tree.find_type(node_id) or ""
-    is_mr = kind in ("MultiRealization", "MultiRealizationTimeSeries")
+    from fespp_on_trame.app.core import element_type
+    is_mr = element_type.for_kind(kind).is_multi_realization()
     if is_mr:
         pt = tree.find_attribute_value(node_id, "propTitle")
         if pt:

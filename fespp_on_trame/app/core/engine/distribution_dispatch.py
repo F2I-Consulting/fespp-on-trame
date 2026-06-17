@@ -17,6 +17,7 @@ from collections import Counter
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import stats_dispatch
+from fespp_on_trame.app.core import element_type
 
 
 _DEFAULT_NBINS = 50
@@ -454,7 +455,7 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
     # (or fall back to state.time_index). For View rows the view's
     # ViewTime is already authoritative on the source.
     saved_time = None
-    is_ts_kind = kind in ("TimeSeries", "MultiRealizationTimeSeries")
+    is_ts_kind = element_type.for_kind(kind).is_time_series()
     if row_kind == "original" and is_ts_kind and ts_idx is not None:
         try:
             tk = pvsimple.GetTimeKeeper()
@@ -545,8 +546,8 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
     # for View rows, with an optional (real, ts) suffix that
     # disambiguates two rows on the same property differing only by
     # realization or time-step.
-    is_ts_kind_local = kind in ("TimeSeries", "MultiRealizationTimeSeries")
-    is_mr_kind_local = kind in ("MultiRealization", "MultiRealizationTimeSeries")
+    is_ts_kind_local = element_type.for_kind(kind).is_time_series()
+    is_mr_kind_local = element_type.for_kind(kind).is_multi_realization()
     ts_label = ""
     if is_ts_kind_local:
         if row_kind == "view" and pv_view is not None:

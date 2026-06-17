@@ -28,6 +28,7 @@ moments stay meaningful instead of degenerating to NaN.
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import source_resolver, realization_dispatch
+from fespp_on_trame.app.core import element_type
 from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 
@@ -427,7 +428,7 @@ def _resolve_vtk_name(tree, array_path, real_idx=None):
     if not title:
         return "", "", ""
     sanitized = make_valid_vtk_name(title)
-    if kind in ("MultiRealization", "MultiRealizationTimeSeries") and real_idx is not None:
+    if element_type.for_kind(kind).is_multi_realization() and real_idx is not None:
         return title, kind, realization_dispatch.suffixed_array_name(
             sanitized, int(real_idx),
         )
@@ -491,7 +492,6 @@ def _original_source_and_name(state, source_registry, tree,
     legacy = source_registry.get(rep_path) if source_registry is not None else None
     noop = (lambda: None)
     try:
-        from fespp_on_trame.app.core import element_type
         node_id = tree.find_node_id(array_path)
         r_id = tree.find_representation_node(node_id) if node_id is not None else None
         is_channel = (
@@ -548,7 +548,7 @@ def _build_original_row(state, source_registry, tree,
     )
     if source is None:
         return None
-    is_ts_kind = kind in ("TimeSeries", "MultiRealizationTimeSeries")
+    is_ts_kind = element_type.for_kind(kind).is_time_series()
     ts_idx = original_entry.get("ts_idx")
     # Auto-resolve TS like real_idx: when the entry hasn't picked a
     # specific timestep, fall back to the global `state.time_index`
@@ -654,7 +654,7 @@ def _build_view_row(state, scene_registry, source_registry, tree,
     # through the tree-attached label helper (the same one the
     # global TC / TS dropdown items use). Falls back to
     # `state.time_index` when the view's time can't be read.
-    is_ts_kind = kind in ("TimeSeries", "MultiRealizationTimeSeries")
+    is_ts_kind = element_type.for_kind(kind).is_time_series()
     view_ts_idx = None
     view_ts_label = ""
     if is_ts_kind:
@@ -748,7 +748,7 @@ def _available_realizations_for(tree, array_path, kind):
     """`[int, …]` of loaded realisation indices, or `[]` when the
     property isn't MR / MR+TS (the panel uses the length to gate the
     Real dropdown's visibility)."""
-    if kind not in ("MultiRealization", "MultiRealizationTimeSeries"):
+    if not element_type.for_kind(kind).is_multi_realization():
         return []
     try:
         return list(realization_dispatch.available_realization_indices(
@@ -795,8 +795,8 @@ def _build_table_for_path(state, scene_registry, source_registry, tree,
         )
         if row is not None:
             rows.append(row)
-    is_mr = kind in ("MultiRealization", "MultiRealizationTimeSeries")
-    is_ts = kind in ("TimeSeries", "MultiRealizationTimeSeries")
+    is_mr = element_type.for_kind(kind).is_multi_realization()
+    is_ts = element_type.for_kind(kind).is_time_series()
     prop_kind = _prop_kind_for_array_path(tree, array_path, kind)
     try:
         from fespp_on_trame.app.ui.drawer.config.tree_icons import (

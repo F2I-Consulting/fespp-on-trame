@@ -151,7 +151,7 @@ class Activator:
         # Multi-realization synthetic nodes act as property leaves: the actual
         # array name lives in propTitle. Plain TimeSeries nodes are also
         # property leaves (one per property title).
-        is_multireal = type_node in ("MultiRealization", "MultiRealizationTimeSeries")
+        is_multireal = for_kind(type_node).is_multi_realization()
         is_property = for_kind(type_node).is_property()
         ts_ancestor_id = self._tree.find_parent_node_id_with_type(node_id, "TimeSeries")
         is_ts_property = is_property and (
@@ -352,7 +352,7 @@ class Activator:
         Only publishes the editor STATE — the actual ColorBy for a channel
         is done by the eye (`toggle_dataarray_color`)."""
         type_node = self._tree.find_type(node_id) or ""
-        is_multireal = type_node in ("MultiRealization", "MultiRealizationTimeSeries")
+        is_multireal = for_kind(type_node).is_multi_realization()
         is_property = for_kind(type_node).is_property()
         if not is_property:
             state.active_color_array_name = ""

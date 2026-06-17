@@ -22,9 +22,7 @@ activated array is MR.
 """
 from typing import Optional
 
-
-# Set of tree node types treated as multi-realization properties.
-_MR_TYPES = frozenset({"MultiRealization", "MultiRealizationTimeSeries"})
+from fespp_on_trame.app.core import element_type
 
 
 def is_multirealization_property(tree, array_path: str) -> bool:
@@ -34,7 +32,7 @@ def is_multirealization_property(tree, array_path: str) -> bool:
     node_id = tree.find_node_id(array_path)
     if node_id is None:
         return False
-    return tree.find_type(node_id) in _MR_TYPES
+    return element_type.for_kind(tree.find_type(node_id)).is_multi_realization()
 
 
 def available_realization_indices(tree, array_path: str) -> list[int]:
