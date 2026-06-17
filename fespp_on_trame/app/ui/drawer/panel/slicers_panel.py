@@ -26,8 +26,9 @@ from trame.widgets import html, vuetify3
 from fespp_on_trame.app.ui.drawer.panel.slicers import (
     SlicerControls, IJK_TAB_VISIBLE,
 )
-from fespp_on_trame.app.ui.drawer.panel.slice_plane_panel import SlicePlanePanel
-from fespp_on_trame.app.ui.drawer.panel.clip_plane_panel import ClipPlanePanel
+# Kept for the disabled (WIP) Slice / Clip tabs — re-enable in render().
+from fespp_on_trame.app.ui.drawer.panel.slice_plane_panel import SlicePlanePanel  # noqa: F401
+from fespp_on_trame.app.ui.drawer.panel.clip_plane_panel import ClipPlanePanel  # noqa: F401
 
 
 class SlicersPanel:
@@ -39,6 +40,13 @@ class SlicersPanel:
         self._with_ijk = with_ijk
 
     def render(self):
+        # WIP: the Slice / Clip PLANE tools have known bugs and are NOT stable
+        # for this release — disabled in the UI (like the multi-view add-view
+        # buttons). Backend kept; re-enable the tabs/bodies below when fixed.
+        # The surface / well Slicers panel held ONLY Slice+Clip, so it is not
+        # rendered there at all.
+        if not self._with_ijk:
+            return
         with vuetify3.VExpansionPanel():
             with vuetify3.VExpansionPanelTitle(classes="pa-2"):
                 html.Span(
@@ -46,24 +54,8 @@ class SlicersPanel:
                     classes="text-body-2 font-weight-medium",
                 )
                 vuetify3.VSpacer()
-                # At-a-glance status chips: surface the currently-active
-                # cut modes without expanding the panel.
-                vuetify3.VChip(
-                    "Slice",
-                    v_if="ui_slice_enabled",
-                    size="x-small",
-                    variant="tonal",
-                    color="red",
-                    classes="mr-1",
-                )
-                vuetify3.VChip(
-                    "Clip",
-                    v_if="ui_clip_enabled",
-                    size="x-small",
-                    variant="tonal",
-                    color="orange",
-                    classes="mr-1",
-                )
+                # Slice / Clip status chips removed — those plane tools are
+                # WIP/disabled for this release (see render() note).
                 if self._with_ijk:
                     vuetify3.VChip(
                         "{{ ui_slices_range_mode === 'slice' ? 'IJK slice' : 'IJK range' }}",
@@ -94,16 +86,14 @@ class SlicersPanel:
                             v_if=IJK_TAB_VISIBLE,
                             size="small",
                         )
-                    vuetify3.VTab("Slice", value="slice", size="small")
-                    vuetify3.VTab("Clip", value="clip", size="small")
+                    # Slice / Clip tabs disabled — WIP, not stable this release.
 
-                # Tab bodies. v_show (not v_if) so each tab keeps its
-                # local UI state (sliders, scroll position) across
-                # tab switches.
-                if self._with_ijk:
-                    with html.Div(v_show="ui_slicers_tab === 'ijk'"):
-                        SlicerControls().render_body()
-                with html.Div(v_show="ui_slicers_tab === 'slice'"):
-                    SlicePlanePanel().render_body()
-                with html.Div(v_show="ui_slicers_tab === 'clip'"):
-                    ClipPlanePanel().render_body()
+                # Tab bodies. v_show (not v_if) so each tab keeps its local UI
+                # state across tab switches.
+                with html.Div(v_show="ui_slicers_tab === 'ijk'"):
+                    SlicerControls().render_body()
+                # Slice / Clip bodies disabled (WIP). Re-enable with the tabs:
+                #   with html.Div(v_show="ui_slicers_tab === 'slice'"):
+                #       SlicePlanePanel().render_body()
+                #   with html.Div(v_show="ui_slicers_tab === 'clip'"):
+                #       ClipPlanePanel().render_body()
