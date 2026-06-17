@@ -66,28 +66,6 @@ class Activator:
         # registration names across the global proxy manager.
         self._ijk_lookup = ijk_lookup
 
-        state.setdefault("ui_active_node_reservoir", [])
-        state.setdefault("ui_active_node_surface", [])
-        state.setdefault("ui_active_node_well", [])
-        state.setdefault("ui_active_node_reservoir_type_rep", "")
-        state.setdefault("ui_active_node_reservoir_type", "")
-        state.setdefault("ui_active_node_reservoir_title", "")
-        # Rep path of the RESERVOIR tab's active node. The reservoir-scoped
-        # Threshold / IJK-slicer panels resolve their rep through THIS var
-        # rather than the global `active_representation_path`, which any
-        # tab (surface / well) or an eye-click channel activation can
-        # overwrite — leaving the reservoir panels pointed at a wellbore.
-        state.setdefault("ui_active_node_reservoir_rep_path", "")
-        # Underlying property kind of the active node — drives the
-        # editor switch in solid_color_panel (continuous LUT vs
-        # categorical list). Resolved directly for plain
-        # ContinuousProperty / DiscreteProperty / CategoricalProperty
-        # leaves, and via the C++-emitted `propKind` attribute for
-        # synthetic TS / MR / MRTS leaves.
-        state.setdefault("active_property_kind", "")
-
-        state.setdefault("active_representation_has_properties", False)
-
         @state.change("ui_active_node_reservoir")
         def on_ui_active_node_reservoir_change(ui_active_node_reservoir, **kwargs):
             self._handle_reservoir_change(ui_active_node_reservoir)

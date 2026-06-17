@@ -18,6 +18,26 @@ def init_state_defaults(state):
 
     state.setdefault("fespp_data_selectors", [])
 
+    # --- Per-tab active (highlighted) node -------------------------
+    # The node currently activated in each tree tab. Activation drives the
+    # Attributes panel ONLY (never the 3D view — coloring is owned by the
+    # eye / active-array path).
+    state.setdefault("ui_active_node_reservoir", [])
+    state.setdefault("ui_active_node_surface", [])
+    state.setdefault("ui_active_node_well", [])
+    state.setdefault("ui_active_node_reservoir_type_rep", "")
+    state.setdefault("ui_active_node_reservoir_type", "")
+    state.setdefault("ui_active_node_reservoir_title", "")
+    # Rep path of the RESERVOIR tab's active node. The reservoir-scoped
+    # Threshold / IJK-slicer panels resolve their rep through THIS var rather
+    # than the global active_representation_path, which any tab (surface /
+    # well) or an eye-click channel activation can overwrite.
+    state.setdefault("ui_active_node_reservoir_rep_path", "")
+    # Underlying property kind of the active node — drives the editor switch
+    # in solid_color_panel (continuous LUT vs categorical list).
+    state.setdefault("active_property_kind", "")
+    state.setdefault("active_representation_has_properties", False)
+
     # --- Visibility tracking ---------------------------------------
     # ui_loaded_rep_paths: rep paths currently materialised in
     #   ParaView (eye icon rendered next to those tree nodes).
@@ -42,6 +62,10 @@ def init_state_defaults(state):
     #   solid_color_panel) that read the flat map see the active view.
     state.setdefault("ui_loaded_array_paths", [])
     state.setdefault("ui_active_array_by_rep", {})
+    # Per-rep solid-color chip assignment: data_load reserves a distinct
+    # color per loaded rep, with a round-robin cursor over the palette.
+    state.setdefault("solid_color_by_rep", {})
+    state.setdefault("solid_color_next_idx", 0)
     # Per-view active arrays — source of truth for the tree's
     # per-panel eye annotation. Shape:
     #   {panel_id: {rep_path: array_path}}
