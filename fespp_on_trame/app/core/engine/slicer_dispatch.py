@@ -90,6 +90,36 @@ def _render_and_push(state, controller, fallback_view):
     )
 
 
+def _recolor_active_grid(state, source_registry, fallback_view):
+    """Re-apply the active array's ColorBy to the active grid's per-view
+    sources via the authoritative eye/active-array path. Freshly-created
+    slicers would otherwise inherit the IjkGrid's stale `_title` (the eye
+    path changes the displayed property without touching it), so a new
+    slicer ends up colored by the wrong property."""
+    rep_path = getattr(state, "ui_active_node_reservoir_rep_path", "") or ""
+    if not rep_path:
+        return
+    panel = _target_panel_id(state)
+    by_view = (getattr(state, "ui_active_array_by_rep_by_view", {}) or {}).get(panel, {}) or {}
+    array_path = by_view.get(rep_path) or (getattr(state, "ui_active_array_by_rep", {}) or {}).get(rep_path)
+    if not array_path:
+        return
+    real_by_view = (getattr(state, "ui_active_realization_by_array_by_view", {}) or {}).get(panel, {}) or {}
+    realization_idx = real_by_view.get(array_path)
+    from fespp_on_trame.app.core import engine as _eng
+    tree = getattr(_eng, "_tree", None)
+    if tree is None:
+        return
+    from fespp_on_trame.app.core.engine import source_resolver
+    try:
+        source_resolver.apply_color_array(
+            source_registry, tree, rep_path, array_path,
+            view=_target_pv_view(state, fallback_view), realization_idx=realization_idx,
+        )
+    except Exception:
+        pass
+
+
 def set_slider_value(state, index, value):
     """Set the first slice position for the given axis ('i', 'j', or
     'k'). Value-only entry point used by the slice slider widgets —
@@ -123,13 +153,23 @@ def update_slice_positions(state, controller, source_registry, view,
         setattr(state, vis_var, vis_list)
 
     active = _active_ijk_grid(state, source_registry)
+    added = False
     if active is not None:
+        before = (len(active._slices_i_list or []) + len(active._slices_j_list or [])
+                  + len(active._slices_k_list or []))
         active.apply_slice_positions(
             i_list or [],
             j_list or [],
             k_list or [],
         )
+        after = len((i_list or [])) + len((j_list or [])) + len((k_list or []))
+        added = after > before
         active.show()
+    # A newly-added slicer would inherit the IjkGrid's stale `_title`; re-fire
+    # the active-array ColorBy so it paints the current property. Only on add
+    # (not on every drag-move) to avoid recolouring on each slider tick.
+    if added:
+        _recolor_active_grid(state, source_registry, view)
     _render_and_push(state, controller, view)
 
 
