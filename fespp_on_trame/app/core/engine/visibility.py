@@ -149,8 +149,12 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
     is_frame = False
     if tree is not None:
         try:
+            from fespp_on_trame.app.core import element_type
             _nid = tree.find_node_id(rep_path)
-            is_frame = (tree.find_type(_nid) == 'Frame') if _nid is not None else False
+            is_frame = (
+                _nid is not None
+                and element_type.for_kind(tree.find_type(_nid) or "").is_channel_frame()
+            )
         except Exception:
             is_frame = False
 

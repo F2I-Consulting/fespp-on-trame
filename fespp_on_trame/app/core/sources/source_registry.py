@@ -89,6 +89,14 @@ class SourceRegistry:
             return None
         return self._tree.find_type(rep_node_id)
 
+    @staticmethod
+    def _uses_ijk_pipeline(rep_type) -> bool:
+        """True when `rep_type` (a node kind) maps to the IJK grid pipeline.
+        Resolved via the ElementType strategy rather than a literal
+        `rep_type == 'IjkGrid'` compare."""
+        from fespp_on_trame.app.core import element_type
+        return element_type.for_kind(rep_type).is_ijk_grid()
+
     # ------------------------------------------------------------------
     # Instance accessors
 
@@ -378,7 +386,7 @@ class SourceRegistry:
             if rp is None:
                 continue
             rep_type = self._rep_type_for(rp)
-            if rep_type == "IjkGrid":
+            if self._uses_ijk_pipeline(rep_type):
                 continue
             eb_wanted.add(rp)
         eb_current = set(self._extract_blocks.keys())
@@ -416,7 +424,7 @@ class SourceRegistry:
         # unbuilt.
         for sel in selectors or []:
             rp = self._rep_path_for(sel)
-            if rp is None or self._rep_type_for(rp) != "IjkGrid":
+            if rp is None or not self._uses_ijk_pipeline(self._rep_type_for(rp)):
                 continue
             if rp in chosen_prop_for_grid:
                 continue

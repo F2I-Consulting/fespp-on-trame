@@ -191,6 +191,9 @@ class IjkGridRep(GridRep):
 
     KINDS = ("IjkGrid",)
 
+    def is_ijk_grid(self) -> bool:
+        return True
+
     def visibility_policy(self) -> VisibilityPolicy:
         return VisibilityPolicy.IJK_MODAL
 

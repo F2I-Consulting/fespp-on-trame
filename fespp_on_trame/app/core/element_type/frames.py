@@ -198,6 +198,9 @@ class ChannelFrameRep(FrameRep):
     _child_store_attr = "_channel_extractors"
     _reg_prefix = "chn"
 
+    def is_channel_frame(self) -> bool:
+        return True
+
     def visibility_policy(self) -> VisibilityPolicy:
         return VisibilityPolicy.ONE_AT_A_TIME
 

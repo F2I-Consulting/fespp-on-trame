@@ -41,6 +41,20 @@ class ElementType:
         """False only for Partial stubs (Title + UUID, no data)."""
         return True
 
+    def is_ijk_grid(self) -> bool:
+        """True only for the IJK reservoir grid (the modal slicer/volume
+        pipeline). Lets the engine / legacy registry branch on the pipeline
+        kind without a literal ``kind == 'IjkGrid'`` compare."""
+        return False
+
+    def is_channel_frame(self) -> bool:
+        """True only for the wellbore LOG frame (`ChannelFrameRep`, kind
+        'Frame'): a folder-for-the-tree whose renderable content is the
+        single selected channel tube. Used to detect a log channel
+        (array under such a frame) and to treat the frame's eye as a plain
+        show/hide. NOT a marker frame."""
+        return False
+
     def eye_descriptor(self):
         """The eye affordance (a singleton EyeDescriptor), or None when the
         node carries no eye (groupings, frames — their children carry it)."""

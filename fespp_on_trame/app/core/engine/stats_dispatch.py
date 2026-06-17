@@ -491,11 +491,12 @@ def _original_source_and_name(state, source_registry, tree,
     legacy = source_registry.get(rep_path) if source_registry is not None else None
     noop = (lambda: None)
     try:
+        from fespp_on_trame.app.core import element_type
         node_id = tree.find_node_id(array_path)
         r_id = tree.find_representation_node(node_id) if node_id is not None else None
         is_channel = (
             r_id is not None and r_id != node_id
-            and (tree.find_type(r_id) or "") == "Frame"
+            and element_type.for_kind(tree.find_type(r_id) or "").is_channel_frame()
         )
     except Exception:
         is_channel = False
