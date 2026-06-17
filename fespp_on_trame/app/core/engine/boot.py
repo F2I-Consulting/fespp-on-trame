@@ -23,6 +23,8 @@ from fespp_on_trame.app.core.engine.vtk_log import (
 from fespp_on_trame.app.core.engine import (
     threshold_dispatch,
     slicer_dispatch,
+    slice_dispatch,
+    clip_dispatch,
     time_realization,
     data_load,
     etp,
@@ -351,6 +353,38 @@ def initialize_fespp_engine(
             _push_active_ijk_state_to_ui()
         except Exception as _e:
             print(f"[WARNING] push active ijk state failed: {_e}")
+        # Refresh the slice-plane panel from the newly-active rep's
+        # SlicePlane state. Per-rep instance, so switching reps must
+        # repaint the panel.
+        try:
+            slice_dispatch.publish_slice_state(state, _source_registry)
+        except Exception as _e:
+            print(f"[WARNING] publish slice state failed: {_e}")
+        # Same for the clip-plane panel.
+        try:
+            clip_dispatch.publish_clip_state(state, _source_registry)
+        except Exception as _e:
+            print(f"[WARNING] publish clip state failed: {_e}")
+
+    @controller.set("slice_set")
+    def slice_set(enabled=None, axis=None, offset=None):
+        slice_dispatch.slice_set(
+            state, controller, _source_registry, _view,
+            enabled=enabled, axis=axis, offset=offset,
+        )
+
+    @controller.set("clip_set")
+    def clip_set(enabled=None, axis=None, offset=None, inside_out=None):
+        clip_dispatch.clip_set(
+            state, controller, _source_registry, _view,
+            enabled=enabled, axis=axis, offset=offset, inside_out=inside_out,
+        )
+
+    @controller.set("plane_edit_mode_set")
+    def plane_edit_mode_set(mode):
+        clip_dispatch.set_edit_mode(
+            state, controller, _source_registry, _view, mode,
+        )
 
     @state.change("ui_threshold_pending_action")
     def _on_threshold_pending_action(ui_threshold_pending_action=None, **_):

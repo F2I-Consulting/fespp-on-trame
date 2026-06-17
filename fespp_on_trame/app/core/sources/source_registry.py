@@ -195,6 +195,45 @@ class SourceRegistry:
         eb = self._extract_blocks.get(rep_path)
         return eb.deepest_visible_threshold() if eb is not None else None
 
+    # Slice plane (per-rep)
+
+    def slice_state(self, rep_path: str) -> dict:
+        """See `SlicePlane.to_dict` for the schema. Returns the
+        default descriptor when `rep_path` has no live rep yet."""
+        inst = self.get_instance(rep_path)
+        if inst is None or not hasattr(inst, "slice_state"):
+            return {
+                "enabled": False, "axis": "X", "offset": 0.0,
+                "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            }
+        return inst.slice_state()
+
+    def slice_set(self, rep_path: str, enabled=None, axis=None, offset=None):
+        inst = self.get_instance(rep_path)
+        if inst is None or not hasattr(inst, "slice_set"):
+            return
+        inst.slice_set(enabled=enabled, axis=axis, offset=offset)
+
+    # Clip plane (per-rep) — mirrors slice_*
+
+    def clip_state(self, rep_path: str) -> dict:
+        inst = self.get_instance(rep_path)
+        if inst is None or not hasattr(inst, "clip_state"):
+            return {
+                "enabled": False, "axis": "X", "offset": 0.0,
+                "inside_out": False,
+                "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            }
+        return inst.clip_state()
+
+    def clip_set(self, rep_path: str, enabled=None, axis=None,
+                 offset=None, inside_out=None):
+        inst = self.get_instance(rep_path)
+        if inst is None or not hasattr(inst, "clip_set"):
+            return
+        inst.clip_set(enabled=enabled, axis=axis, offset=offset,
+                      inside_out=inside_out)
+
     def all_thresholds(self):
         """Flat list of (rep_path, proxy) across every chain (both
         types)."""

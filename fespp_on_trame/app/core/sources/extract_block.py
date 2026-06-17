@@ -86,6 +86,11 @@ class ExtractBlockRepresentation:
         self._rep_path = rep_path
         self._source = None  # set by _create_source()
         self._chain: list = []
+        # Plane slice / clip (MVP: single axis-aligned plane per rep).
+        # Lazily bound after `_create_source` succeeds so we can pass
+        # the ExtractBlock proxy as upstream.
+        self._slice = None
+        self._clip = None
         if not self._create_source():
             # Caller (SourceRegistry.get_or_create_extract_block) checks `self.source is None`
             # and discards a half-built instance.
@@ -142,8 +147,20 @@ class ExtractBlockRepresentation:
         return True
 
     def delete(self):
-        """Tear down: drop the chain (children-first) then hide and
-        delete the ExtractBlock proxy. Idempotent."""
+        """Tear down: drop the slice + clip + chain (children-first)
+        then hide and delete the ExtractBlock proxy. Idempotent."""
+        if self._slice is not None:
+            try:
+                self._slice.delete()
+            except Exception:
+                pass
+            self._slice = None
+        if self._clip is not None:
+            try:
+                self._clip.delete()
+            except Exception:
+                pass
+            self._clip = None
         self._delete_chain()
         src = self._source
         self._source = None
@@ -156,6 +173,96 @@ class ExtractBlockRepresentation:
             pvsimple.Delete(src)
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # Slice plane (MVP — single axis-aligned plane per rep)
+
+    def _ensure_slice(self):
+        """Lazily build a `SlicePlane` once the rep's source exists.
+        Called by the public slice_state / slice_set entry points."""
+        if self._slice is not None or self._source is None:
+            return
+        from fespp_on_trame.app.core.sources.slice_plane import SlicePlane
+        self._slice = SlicePlane(self._rep_path, self._source, state)
+
+    def slice_state(self) -> dict:
+        """Return the current slice descriptor — enabled, axis, offset,
+        bounds — for the UI panel to bind to. Always returns a dict,
+        even pre-slice: the UI reads bounds to seed the range slider."""
+        self._ensure_slice()
+        if self._slice is None:
+            return {
+                "enabled": False, "axis": "X", "offset": 0.0,
+                "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            }
+        return self._slice.to_dict()
+
+    def slice_set(self, enabled=None, axis=None, offset=None):
+        """Patch the plane params and re-render. When the enabled bit
+        flips, also re-run the chain-visibility resolver so the rep's
+        source / chain tips get hidden (slice replaces them visually)
+        or restored."""
+        self._ensure_slice()
+        if self._slice is None:
+            return
+        was_enabled = self._slice.enabled
+        self._slice.set(enabled=enabled, axis=axis, offset=offset)
+        if self._slice.enabled != was_enabled:
+            self._refresh_chain_visibility()
+
+    # ------------------------------------------------------------------
+    # Clip plane (MVP — single plane per rep)
+
+    def _ensure_clip(self):
+        if self._clip is not None or self._source is None:
+            return
+        from fespp_on_trame.app.core.sources.clip_plane import ClipPlane
+        self._clip = ClipPlane(self._rep_path, self._source, state)
+
+    def clip_state(self) -> dict:
+        self._ensure_clip()
+        if self._clip is None:
+            return {
+                "enabled": False, "axis": "X", "offset": 0.0,
+                "inside_out": False,
+                "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            }
+        return self._clip.to_dict()
+
+    def clip_set(self, enabled=None, axis=None, offset=None,
+                 inside_out=None):
+        """Patch the clip params and re-render. Flipping `enabled`
+        re-runs the visibility resolver so the rep source / chain tip
+        gets replaced by the clip's output (or restored)."""
+        self._ensure_clip()
+        if self._clip is None:
+            return
+        was_enabled = self._clip.enabled
+        self._clip.set(enabled=enabled, axis=axis, offset=offset,
+                       inside_out=inside_out)
+        if self._clip.enabled != was_enabled:
+            self._refresh_chain_visibility()
+
+    def clip_output(self):
+        """The Clip filter proxy when one exists — exposed so the
+        ColorBy fan-out (`source_resolver.color_sources_for_rep_path`)
+        can refresh the clip's display whenever the user picks a new
+        property. Without this the clip stays coloured by whatever
+        array was active when the clip was created."""
+        return self._clip.output if self._clip is not None else None
+
+    def refresh_planes_after_property_change(self):
+        """Re-apply slice / clip if enabled, then re-assert the rep
+        hide. ColorBy fan-out updates the clip's display via
+        `clip_output()`, but it doesn't re-run our visibility
+        resolver — so this hook does both."""
+        if self._slice is not None and self._slice.enabled:
+            self._slice.set()
+        if self._clip is not None and self._clip.enabled:
+            self._clip.set()
+        if ((self._slice is not None and self._slice.enabled)
+                or (self._clip is not None and self._clip.enabled)):
+            self._refresh_chain_visibility()
 
     def _delete_chain(self):
         view = pvsimple.GetActiveView()
@@ -413,14 +520,21 @@ class ExtractBlockRepresentation:
 
     def _refresh_chain_visibility(self):
         """Recompute Input wiring + display.Visibility for every node
-        in the chain. Called after add/delete/set_visible.
+        in the chain. Called after add/delete/set_visible, plus on
+        slice / clip toggle.
 
-        Display rule: an entry is shown iff entry.visible AND it has
-        no visible descendant (otherwise the descendant subsumes the
-        entry's contribution to the rendered scene). The rep source
-        is hidden when at least one chain entry is shown."""
+        Display rules:
+          - chain entry shown iff entry.visible AND no visible descendant
+          - rep source hidden when a chain tip is shown, when the user
+            barred the rep eye, OR when slice / clip is enabled (each
+            "replaces" the rep visually — clip shows the clipped half
+            colored like the rep, slice adds a red cross-section)"""
         view = pvsimple.GetActiveView()
         rep_hidden_by_user = self._rep_path in (state.ui_hidden_rep_paths or [])
+        rep_hidden_by_slice = self._slice is not None and self._slice.enabled
+        rep_hidden_by_clip = self._clip is not None and self._clip.enabled
+        rep_hidden = (rep_hidden_by_user
+                      or rep_hidden_by_slice or rep_hidden_by_clip)
 
         any_shown = False
         for entry in self._chain:
@@ -435,7 +549,7 @@ class ExtractBlockRepresentation:
                 continue
             try:
                 tip = entry.visible and not self._has_visible_descendant(entry.name)
-                show = tip and not rep_hidden_by_user
+                show = tip and not rep_hidden
                 if show:
                     pvsimple.Show(proxy=entry.proxy, view=view)
                     any_shown = True
@@ -444,11 +558,9 @@ class ExtractBlockRepresentation:
             except Exception:
                 pass
 
-        # Show/hide the rep source: hidden when a chain tip is shown,
-        # or when the user barred the rep eye; fully shown otherwise.
         if view is not None and self._source is not None:
             try:
-                if rep_hidden_by_user or any_shown:
+                if rep_hidden or any_shown:
                     pvsimple.Hide(proxy=self._source, view=view)
                 else:
                     pvsimple.Show(proxy=self._source, view=view)

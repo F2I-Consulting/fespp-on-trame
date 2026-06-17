@@ -91,6 +91,13 @@ class IjkGrid:
         # Threshold chain (ordered, parent-child by name).
         self._chain = []  # list[_IjkChainEntry]
 
+        # Plane slice / clip (MVP: single plane per rep). Input is the
+        # rep_data extractor — cutting the un-cropped grid so the
+        # plane runs through the full geometry independently of the
+        # user's current IJK slice/range setup.
+        self._slice = None
+        self._clip = None
+
         # Per-instance slicer / range UI state. The engine mirrors this
         # into the trame state vars when this grid is the active one.
         self._slices_i_list = []
@@ -195,9 +202,21 @@ class IjkGrid:
     def _delete_all_sources(self):
         view = pvsimple.GetActiveView()
         pvsimple.SetActiveSource(None)
-        # Chain references slicer/rep_data proxies; delete it FIRST so
-        # the upstream Delete calls don't trip on dangling downstream
-        # filters.
+        # Slice + chain reference slicer/rep_data proxies; delete them
+        # FIRST so the upstream Delete calls don't trip on dangling
+        # downstream filters.
+        if self._slice is not None:
+            try:
+                self._slice.delete()
+            except Exception:
+                pass
+            self._slice = None
+        if self._clip is not None:
+            try:
+                self._clip.delete()
+            except Exception:
+                pass
+            self._clip = None
         self._delete_chain()
         for src in self._all_slice_sources():
             try:
@@ -444,6 +463,25 @@ class IjkGrid:
         if view is None:
             view = pvsimple.GetActiveView()
         if view is None:
+            return
+
+        # Slice / clip replace the grid visually — hide every source
+        # this grid would normally render so only the plane filter
+        # outputs stay on screen. Slice / Clip manage their own
+        # display in the same view via SlicePlane._apply / ClipPlane._apply.
+        slice_active = self._slice is not None and self._slice.enabled
+        clip_active = self._clip is not None and self._clip.enabled
+        if slice_active or clip_active:
+            for src in (
+                list(self._all_slice_sources())
+                + ([self._src_slicer_volume] if self._src_slicer_volume is not None else [])
+                + ([self._src_extract_init] if self._src_extract_init is not None else [])
+            ):
+                try:
+                    pvsimple.Hide(proxy=src, view=view)
+                    self._hide_chain_for(src, view)
+                except Exception:
+                    pass
             return
 
         # `set_node_id` set Representation + tint (DiffuseColor /
@@ -751,6 +789,87 @@ class IjkGrid:
             out.append(self._src_slicer_volume)
         out.extend(self.all_threshold_sources())
         return out
+
+    # ------------------------------------------------------------------
+    # Slice plane (MVP — single axis-aligned plane per rep)
+
+    def _ensure_slice(self):
+        """Lazily build a `SlicePlane` once the rep_data extractor
+        exists. Called by the public slice_state / slice_set entry
+        points so the slice's upstream is always the un-cropped
+        grid."""
+        if self._slice is not None or self._src_extract_init is None:
+            return
+        from fespp_on_trame.app.core.sources.slice_plane import SlicePlane
+        self._slice = SlicePlane(self.rep_path, self._src_extract_init, state)
+
+    def slice_state(self) -> dict:
+        """Return the slice descriptor for the UI panel."""
+        self._ensure_slice()
+        if self._slice is None:
+            return {
+                "enabled": False, "axis": "X", "offset": 0.0,
+                "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            }
+        return self._slice.to_dict()
+
+    def slice_set(self, enabled=None, axis=None, offset=None):
+        """Patch the plane params and re-render. When the enabled bit
+        flips, also re-run `show()` so the grid's rendered sources get
+        hidden (slice replaces them visually) or restored."""
+        self._ensure_slice()
+        if self._slice is None:
+            return
+        was_enabled = self._slice.enabled
+        self._slice.set(enabled=enabled, axis=axis, offset=offset)
+        if self._slice.enabled != was_enabled:
+            self.show()
+
+    # ------------------------------------------------------------------
+    # Clip plane (MVP — single plane per rep)
+
+    def _ensure_clip(self):
+        if self._clip is not None or self._src_extract_init is None:
+            return
+        from fespp_on_trame.app.core.sources.clip_plane import ClipPlane
+        self._clip = ClipPlane(self.rep_path, self._src_extract_init, state)
+
+    def clip_state(self) -> dict:
+        self._ensure_clip()
+        if self._clip is None:
+            return {
+                "enabled": False, "axis": "X", "offset": 0.0,
+                "inside_out": False,
+                "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            }
+        return self._clip.to_dict()
+
+    def clip_set(self, enabled=None, axis=None, offset=None,
+                 inside_out=None):
+        self._ensure_clip()
+        if self._clip is None:
+            return
+        was_enabled = self._clip.enabled
+        self._clip.set(enabled=enabled, axis=axis, offset=offset,
+                       inside_out=inside_out)
+        if self._clip.enabled != was_enabled:
+            self.show()
+
+    def clip_output(self):
+        """Clip filter proxy — see ExtractBlockRep.clip_output."""
+        return self._clip.output if self._clip is not None else None
+
+    def refresh_planes_after_property_change(self):
+        """Re-apply slice / clip if enabled, then re-run `show()` so
+        the rep stays hidden when slice / clip is enabled. ColorBy
+        fan-out updates the clip's display via `clip_output()`."""
+        if self._slice is not None and self._slice.enabled:
+            self._slice.set()
+        if self._clip is not None and self._clip.enabled:
+            self._clip.set()
+        if ((self._slice is not None and self._slice.enabled)
+                or (self._clip is not None and self._clip.enabled)):
+            self.show()
 
     def all_threshold_sources(self):
         """Every chain PV proxy (visible or not) — used for

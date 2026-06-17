@@ -54,6 +54,17 @@ def on_active_array_change(state, controller, source_registry, tree,
                         sm.UpdateVTKObjects()
                 except Exception:
                     pass
+        # Re-assert slice / clip visibility — ColorBy doesn't touch
+        # the rep's Show/Hide, but a freshly-coloured clip needs its
+        # `_apply` to re-Show (the clip's display might have been
+        # implicitly recreated by `displays_for_rep_path`), and the
+        # rep source must stay hidden when slice / clip is enabled.
+        inst = source_registry.get_instance(rep_path)
+        if inst is not None and hasattr(inst, "refresh_planes_after_property_change"):
+            try:
+                inst.refresh_planes_after_property_change()
+            except Exception as exc:
+                print(f"[WARNING] refresh_planes {rep_path}: {exc}")
     if view is not None:
         pvsimple.Render(view=view)
     controller.view_update()

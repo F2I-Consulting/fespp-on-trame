@@ -114,12 +114,24 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
             out.extend(ijk.all_threshold_sources())
         except Exception:
             pass
+        # Include the clip's output so ColorBy fan-out picks up its
+        # display alongside the grid's other sources — the clip
+        # inherits the rep's coloring only once at creation, so without
+        # this it stays coloured by whatever property was active back
+        # then. Slice's display is intentionally excluded (it's tinted
+        # red so the cross-section stands out)."""
+        clip_out = ijk.clip_output() if hasattr(ijk, "clip_output") else None
+        if clip_out is not None:
+            out.append(clip_out)
         return out, view
     eb = source_registry.get_extract_block(rep_path)
     if eb is not None:
         if eb.source is not None:
             out.append(eb.source)
         out.extend(source_registry.all_chain_proxies(rep_path))
+        clip_out = eb.clip_output() if hasattr(eb, "clip_output") else None
+        if clip_out is not None:
+            out.append(clip_out)
         return out, view
     # Legacy fallback: match by registered name.
     expected_rep_filter = "rep" + (rep_path or "").replace('/', '_')

@@ -103,6 +103,79 @@ def init_state_defaults(state):
     # /api/{sid}/upload.
     state.setdefault("upload_session_id", "")
 
+    # --- Slice plane (MVP: single axis-aligned plane per rep) -----
+    # Mirror of the active rep's `SlicePlane` state. The slice panel
+    # binds to these; user edits round-trip through controller
+    # `slice_set` which writes back here via `publish_slice_state`.
+    state.setdefault("ui_slice_enabled", False)
+    state.setdefault("ui_slice_axis", "X")
+    state.setdefault("ui_slice_offset", 0.0)
+    state.setdefault("ui_slice_bounds", [0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+    # Server-resolved slider domain for the active axis. Computed by
+    # `publish_slice_state` from (axis, bounds) so the slider widget
+    # binds directly to these scalars instead of evaluating a Vue
+    # template ternary (which has parser quirks around `:` in
+    # certain contexts).
+    state.setdefault("ui_slice_offset_min", 0.0)
+    state.setdefault("ui_slice_offset_max", 1.0)
+    state.setdefault("ui_slice_offset_step", 0.001)
+
+    # --- Clip plane (single plane per rep, mirrors SlicePlane) ----
+    state.setdefault("ui_clip_enabled", False)
+    state.setdefault("ui_clip_axis", "X")
+    state.setdefault("ui_clip_offset", 0.0)
+    state.setdefault("ui_clip_inside_out", False)
+    state.setdefault("ui_clip_bounds", [0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+    state.setdefault("ui_clip_offset_min", 0.0)
+    state.setdefault("ui_clip_offset_max", 1.0)
+    state.setdefault("ui_clip_offset_step", 0.001)
+
+    # --- Plane editor focus ----------------------------------------
+    # Which filter the 3D plane widget is currently bound to: "slice",
+    # "clip", or None (no widget shown). Slice and Clip can both be
+    # applied simultaneously, but only one is editable at a time —
+    # the panel's per-filter "Edit" toggle writes here.
+    state.setdefault("ui_plane_edit_mode", None)
+
+    # --- IJK slicer panel ------------------------------------------
+    # Per-axis crop ranges + multi-slicer position lists, threshold
+    # chain state, realization slider state. Previously set by
+    # `SlicerControls.__init__`; moved here so the new SlicersPanel
+    # parent (with tabs) doesn't need to instantiate the legacy class
+    # just to seed defaults.
+    state.setdefault("ui_range_i", [0, 0])
+    state.setdefault("ui_range_j", [0, 0])
+    state.setdefault("ui_range_k", [0, 0])
+    state.setdefault("ui_slices_i_active", False)
+    state.setdefault("ui_slices_i_list", [0])
+    state.setdefault("ui_slices_j_active", False)
+    state.setdefault("ui_slices_j_list", [0])
+    state.setdefault("ui_slices_k_active", False)
+    state.setdefault("ui_slices_k_list", [0])
+    state.setdefault("ui_slices_range_active", False)
+    state.setdefault("ui_slices_range_i", [0, 0])
+    state.setdefault("ui_slices_range_j", [0, 0])
+    state.setdefault("ui_slices_range_k", [0, 0])
+    state.setdefault("ui_slices_range_mode", "range")
+    state.setdefault("ui_range_real", [0, 0])
+    state.setdefault("ui_slices_real", 0)
+    state.setdefault("ui_slices_i_visible_list", [True])
+    state.setdefault("ui_slices_j_visible_list", [True])
+    state.setdefault("ui_slices_k_visible_list", [True])
+    state.setdefault("ui_slices_volume_visible", True)
+    state.setdefault("ui_slices_real_locked", True)
+    state.setdefault("ui_slices_real_locked_value", None)
+    state.setdefault("ui_threshold_chain", [])
+    state.setdefault("ui_threshold_arrays_available", [])
+    state.setdefault("ui_threshold_pending_action", None)
+    state.setdefault("ui_threshold_local_ranges", {})
+
+    # Active inner tab of the SlicersPanel. Single state var across
+    # all main tabs (reservoir / surface / well) — VTabs mandatory
+    # mode auto-falls-back to the first available tab when the value
+    # doesn't match a rendered VTab.
+    state.setdefault("ui_slicers_tab", "ijk")
+
     # --- Misc UI ---------------------------------------------------
     state.setdefault("ui_scale_z", 1.0)
     state.setdefault("load_mode", "auto")

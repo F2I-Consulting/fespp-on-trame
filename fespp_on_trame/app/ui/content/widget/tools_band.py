@@ -15,6 +15,7 @@ from trame.app import get_server
 from trame.widgets import html, vuetify3
 
 from .time_control import FesppTimeControl
+from .realization_control import RealizationControl
 
 
 server = get_server()
@@ -33,9 +34,10 @@ class ToolsBand:
                 " background: #f5f5f5;"
             ),
         ):
-            # Left-of-center spacer (keeps TC centered when present).
+            # Left-of-center spacer (keeps the center group centered).
             html.Div(style="flex: 1;")
             self._render_global_time_control()
+            self._render_realization_control()
             html.Div(style="flex: 1;")
             self._render_settings_cog()
 
@@ -55,6 +57,19 @@ class ToolsBand:
                 namespace="",
                 time_expression="ui_time_label",
             )
+
+    def _render_realization_control(self):
+        """Scene-wide realization slider, shown only when at least one
+        multi-realization property is loaded. Same justification as the
+        global TC: realization swaps property values across every rep
+        in the collector, so it doesn't belong in the per-rep attributes
+        drawer."""
+        with html.Div(
+            v_if="realization_labels && realization_labels.length > 0",
+            classes="d-flex align-center ml-2",
+            style="flex: 0 0 auto;",
+        ):
+            RealizationControl().render()
 
     def _render_settings_cog(self):
         """Right-side cog opening the global settings modal.

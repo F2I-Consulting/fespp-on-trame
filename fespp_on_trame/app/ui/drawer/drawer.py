@@ -21,9 +21,10 @@ context."""
 from trame.app import get_server
 from trame.widgets import html, vuetify3
 
-import fespp_on_trame.app.ui.drawer.panel.slicers as panel_slicers
 from fespp_on_trame.app.ui.drawer.panel.solid_color_panel import SolidColorPanel
 from fespp_on_trame.app.ui.drawer.panel.representation_type_panel import RepresentationTypePanel
+from fespp_on_trame.app.ui.drawer.panel.slicers_panel import SlicersPanel
+from fespp_on_trame.app.ui.drawer.panel.threshold_panel import ThresholdPanel
 from fespp_on_trame.app.ui.drawer.widget.upload_overlay import UploadOverlay
 
 
@@ -227,11 +228,12 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
-                            panel_slicers.SlicerControls()
+                            SlicersPanel(with_ijk=True).render()
+                            ThresholdPanel().render()
                             RepresentationTypePanel()
                             SolidColorPanel()
 
-                # Surface attributes — no slicers. Active node must
+                # Surface attributes — no IJK slicer. Active node must
                 # also be in the current selection (a node can be
                 # active without being checked, e.g. after a tab
                 # switch).
@@ -246,6 +248,7 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
+                            SlicersPanel(with_ijk=False).render()
                             RepresentationTypePanel()
                             SolidColorPanel()
 
@@ -261,5 +264,6 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
+                            SlicersPanel(with_ijk=False).render()
                             RepresentationTypePanel()
                             SolidColorPanel()

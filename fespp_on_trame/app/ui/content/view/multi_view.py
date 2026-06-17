@@ -722,22 +722,20 @@ class FesppMultiView(ptc.MultiView):
         Visibility is per-panel via `panel_has_ts_by_id[panel_id]` —
         the engine recomputes that map from
         `ui_active_array_by_rep_by_view` so a panel rendering only
-        static properties doesn't show a useless TC. Both the wrapper
-        div's `v_if` AND the TC widget's own `v_show` are wired to
-        this per-panel flag (the widget defaults to the GLOBAL
-        `ptc_show_vcr` which would hide every per-view TC the moment
-        the user activates a non-TS property in the tree). The
-        html_view is passed so the TC can push fresh frames to THIS
-        panel's vtk.js client. The label state var is wired through
-        the engine so the per-view readout matches the global TC's
-        format (custom `timeXXX.XXXXXX` from the tree) instead of the
-        raw float."""
+        static properties doesn't show a useless TC. A per-panel user
+        toggle `show_panel_tc_<id>` (defaults to True) hides the
+        widget without unloading anything — driven by the eye-icon
+        button in the panel action bar.
+
+        Per-view realization is not implemented: the FESPP collector
+        is scene-wide (`SetPropertyWithName("RealizationIndex")` swaps
+        data under the same VTK array name globally), so the MR
+        widget lives only in the global tools band."""
+        tc_visible_var = f"show_panel_tc_{panel_id}"
+        self.server.state.setdefault(tc_visible_var, True)
         html_view = self._html_views.get(panel_id)
         time_value_var = f"time_value_{panel_id}"
         time_label_var = f"ui_time_label_{panel_id}"
-        # Engine owns the tree, so it owns the label lookup. Skip the
-        # wiring silently if the controller isn't ready yet (only
-        # happens during early bootstrap with no engine).
         register = getattr(self.server.controller, "register_per_view_time_label", None)
         if register is not None:
             try:
@@ -746,10 +744,8 @@ class FesppMultiView(ptc.MultiView):
                 pass
         per_panel_show = (
             f"!!(panel_has_ts_by_id && panel_has_ts_by_id['{panel_id}'])"
+            f" && {tc_visible_var}"
         )
-        # Positioned just below the dockview tab row so the TC sits at
-        # the top of the 3D area, centered horizontally. Keeps the
-        # bottom of the panel clear for color bars / annotations.
         with html.Div(
             v_if=(per_panel_show, False),
             style=(
@@ -830,6 +826,30 @@ class FesppMultiView(ptc.MultiView):
             mousedown="$event.stopPropagation()",
             click="$event.stopPropagation()",
         ):
+            tc_visible_var = f"show_panel_tc_{panel_id}"
+            # TC toggle — icon mirrors the current `show_panel_tc_<id>`
+            # value: clock when the TC is visible in the panel, clock-
+            # remove when hidden. Greyed out when the panel has no TS
+            # property active (`panel_has_ts_by_id`). Realization has
+            # no equivalent toggle here because it's scene-wide — only
+            # one global widget lives in the tools band.
+            with vuetify3.VTooltip(location="bottom"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        icon=(
+                            f"{tc_visible_var} ? 'mdi-clock-outline'"
+                            " : 'mdi-clock-remove-outline'",
+                        ),
+                        v_bind="props",
+                        variant="text",
+                        size="small",
+                        color="white",
+                        disabled=(
+                            f"!(panel_has_ts_by_id && panel_has_ts_by_id['{panel_id}'])",
+                        ),
+                        click=f"{tc_visible_var} = !{tc_visible_var}",
+                    )
+                html.Span("Toggle in-view TimeControl")
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(
