@@ -9,12 +9,11 @@ from trame.widgets import client as trame_client
 def inject_global_styles() -> None:
     """Inject the three CSS blocks the app relies on."""
 
-    # CSS fix for ptc components.
+    # Vertical centering fix for ptc components.
     trame_client.Style(".te-align-center .v-row { align-items: center; }")
 
-    # Hide the default trame footer ("Powered by trame", "?",
-    # copyright). The --v-layout-bottom reset prevents Vuetify from
-    # reserving space for the hidden footer.
+    # Hide the default trame footer. The --v-layout-bottom reset stops
+    # Vuetify reserving space for the now-hidden footer.
     trame_client.Style(
         "footer, .v-footer {"
         "  display: none !important;"
@@ -25,12 +24,10 @@ def inject_global_styles() -> None:
         ".v-layout { --v-layout-bottom: 0 !important; }"
     )
 
-    # Allow per-panel action chrome (rendered inside each panel's
-    # DivLayout with a negative top offset) to overflow upward into
-    # the dockview tab row. Without this, dockview's content
-    # containers clip our buttons. Narrow enough to not break
-    # dockview's own internals — we only relax the clip on the
-    # immediate content wrappers, not on the group itself.
+    # Let per-panel action chrome (negative top offset) overflow
+    # upward into the dockview tab row instead of being clipped. Scoped
+    # to the immediate content wrappers, not the group, to avoid
+    # breaking dockview's own internals.
     trame_client.Style(
         ".dv-content-container,"
         " .dv-active-panel-wrapper,"
@@ -40,15 +37,12 @@ def inject_global_styles() -> None:
         " }"
     )
 
-    # Floating Stats minimize: collapse the shell to one tabstrip
-    # row AND shrink the width to ~240px (just enough to hold the
-    # 'Stats' tab title + close × + our minimize/maximize
-    # buttons). The mirror `.dv-render-overlay-float` element gets
-    # the same pin because dockview's resize observer copies the
-    # shell's bounding rect onto it on every change. Resize
-    # handles are disabled so the user can't drag-resize the
-    # collapsed strip — that would leak a new width/height into
-    # the inline style and make restore land at the wrong size.
+    # Floating Stats minimize: collapse the shell to one tabstrip row
+    # and ~240px wide. The mirror `.dv-render-overlay-float` element
+    # needs the same pin because dockview's resize observer copies the
+    # shell's bounding rect onto it. Resize handles are disabled so a
+    # drag can't leak a new size into the inline style and break
+    # restore.
     trame_client.Style(
         "body.fespp-stats-minimized"
         " .dv-resize-container:has(.fespp-stats-panel),"
@@ -66,14 +60,10 @@ def inject_global_styles() -> None:
         " }"
     )
 
-    # Floating Stats maximize: pin top/left/width/height so the
-    # shell covers the full dockview container (= the multi-view
-    # content area). `.dv-resize-container` is position:absolute
-    # inside the dockview gridview element, so 100% reaches the
-    # gridview's bounds. Same resize-handle disable as minimize
-    # (so the user can't accidentally rewrite inline bounds while
-    # maximized — restore would otherwise land at the wrong
-    # size).
+    # Floating Stats maximize: pin top/left/width/height so the shell
+    # covers the full dockview container. `.dv-resize-container` is
+    # position:absolute inside the dockview gridview, so 100% reaches
+    # the gridview's bounds. Same resize-handle disable as minimize.
     trame_client.Style(
         "body.fespp-stats-maximized"
         " .dv-resize-container:has(.fespp-stats-panel),"
@@ -95,14 +85,12 @@ def inject_global_styles() -> None:
         " }"
     )
 
-    # Match the dockview tab row to the drawer card title style
-    # (`bg-blue-grey-lighten-5` + `color=blue-grey-darken-2`). Both
-    # the container background and every tab variant land on
-    # blue-grey-darken-2 (#455A64) with white text — hidden tabs
-    # nudge to blue-grey-darken-1 (#546E7A) to give an active /
-    # inactive cue. Themes (Dracula etc.) declare these on
-    # `.dv-theme-*`; we widen the selector with `.dv-dockview` so
-    # the override wins regardless of which theme prop ptc passes.
+    # Match the dockview tab row to the drawer card title style.
+    # Container and every tab variant land on blue-grey-darken-2
+    # (#455A64) with white text; hidden tabs nudge to #546E7A as an
+    # active/inactive cue. Themes declare these vars on `.dv-theme-*`,
+    # so the selector also lists `.dv-dockview` to win regardless of
+    # which theme prop ptc passes.
     trame_client.Style(
         ".dv-dockview,"
         " .dv-theme-dracula,"

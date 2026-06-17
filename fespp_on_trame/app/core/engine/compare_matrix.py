@@ -1,6 +1,6 @@
 """Compare-stats matrix primitives.
 
-The new floating Compare-stats panel (kind=stats_compare) is a
+The floating Compare-stats panel (kind=stats_compare) is a
 server-side-rendered matrix of items (cart rows) x metrics
 (Cardinality, Mean, ...). This module provides the pure
 primitives the panel reads: metric-visibility filter, sort,
@@ -201,24 +201,19 @@ def highlight_annotations_for_items(items, mode, baseline_key=None, normalize=Fa
     but indexed by the items list order. `normalize` only
     affects heatmap mode (z-score vs per-metric min/max)."""
     rows = [(it or {}).get("row") or {} for it in (items or [])]
-    # baseline lookup needs the wrapper, not the row, because
-    # the row dict doesn't carry the cart key.
+    # The baseline lookup needs the wrapper (it carries the cart key),
+    # not the inner row dict.
     base_idx = None
     if baseline_key:
         for i, it in enumerate(items or []):
             if it.get("key") == baseline_key:
                 base_idx = i
                 break
-    # Call highlight_annotations with the raw rows; it uses
-    # row['Mean'] etc., which is what's present on row dicts.
-    # `normalize` only matters for heatmap mode (z-score vs per-
-    # metric min/max rescale).
     out = highlight_annotations(rows, mode, baseline_key=None, normalize=normalize)
-    # Re-inject baseline tagging by index (the original
-    # implementation needed baseline_key but here we know the
-    # baseline INDEX) for baseline mode:
+    # Baseline mode is re-tagged here by index, since we resolved the
+    # baseline INDEX above rather than the key.
     if mode == "baseline" and base_idx is not None:
-        out = {}  # rebuild from scratch using base_idx
+        out = {}
         for mk in _METRIC_KEYS:
             vals = []
             for i, r in enumerate(rows):

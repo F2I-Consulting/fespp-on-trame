@@ -1,24 +1,20 @@
 """Reusable "Copy from view X" menu — shared by the slice / clip /
 threshold panel headers.
 
-Phase 3c (decision D1): per-concern on-demand state copy. Each panel
-gets a small icon button that opens a dropdown listing every other
-render panel; selecting one snapshots that panel's state for THIS
-concern and applies it onto the active panel (the panel the panel
-widget is rendered into).
+Per-concern on-demand state copy: each panel gets an icon button that
+opens a dropdown listing every other render panel; selecting one
+snapshots that panel's state for THIS concern and applies it onto the
+active panel.
 
 Wire-up:
   - `render_copy_menu(concern)` emits a `VBtn + VMenu + VList` block
-    inside whatever container is currently open. Call it from inside
-    the panel's header (e.g. next to the chain count chip).
+    inside whatever container is currently open.
   - The trigger `copy_<concern>_from_view` is registered once per
-    server (idempotent — guarded by a server-state flag) and forwards
-    to `controller.copy_<concern>_from(src_view)`.
+    server and forwards to `controller.copy_<concern>_from(src_view)`.
 
-The destination defaults to `state.fespp_active_panel_id` (the
-controller resolves it), so we only need to pass the source view id.
-The menu is hidden when there's only one render panel — no source
-to copy from."""
+The destination defaults to `state.fespp_active_panel_id` (resolved by
+the controller), so we only pass the source view id. The menu is hidden
+when there's only one render panel — no source to copy from."""
 from trame.app import get_server
 from trame.widgets import html, vuetify3
 
@@ -46,10 +42,8 @@ def render_copy_menu(concern: str) -> None:
         "ijk_slicers": "Copy IJK slicers from view",
     }[concern]
 
-    # The menu is anchored on the trigger button. Vue's `activator`
-    # slot wires the open-on-click behaviour for us. The button is
-    # itself hidden when there's only one render panel — there's no
-    # other source to copy from then.
+    # Vue's `activator` slot wires open-on-click. The button is hidden
+    # when there's only one render panel — no other source to copy from.
     with vuetify3.VMenu(location="bottom end"):
         with vuetify3.Template(v_slot_activator="{ props }"):
             with vuetify3.VTooltip(location="bottom"):
@@ -80,8 +74,7 @@ def render_copy_menu(concern: str) -> None:
 
 
 def _wire_triggers_once():
-    """Register the copy triggers once per server. Idempotent — re-imports
-    of this module (panel files) all hit the same set."""
+    """Register the copy triggers once per server (idempotent)."""
     server = get_server()
     controller = server.controller
     flag = "_fespp_copy_from_view_triggers_wired"
@@ -89,9 +82,8 @@ def _wire_triggers_once():
         return
     setattr(server, flag, True)
 
-    # Map concern → controller method name. "threshold" is the odd one
-    # out (named `copy_threshold_chain_from` for clarity), the rest
-    # follow `copy_<concern>_from`.
+    # Map concern → controller method name. "threshold" uses
+    # `copy_threshold_chain_from`; the rest follow `copy_<concern>_from`.
     _METHODS = {
         "threshold": "copy_threshold_chain_from",
         "slice": "copy_slice_from",
@@ -105,12 +97,11 @@ def _wire_triggers_once():
         def _on_copy(src_view, *, _method=controller_method):
             fn = getattr(controller, _method, None)
             if fn is None:
-                print(f"[copy {_method}] controller method missing")
                 return
             try:
                 fn(src_view=src_view)
             except Exception as exc:
-                print(f"[copy {_method}] failed: {exc}")
+                pass
 
 
 _wire_triggers_once()

@@ -54,10 +54,10 @@ def _displays_for_rep(rep_path):
     This is the proxy set that actually PAINTS the rep in the target panel:
     the per-(rep, view) EnergisticsExtractor (+ its threshold chain + clip
     output) for non-IjkGrid reps (e.g. a WellboreTrajectory polyline), and the
-    per-view slicers/volume/threshold leaves for IjkGrid reps. The legacy
-    shared ExtractBlock source returned by `controller.get_rep_source` is
-    explicitly `Hide()`n in the render view by `RepInScene._ensure_extractor`,
-    so writing the tint there changed nothing on screen."""
+    per-view slicers/volume/threshold leaves for IjkGrid reps. The shared
+    ExtractBlock source from `controller.get_rep_source` is `Hide()`n in the
+    render view by `RepInScene._ensure_extractor`, so the tint must go on the
+    per-view proxies to be visible."""
     from trame.app import get_server as _gs
     source_registry = getattr(_gs().context, "source_registry", None)
     if source_registry is None:
@@ -83,9 +83,9 @@ def _apply_solid(rep_path, color_hex):
     # MarkerFrame: the display(s) `_displays_for_rep` returns are the
     # frame's MAIN extractor, permanently hidden for a marker frame
     # (`_channelless_frame`). The VISIBLE markers render via SEPARATE
-    # per-marker extractors — fan the tint onto those too, or the
-    # on-screen marker colour never changes. (Markers shown LATER pick
-    # up `solid_color_by_rep` at creation in MarkerFrameRep._create_child_extractor.)
+    # per-marker extractors — the tint must fan onto those too. Markers
+    # shown LATER pick up `solid_color_by_rep` at creation in
+    # MarkerFrameRep._create_child_extractor.
     pv_view, _panel = source_resolver.target_view_and_panel()
     if pv_view is None:
         pv_view = pvsimple.GetActiveView()
@@ -278,12 +278,12 @@ class SolidColorPanel(html.Div):
                         )
                     with vuetify3.VExpansionPanelText(classes="pa-2"):
                         html.Div(
-                            "S'applique à TOUS les markers (toutes les vues).",
+                            "Applies to ALL markers (in every view).",
                             classes="text-caption text-medium-emphasis mb-3",
                         )
                         vuetify3.VSwitch(
                             v_model=("marker_orientation",),
-                            label="Orientation (disque orienté dip/azimut, sinon sphère)",
+                            label="Orientation (disc oriented by dip/azimuth, otherwise sphere)",
                             density="compact",
                             hide_details=True,
                             color="deep-orange",
@@ -291,7 +291,7 @@ class SolidColorPanel(html.Div):
                         )
                         vuetify3.VSlider(
                             v_model=("marker_size",),
-                            label="Taille",
+                            label="Size",
                             min=1, max=200, step=1,
                             thumb_label=True,
                             density="compact",
@@ -304,17 +304,14 @@ class SolidColorPanel(html.Div):
 
         # --- Override array-name lookup to use state instead of active source ---
         # The state-driven name carries the property TITLE for MR
-        # properties (e.g. "VOIL") because other consumers
-        # (threshold_dispatch, stats) expect the title there. The
+        # properties (e.g. "VOIL"), because other consumers
+        # (threshold_dispatch, stats) expect the title there, while the
         # actual VTK LUT for an MR property is keyed by the suffixed
-        # name ("VOIL_real_23"). `_resolve_coe_array_name` does that
-        # title → suffixed resolution for the COE read / write paths
-        # only. Both `_update_color_editor` (programmatic refresh
-        # writer) and `_get_array_name_from_state` (used by ptc's
-        # `on_colors_changed` to find the LUT to write back to) use
-        # the SAME resolver, so the writeback round-trips through the
-        # SAME LUT — no asymmetry, no clobbering of the real LUT's
-        # range (the failure mode of the previous fix attempt).
+        # name ("VOIL_real_23"). Both `_update_color_editor` (refresh
+        # writer) and `_get_array_name_from_state` (ptc's
+        # `on_colors_changed` uses it to find the LUT to write back to)
+        # share the SAME resolver, so the writeback round-trips through
+        # the SAME LUT.
         _original_get_array_name = coe.get_representation_color_array_name
 
         def _target_panel_id():
@@ -339,9 +336,7 @@ class SolidColorPanel(html.Div):
             title). The COE MUST resolve the SAME key, else the continuous
             editor reads a different, never-coloured LUT (empty graph).
             `source_resolver.real_base_name` probes the source so both
-            cases converge (the discrete / categorical editor already
-            resolves via `resolve_target_scoped_lut`, which is why it
-            worked)."""
+            cases converge."""
             if not raw_name:
                 return raw_name
             from fespp_on_trame.app.core import engine as _engine_pkg
@@ -389,8 +384,8 @@ class SolidColorPanel(html.Div):
               via `GetColorTransferFunction(scoped_name)`.
 
             Returns `(base_name, None, base_name)` when no scene owns
-            the target view (legacy / bootstrap) — caller falls back
-            to the global LUT singleton."""
+            the target view (bootstrap) — caller falls back to the
+            global LUT singleton."""
             base = _resolve_base_array_name(raw_name)
             scene = _target_scene()
             if scene is None or not base:
@@ -418,17 +413,16 @@ class SolidColorPanel(html.Div):
             """VTK data range for the rep's array currently bound to
             the active node. Walk the rep's source proxy + cell data
             info — gives us the real range whether or not PV has
-            ColorBy'd it yet (the scope LUT seeded from PV's
-            singleton may still be at [0, 1] when activator's
-            `update_color_editor` runs BEFORE the eye-toggle's
-            `apply_color_array`). Returns `None` when the array
-            isn't found (non-property nodes, MR realization not
-            picked yet, etc.).
+            ColorBy'd it yet (the scope LUT seeded from PV's singleton
+            may still be at [0, 1] when `update_color_editor` runs
+            BEFORE the eye-toggle's `apply_color_array`). Returns `None`
+            when the array isn't found (non-property nodes, MR
+            realization not picked yet, etc.).
 
             Prefers the **target scene's** `RepInScene.source()`
-            (per-view EnergisticsExtractor) so MR `_real_<idx>`
-            arrays are visible — the legacy shared `ExtractBlock`
-            from `source_registry.get` doesn't expose those."""
+            (per-view EnergisticsExtractor) so MR `_real_<idx>` arrays
+            are visible — the shared `ExtractBlock` from
+            `source_registry.get` doesn't expose those."""
             if not base_name:
                 return None
             try:
@@ -503,15 +497,12 @@ class SolidColorPanel(html.Div):
             `GetColorTransferFunction(scoped_name)`) hit the same
             per-view LUT, keeping the round-trip lossless.
 
-            Range guard: when the scope LUT was freshly created from
-            a global singleton that PV hadn't yet rescaled to data
-            range (activator's `update_color_editor` fires before the
-            eye-toggle's `apply_color_array` on first MR activation),
-            the LUT's `RGBPoints` carry PV's default [0, 1] range.
-            We compute the data range from the VTK array and force a
-            rescale on the scope LUT BEFORE pushing — otherwise ptc's
-            `on_colors_changed` writeback clobbers any later rescale
-            with our default values."""
+            Range guard: a scope LUT freshly created from a global
+            singleton (before `apply_color_array` has rescaled it on
+            first MR activation) carries PV's default [0, 1] range. We
+            compute the data range from the VTK array and rescale the
+            scope LUT BEFORE pushing, so ptc's `on_colors_changed`
+            writeback doesn't lock in those default values."""
             state.active_color_array_name = array_name
             try:
                 coe.update_scalar_range()
@@ -572,14 +563,12 @@ class SolidColorPanel(html.Div):
             _apply_nan_color_to_lut(lut)
             if len(lut.RGBPoints) >= 4:
                 # Push the LUT's actual RGBPoints + the PWF's actual
-                # Points so the COE state mirrors the rendered
-                # transfer functions. Earlier code pushed an
-                # `all_opaque` ramp for the opacities — that wiped
-                # the user's per-stop opacity edits every time
-                # `_update_color_editor` ran (which happens on every
-                # target / realization / eye change). Read from the
-                # per-scene PWF when available, fall back to an
-                # all-opaque ramp only when no PWF is wired yet.
+                # Points so the COE state mirrors the rendered transfer
+                # functions. Read opacities from the per-scene PWF when
+                # available (pushing a fixed all-opaque ramp would wipe
+                # the user's per-stop opacity edits on every target /
+                # realization / eye change); fall back to an all-opaque
+                # ramp only when no PWF is wired yet.
                 smin = lut.RGBPoints[0]
                 smax = lut.RGBPoints[-4]
                 scene_for_pwf = _target_scene()
@@ -608,7 +597,7 @@ class SolidColorPanel(html.Div):
         )
         def _refresh_coe_on_target_or_realization_change(**_):
             """Re-push the COE whenever:
-              - the drawer target view changes (Brique A picker),
+              - the drawer target view changes (target-view picker),
               - any view's MR realization changes (MR picker),
               - any view's per-rep colored array changes (the eye
                 toggle in the tree — first ColorBy on a property only
@@ -671,7 +660,7 @@ class SolidColorPanel(html.Div):
                 state.solid_color_by_marker = by_marker
                 _apply_solid(path, solid_color)   # fans onto every visible marker
                 return
-            # Non-marker rep — unchanged.
+            # Non-marker rep.
             colors = dict(state.solid_color_by_rep or {})
             colors[path] = solid_color
             state.solid_color_by_rep = colors

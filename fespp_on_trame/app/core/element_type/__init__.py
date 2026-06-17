@@ -1,39 +1,51 @@
-"""Element-type hierarchy (the `ElementType` refactor) — package.
+"""Element-type hierarchy — package.
 
 Single source of truth for "how does a RESQML element of this runtime
-`kind` behave", replacing the scattered `if kind == "..."` branches across
-the tree / tracking / eye / visibility / colour / source layers. See
-``doc/EN|FR/REFACTOR_ELEMENT_TYPE_HIERARCHY.md`` for the design and
-``TYPES_PARTICULARITES.md`` for the per-type spec this encodes.
+`kind` behave", centralising the tree / tracking / eye / visibility /
+colour / source behaviour that would otherwise be scattered `if kind ==
+"..."` branches.
 
-Three-level inheritance — **general → family → unit**:
+Layout — a class is indented UNDER the file it lives in (so "where is
+this class?" is the left column); the ``(BaseClass)`` in each name is its
+Python parent, so the **general → family → unit** inheritance reads too.
+A parent that lives in another file is visible at a glance — e.g.
+``FrameRep(Representation)`` is defined in ``frames.py`` but inherits from
+``representation.py``:
 
-    ElementType                     (base — the contract + neutral defaults)
-    ├── Grouping                    (folder, no source, tri-state selection)
-    │   └── PartialType             (Partial: folder, NOT selectable)
-    ├── Representation              (geometry + eye + per-view source)
-    │   ├── GridRep                 (UnstructuredGrid, Sub — standard)
-    │   │   └── IjkGridRep          (IjkGrid — I/J/K slicers + volume, modal)
-    │   ├── SurfaceRep              (Grid2d, PointSet, Polyline*, TriangulatedSet)
-    │   ├── WellboreGeometryRep     (Trajectory, Completion, Perfo/Perforation)
-    │   ├── SeismicFrameRep         (SeismicWellboreFrame — a real rep)
-    │   └── FrameRep                (folder-for-tree, representation-for-source)
-    │       ├── ChannelFrameRep     (Frame — logs, ONE log at a time)
-    │       └── MarkerFrameRep      (MarkerFrame — N markers at once)
-    └── Leaf                        (sub-element of a rep, not a rep itself)
-        ├── PropertyLeaf            (colours the parent rep; a channel is this)
-        └── MarkerLeaf              (toggles ONE marker's visibility)
+    enums.py
+        TreeRole, VisibilityPolicy, ColorPolicy, EyeKind, EyeDescriptor,
+        BUCKET_* / EYE_* constants
+    base.py
+        ElementType                          base contract + neutral defaults
+    grouping.py
+        Grouping(ElementType)                folder, no source, tri-state selection
+        PartialType(Grouping)                Partial: folder, NOT selectable
+    representation.py
+        Representation(ElementType)          geometry + eye + per-view source
+        GridRep(Representation)              UnstructuredGrid, Sub — standard
+        IjkGridRep(GridRep)                  IjkGrid — I/J/K slicers + volume, modal
+        SurfaceRep(Representation)           Grid2d, PointSet, Polyline*, TriangulatedSet
+        WellboreGeometryRep(Representation)  Trajectory, Completion, Perfo/Perforation
+        SeismicFrameRep(Representation)      SeismicWellboreFrame — a real rep
+    frames.py
+        FrameRep(Representation)             folder-for-tree, representation-for-source
+        ChannelFrameRep(FrameRep)            Frame — logs, ONE log at a time
+        MarkerFrameRep(FrameRep)             MarkerFrame — N markers at once
+    leaf.py
+        Leaf(ElementType)                    sub-element of a rep, not a rep itself
+        PropertyLeaf(Leaf)                   colours the parent rep; a channel is this
+        MarkerLeaf(Leaf)                     toggles ONE marker's visibility
+    registry.py
+        for_kind / for_path / registered_kinds   (+ _REGISTRY / _CONCRETE / _FALLBACK)
 
-Split across modules (enums / base / grouping / representation / frames /
-leaf / registry) for navigability; this ``__init__`` re-exports the full
-public API so ``from fespp_on_trame.app.core import element_type`` keeps
-working unchanged (``element_type.for_kind``, ``element_type.IjkGridRep``,
-``element_type.BUCKET_ARRAY``, ``element_type.VisibilityPolicy``, …).
+This ``__init__`` re-exports the full public API (``element_type.for_kind``,
+``element_type.IjkGridRep``, ``element_type.BUCKET_ARRAY``,
+``element_type.VisibilityPolicy``, …).
 
 The golden rule when adding behaviour: write it at the HIGHEST level where
 it is correct, and never higher.
 
-⚠ The ``KINDS`` strings are the RUNTIME kinds (``SimplifyXmlTag`` output:
+The ``KINDS`` strings are the RUNTIME kinds (``SimplifyXmlTag`` output:
 'Frame', 'MarkerFrame', 'Marker', 'Sub', …) — NOT the C++ enum names.
 """
 

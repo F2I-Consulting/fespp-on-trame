@@ -92,12 +92,10 @@ class ETPConnector:
 
                 time.sleep(0.5)
 
-            print(f"Error: Connection timeout after {max_wait} seconds")
             self._is_connected = False
             return False
 
         except Exception as e:
-            print(f"Error connecting to ETP server: {e}")
             self._is_connected = False
             return False
 
@@ -109,14 +107,13 @@ class ETPConnector:
                 self._etp_source.UpdatePipelineInformation()
                 self._is_connected = False
             except Exception as e:
-                print(f"Error disconnecting from ETP server: {e}")
+                pass
 
     def set_dataspace(self, dataspace: str):
         """Select an ETP dataspace (e.g. "eml:///"). SetDataspaces
         runs in a detached thread on the C++ side, so we poll the data
         assembly until it gains a child or 10 s elapse."""
         if not self._is_connected:
-            print("Not connected to ETP server. Cannot set dataspace.")
             return
 
         try:
@@ -127,7 +124,7 @@ class ETPConnector:
                 if hasattr(client_obj, 'SetDataspaces'):
                     client_obj.SetDataspaces(dataspace)
             except Exception as e:
-                print(f"Warning: Could not call SetDataspaces: {e}")
+                pass
 
             self._etp_source.UpdateVTKObjects()
             self._etp_source.MarkModified(self._etp_source)
@@ -145,9 +142,7 @@ class ETPConnector:
 
             controller.update_data_information()
         except Exception as e:
-            print(f"Error setting dataspace: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
 
     def get_dataspaces(self):
         """Return the list of dataspace identifiers exposed by the
@@ -162,7 +157,6 @@ class ETPConnector:
 
             dataspaces_prop = self._etp_source.GetProperty("AllDataspaceNames")
             if not dataspaces_prop:
-                print("Error: AllDataspaceNames property not found")
                 return []
 
             num_elements = dataspaces_prop.GetNumberOfElements()
@@ -179,9 +173,7 @@ class ETPConnector:
             return dataspaces
 
         except Exception as e:
-            print(f"Error getting dataspaces: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
 
         return []
 

@@ -1,13 +1,12 @@
 """Compare-stats floating panel (kind="stats_compare").
 
-The former modal StatsCompareDialog converted to a dockview
-floating panel per user feedback round 2026-06. Singleton-per-
-property (state.ui_stats_compare_panel[array_path] = panel_id);
-spawn / focus handled by boot._open_compare_stats trigger.
+Dockview floating panel, singleton-per-property
+(state.ui_stats_compare_panel[array_path] = panel_id); spawn / focus
+handled by the boot._open_compare_stats trigger.
 
-Each panel owns a set of per-panel state vars suffixed with
-'_<panel_id>' so two compare panels (for different properties)
-don't clobber each other's toolbar settings.
+Each panel owns per-panel state vars suffixed with '_<panel_id>' so
+two compare panels (for different properties) don't clobber each
+other's toolbar settings.
 """
 from trame.app import get_server
 from trame.widgets import html, vuetify3
@@ -47,11 +46,10 @@ class StatsComparePanel:
             classes="pa-0 ma-0 d-flex flex-column",
             style="height: 100%; width: 100%;",
         ):
-            # Per-panel CSS for the highlight-mode cell classes
-            # bound dynamically below via raw_attrs=[":class=..."].
-            # Trame's html.Style mounts a <style> tag inline; the
-            # rules are scoped by the very-specific class names so
-            # they only paint the compare-table cells.
+            # Per-panel CSS for the highlight-mode cell classes bound
+            # dynamically below via raw_attrs=[":class=..."]. html.Style
+            # mounts a <style> tag inline; the very-specific class names
+            # keep the rules scoped to the compare-table cells.
             html.Style(
                 ".cmp-cell-min { background-color: rgba(33, 150, 243, 0.18); }"
                 " .cmp-cell-max { background-color: rgba(255, 152, 0, 0.18); }"
@@ -60,20 +58,13 @@ class StatsComparePanel:
                 " .cmp-cell-eq  { color: #757575; }"
                 " .cmp-delta { font-size: 0.7em; margin-left: 4px;"
                 "              opacity: 0.85; }"
-                # Note: arrow colours now live in an inline
-                # `style=` on the arrow Span (the css-class path
-                # via classes=/raw_attrs never made it through
-                # trame's Span renderer in baseline mode). The
-                # .cmp-arrow-{pos,neg,eq} classes that used to sit
-                # here are gone.
-                # Sticky-left anchors for layout A (items as
-                # columns). The Metric label column stays glued at
-                # the left edge of the scrollable area; the baseline
-                # column (when one is set) sticks right after it at
-                # x=140px (= Metric col min-width). Both have an
-                # opaque background so scrolled-under content
-                # doesn't bleed through, and z-index keeps them
-                # above the regular cells during horizontal scroll.
+                # Sticky-left anchors for layout A (items as columns):
+                # the Metric label column stays glued to the left edge
+                # of the scroll area, and the baseline column (when set)
+                # sticks right after it at x=140px (= Metric col
+                # min-width). Both carry an opaque background so
+                # scrolled-under content doesn't bleed through, and
+                # z-index keeps them above regular cells during scroll.
                 " .cmp-col-metric { position: sticky; left: 0;"
                 "     background: #fafafa; z-index: 2;"
                 "     min-width: 140px; }"
@@ -113,9 +104,7 @@ class StatsComparePanel:
         ):
             # Live badge: "<rep_title> / <property title> - N rows".
             # The rep_title prefix is shown ONCE here (in the chip),
-            # not per-item — moved out of the column_label per user
-            # feedback round 2026-06 because repeating it on every
-            # cart row's header was visually noisy.
+            # not per-item, to avoid repeating it on every cart row.
             vuetify3.VChip(
                 "{{ (ui_stats_tables && ui_stats_tables[" + ap + "]"
                 " && ui_stats_tables[" + ap + "].rep_title"
@@ -143,14 +132,11 @@ class StatsComparePanel:
                 classes="mr-2",
                 menu_props=("{ maxWidth: 360 }",),
             )
-            # Visible-metrics picker. Inverted semantics vs the old
-            # "Hide metrics": the v-model is the list of metrics to
-            # SHOW (default = every metric), the rendered table reads
-            # `visible.includes(m.k)`. No chip / no selection text in
-            # the trigger button — the user already sees which
-            # columns are present in the table itself, so duplicating
-            # that list in the toolbar is noise. The button only
-            # opens a menu of toggles.
+            # Visible-metrics picker. The v-model is the list of
+            # metrics to SHOW (default = every metric); the table reads
+            # `visible.includes(m.k)`. The trigger button carries no
+            # selection text — the visible columns are already apparent
+            # in the table — it only opens the menu of toggles.
             _ALL_KEYS = (
                 "['Cardinality','NaN_count','Minimum','Maximum',"
                 "'Mean','Standard Deviation','Variance','Sum',"
@@ -257,21 +243,15 @@ class StatsComparePanel:
         time via computed expressions. Highlight uses CSS class
         bindings tied to the highlight mode + baseline.
 
-        Dynamic-class-binding pattern:
-        Trame's html.Td exposes Python-keyword `classes` only for
-        STATIC class lists. For Vue's `:class="{...}"` dynamic
-        bindings we use `raw_attrs=[':class="EXPR"']` — trame
-        injects raw_attrs verbatim into the generated template (see
-        trame_client/widgets/core.py docstring), which is the
-        cleanest way to emit a `:class` directive without abusing
-        __events. The annotations dict is read via
-        `(annotations || {})[metric_key] || {})[row_index]` so a
-        missing tag silently yields no class."""
-        # Simpler MVP: pure Vue expression rendering. The metric
-        # row list is derived from the existing _METRIC_LABELS in
-        # compare_matrix.py - duplicate the static label map in
-        # the JS-side computed below. The transpose toggle swaps
-        # the table layout client-side.
+        Dynamic-class-binding pattern: html.Td's `classes` keyword is
+        for STATIC class lists only. For Vue's `:class="{...}"` dynamic
+        bindings, `raw_attrs=[':class="EXPR"']` injects the directive
+        verbatim into the generated template. The annotations dict is
+        read via `(annotations || {})[metric_key] || {})[row_index]`,
+        so a missing tag silently yields no class."""
+        # The metric row list mirrors _METRIC_LABELS in
+        # compare_matrix.py, duplicated here as a JS-side computed.
+        # The transpose toggle swaps the table layout client-side.
         METRIC_LIST_JS = (
             "[{k:'Cardinality',l:'Value count'},"
             "{k:'NaN_count',l:'No value count'},"
@@ -293,19 +273,16 @@ class StatsComparePanel:
         transposed = self.transposed_var
         sortk = self.sort_key_var
         sorta = self.sort_asc_var
-        # Filter the canonical metric list down to the user's
-        # visible set. Inverted semantics vs the old hidden_metrics:
-        # default is "all visible", the user can untick rows in the
-        # Columns menu to drop them from the table.
+        # Filter the canonical metric list down to the user's visible
+        # set (default = all visible; the Columns menu unticks to drop).
         visible_metrics_expr = (
             "(" + METRIC_LIST_JS + ").filter(m => "
             "(" + visible + " || []).includes(m.k))"
         )
         # Sorted items (client-side numeric sort by sort_key_var).
-        # Metric values live under `it.row.<metric_key>` because
-        # publish_compare_items returns {key, row, column_label,
-        # extrema, propertyTitle} — pulling the value out of `row`
-        # keeps the sort in line with the cell renders below.
+        # Metric values live under `it.row.<metric_key>`
+        # (publish_compare_items returns {key, row, column_label,
+        # extrema, propertyTitle}), matching the cell renders below.
         sorted_items_expr = (
             "((" + items + " || []).slice().sort((a,b) => {"
             "if (!" + sortk + ") return 0;"
@@ -340,11 +317,9 @@ class StatsComparePanel:
             ):
                 with html.Thead():
                     with html.Tr():
-                        # Sticky-left inline (CSS class path via
-                        # cmp-col-metric did not paint — same
-                        # symptom as the arrow colour bug, trame's
-                        # html.Th doesn't always honour the class
-                        # binding under Vuetify's table reset).
+                        # Sticky-left applied inline: the cmp-col-metric
+                        # class doesn't paint on html.Th under Vuetify's
+                        # table reset.
                         html.Th("Metric",
                                 style="text-align: start;"
                                 " padding: 4px 8px;"
@@ -474,21 +449,13 @@ class StatsComparePanel:
                                 "      ? (it.row||{})[m.k].toString()"
                                 "      : Number((it.row||{})[m.k]).toFixed(3)) }}",
                             )
-                            # Baseline-mode arrow: split into its
-                            # own Span so it can carry a vivid
-                            # green / red colour + bold weight
-                            # independent of the cell text. The
-                            # arrow is the "visuel rapide" the
-                            # user scans for direction.
-                            # Inline style binding for the arrow:
-                            # neither raw_attrs nor classes=() were
-                            # picked up by trame's Span renderer in
-                            # baseline mode (the arrows kept the
-                            # parent Td's inherited colour). Inline
-                            # `style=()` IS the form trame proxies
-                            # straight to Vue's :style binding, and
-                            # it sidesteps the CSS class plumbing
-                            # entirely.
+                            # Baseline-mode direction arrow in its own
+                            # Span so it carries a vivid green / red
+                            # colour + bold weight independent of the
+                            # cell text. The colour goes through inline
+                            # `style=()` (proxied to Vue's :style); a
+                            # CSS class via raw_attrs / classes=() is
+                            # not honoured by the Span renderer here.
                             html.Span(
                                 "{{ " + delta_a + ".abs > 0 ? '↑' : ("
                                 + delta_a + ".abs < 0 ? '↓' : '=') }}",

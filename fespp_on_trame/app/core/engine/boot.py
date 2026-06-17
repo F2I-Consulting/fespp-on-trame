@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 
 from paraview import simple as pvsimple
@@ -43,47 +42,61 @@ from fespp_on_trame.app.core.engine import (
 from fespp_on_trame.app.core.engine.state_defaults import init_state_defaults
 
 
+def _resolve_esg_plugin(fallback):
+    """Locate the bundled ExplicitStructuredGrid plugin under the ParaView
+    install instead of hardcoding one version/layout, so a different
+    ParaView build / OS still finds it. Searches the ``TRAME_PARAVIEW``
+    root and the ParaView package's install root for
+    ``lib/paraview-*/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.*``,
+    then falls back to `fallback`."""
+    import os
+    roots = []
+    env_root = os.environ.get("TRAME_PARAVIEW")
+    if env_root:
+        roots.append(Path(env_root))
+    try:
+        import paraview
+        # paraview pkg: <root>/lib/pythonX.Y/site-packages/paraview/__init__.py
+        roots.append(Path(paraview.__file__).resolve().parents[4])
+    except Exception:
+        pass
+    for root in roots:
+        try:
+            for hit in sorted(root.glob(
+                "lib/paraview-*/plugins/ExplicitStructuredGrid/"
+                "ExplicitStructuredGrid.*")):
+                if hit.suffix in (".so", ".dll", ".dylib"):
+                    return str(hit)
+        except Exception:
+            pass
+    return fallback
+
+
 def initialize_fespp_engine(
     server: Server, *, fespp_plugin_path: Path
 ) -> None:
     state = server.state
-    # Pre-register the trame_plotly JS module at boot so the
-    # client receives its bundle on first connect, BEFORE the
-    # Distribution panel template is rendered. trame-plotly's
-    # Figure widget normally calls server.enable_module(...) on
-    # its own __init__, but our Figure widget is created lazily
-    # (only when the user opens the floating Distribution panel)
-    # — by that point the client is already connected, and trame's
-    # late module registration may not push the bundle to the
-    # already-connected client. Importing + enabling eagerly here
-    # forces the JS to be loaded as part of the initial client
-    # bundle.
+    # Pre-register the trame_plotly JS module at boot so the client
+    # receives its bundle on first connect, BEFORE the Distribution panel
+    # template is rendered. Our Figure widget is created lazily (only when
+    # the user opens the floating Distribution panel), by which point the
+    # client is already connected and trame's late module registration may
+    # not push the bundle. Enabling eagerly here folds the JS into the
+    # initial client bundle.
     try:
         from trame_plotly import module as _plotly_module
         server.enable_module(_plotly_module)
     except Exception as _exc:
-        print(f"[WARNING] trame_plotly module enable failed: {_exc}")
+        pass
     controller = server.controller
-
-    # User-facing busy spinner timing — Trame bumps `trame__busy` on every
-    # state mutation that triggers a flush, so this logs how long the UI
-    # is "blocked" between an interaction and the next idle.
-    _busy_start = [None]
-
-    @state.change("trame__busy")
-    def _on_trame_busy(trame__busy=None, **_):
-        if trame__busy:
-            if _busy_start[0] is None:
-                _busy_start[0] = time.perf_counter()
-        else:
-            if _busy_start[0] is not None:
-                ms = int((time.perf_counter() - _busy_start[0]) * 1000)
-                print(f"[BUSY] {ms}ms")
-                _busy_start[0] = None
 
     pvsimple.LoadPlugin(str(fespp_plugin_path))
     # ExplicitStructuredGrid is needed for IJK volume crop / slicing.
-    pvsimple.LoadPlugin('/opt/paraview/lib/paraview-6.0/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.so')
+    # Discover it under the ParaView install (portable across PV version /
+    # OS layout); fall back to the bundled container path.
+    pvsimple.LoadPlugin(_resolve_esg_plugin(
+        '/opt/paraview/lib/paraview-6.0/plugins/ExplicitStructuredGrid/'
+        'ExplicitStructuredGrid.so'))
 
     _view = pvsimple.GetActiveViewOrCreate("RenderView")
     _view.Visible = 1
@@ -95,11 +108,10 @@ def initialize_fespp_engine(
     setup_stderr_tee()
 
     _tree = Tree(None)
-    # Mirror onto the `engine` package so `app/ui/app_layout.py`
-    # (which uses `engine._tree` to share the assembly with TreeViews)
-    # keeps working. Done inside the function so we don't trip the
-    # circular import between `engine.boot` and `engine` at module
-    # load time.
+    # Mirror onto the `engine` package so `app/ui/app_layout.py` (which
+    # uses `engine._tree` to share the assembly with TreeViews) keeps
+    # working. Done inside the function to avoid the circular import
+    # between `engine.boot` and `engine` at module load time.
     import fespp_on_trame.app.core.engine as _engine_pkg
     _engine_pkg._tree = _tree
 
@@ -111,11 +123,9 @@ def initialize_fespp_engine(
     # only; it never tracks per-type instances directly.
     _source_registry = SourceRegistry(_collector, _tree)
 
-    # Per-view scene registry (Phase 1 of the view-scenes refactor —
-    # see doc/REFACTOR_VIEW_SCENES.md). Coexists with the legacy
-    # SourceRegistry above: lifecycle and per-(view, rep) tracking
-    # land here while data load / threshold / slice-clip continue
-    # through SourceRegistry until later phases migrate them.
+    # Per-view scene registry. Coexists with the SourceRegistry above:
+    # lifecycle and per-(view, rep) tracking live here while data load /
+    # threshold / slice-clip go through SourceRegistry.
     _scene_registry = SceneRegistry(_collector, _tree)
 
     # Expose both registries on server.context so other modules
@@ -125,22 +135,17 @@ def initialize_fespp_engine(
     server.context.scene_registry = _scene_registry
 
     def _ijkgrid_by_rep_path(rep_path):
-        """Resolve the IjkGrid for `rep_path` PREFERRING the drawer
-        target view's per-view instance, falling back to the legacy
-        shared one.
+        """Resolve the IjkGrid for `rep_path`, preferring the drawer
+        target view's per-view instance and falling back to the shared
+        one.
 
-        This is the activator's `ijk_lookup`. It MUST return the
-        per-view IjkGrid (the one actually rendering in the panel),
-        not the legacy shared instance: the per-view rendering fix
-        Hides every legacy IjkGrid source in the panel's view, so the
-        activator's `_resolve_color_target_source` — which walks this
-        grid's sources looking for a VISIBLE one — would always get
-        None from the legacy grid and bail before calling
-        `update_color_editor`. That left `active_color_array_name`
-        stale and the Colors & Opacity panel stuck on the SolidColor
-        picker whenever the user activated a property node whose eye
-        was not the currently-colored one (active node = PRESSURE,
-        eye = PVTregion → COE showed SolidColor)."""
+        This is the activator's `ijk_lookup`. It must return the
+        per-view IjkGrid (the one actually rendering in the panel), not
+        the shared instance: every shared IjkGrid source is hidden in
+        the panel's view, so the activator's
+        `_resolve_color_target_source` — which walks this grid's sources
+        looking for a VISIBLE one — would get None from the shared grid
+        and bail before calling `update_color_editor`."""
         if not rep_path:
             return None
         target_panel = (
@@ -163,10 +168,15 @@ def initialize_fespp_engine(
     def _active_ijkgrid():
         """Resolve the IjkGrid driving the slicer panel UI for the
         currently-active representation. Thin wrapper over
-        `_ijkgrid_by_rep_path` (which already prefers the drawer
-        target view's per-view instance) keyed on
-        `state.active_representation_path`."""
-        rep_path = state.active_representation_path
+        `_ijkgrid_by_rep_path`.
+
+        Keyed on `ui_active_node_reservoir_rep_path` (not the global
+        `active_representation_path`): the global var is clobbered by a
+        wellbore / surface selection or an eye-click channel activation,
+        which would point the IJK slicer panel at a non-grid rep. The
+        reservoir rep path tracks the reservoir tab's active grid and is
+        cleared only when that tab's selection empties."""
+        rep_path = getattr(state, "ui_active_node_reservoir_rep_path", "") or ""
         if not rep_path:
             return None
         return _ijkgrid_by_rep_path(rep_path)
@@ -174,11 +184,10 @@ def initialize_fespp_engine(
     def _push_active_ijk_state_to_ui():
         """Mirror the currently-active IjkGrid's slicer/range state into
         the trame UI vars. Called on active-grid change, after grid
-        creation in the load handler, AND on panel switch — Phase 3b:
-        each view owns its own slicer state, so flipping the active
-        panel republishes that panel's per-view IjkGrid snapshot into
-        the flat `ui_slices_*` / `ui_range_*` state vars the panel
-        reads from."""
+        creation in the load handler, and on panel switch. Each view
+        owns its own slicer state, so flipping the active panel
+        republishes that panel's per-view IjkGrid snapshot into the flat
+        `ui_slices_*` / `ui_range_*` state vars the panel reads from."""
         active = _active_ijkgrid()
         if active is None:
             return
@@ -197,7 +206,7 @@ def initialize_fespp_engine(
             vtkSMPropertyHelper(_coll_proxy, "ExplicitSelection").Set(1)
             _coll_proxy.UpdateVTKObjects()
     except Exception as _e:
-        print(f"[WARNING] Could not set ExplicitSelection on FESPP collector: {_e}")
+        pass
 
     hierarchy.push_tree_hierarchy_mode(_collector, state.tree_hierarchy_mode)
 
@@ -207,9 +216,6 @@ def initialize_fespp_engine(
     )
 
     # Seed every trame state var the engine + UI assume to exist.
-    # Grouped declaratively in `state_defaults.init_state_defaults`
-    # so adding a new flag doesn't require scrolling through this
-    # boot function.
     init_state_defaults(state)
 
     @controller.add("on_server_ready")
@@ -234,10 +240,8 @@ def initialize_fespp_engine(
         """Push a fresh vtk.js frame to the panel's HTML view.
 
         `controller.view_update()` only refreshes the currently-active
-        panel — fine for the legacy single-view era, broken once
-        edits target a non-active view (pinned mode in the Attributes
-        drawer). Dispatchers call this method with the target panel
-        id so the pinned view's browser tile gets the new frame even
+        panel; dispatchers call this method with the target panel id so a
+        non-active (pinned) view's browser tile gets the new frame even
         when the focus stays elsewhere."""
         if not panel_id:
             return
@@ -305,8 +309,8 @@ def initialize_fespp_engine(
         slicer_dispatch.apply_z_scale(state, controller, _source_registry, _view, ui_scale_z)
 
     # Global wellbore-marker display options (orientation = oriented disk
-    # vs sphere; size = radius). GLOBAL — apply to every marker in every
-    # view via the EPC collector's MarkerOrientation / MarkerSize props.
+    # vs sphere; size = radius). Apply to every marker in every view via
+    # the EPC collector's MarkerOrientation / MarkerSize props.
     state.setdefault("marker_orientation", True)
     state.setdefault("marker_size", 10)
 
@@ -337,19 +341,16 @@ def initialize_fespp_engine(
 
     @state.change("ui_loaded_rep_paths")
     def _sync_scene_registry_reps(ui_loaded_rep_paths, **_):
-        """Phase 1 view-scene wiring: keep each ViewScene's rep set in
-        sync with the global loaded set. The legacy source_registry
-        still owns the data filters; the scene_registry only tracks
-        the per-(view, rep) bookkeeping until later phases migrate
-        behavior."""
+        """Keep each ViewScene's rep set in sync with the global loaded
+        set. The source_registry owns the data filters; the
+        scene_registry only tracks the per-(view, rep) bookkeeping."""
         try:
             _scene_registry.sync_loaded_reps(ui_loaded_rep_paths or [])
         except Exception as exc:
-            print(f"[boot] scene_registry.sync_loaded_reps failed: {exc}")
+            pass
         # Re-apply the current Z exaggeration so a freshly-loaded object
-        # picks it up (its per-view extractor's display is created with the
-        # z-scale at build time, but a rep shown in a non-owning / split
-        # view, or re-shown after being hidden, would otherwise stay at 1).
+        # picks it up: a rep shown in a non-owning / split view, or
+        # re-shown after being hidden, would otherwise stay at scale 1.
         try:
             zs = float(getattr(state, "ui_scale_z", 1.0) or 1.0)
         except (TypeError, ValueError):
@@ -413,19 +414,19 @@ def initialize_fespp_engine(
     @controller.set("apply_panel_coloring")
     def apply_panel_coloring(panel_id):
         """Re-apply ColorBy on every rep coloured in the given panel.
-        Used by MultiView.add_view right after replicating a scene —
-        the per-view active-array bucket alone doesn't trigger a
-        ColorBy on the new view's displays."""
+        Used by MultiView.add_view right after replicating a scene: the
+        per-view active-array bucket alone doesn't trigger a ColorBy on
+        the new view's displays."""
         mv = server.context.multi_view
         if mv is None:
             return
-        view = mv._pv_internal.get(panel_id) if panel_id else None
+        view = mv.get_pv_view(panel_id) if panel_id else None
         if view is None:
             return
         active_array.apply_panel_coloring(
             state, _source_registry, _tree, panel_id, view,
         )
-        html_view = mv._html_views.get(panel_id) if panel_id else None
+        html_view = mv.get_html_view(panel_id) if panel_id else None
         if html_view is not None:
             try:
                 html_view.update()
@@ -458,63 +459,48 @@ def initialize_fespp_engine(
             state, controller, _source_registry, _view, ui_slices_volume_visible,
         )
 
-    # Phase 3b (full): slicer_dispatch now writes slicer state DIRECTLY
-    # onto the active view's per-view IjkGrid (via
-    # `slicer_dispatch._active_ijk_grid` → scene_registry lookup).
-    # `_on_active_panel_change` republishes the new active view's
-    # snapshot into the flat `ui_slices_*` / `ui_range_*` state vars on
-    # panel switch. That means each view owns its own slicer state and
-    # the legacy lockstep mirror this used to install (legacy →
-    # per-views fan-out on every slider edit) is now actively HARMFUL:
-    # legacy stays stale (no one writes to it from the panel anymore)
-    # and re-publishing its stale state onto every per-view would
-    # clobber per-view divergence the user just made. The mirror hook
-    # is therefore removed. `SceneRegistry.mirror_legacy_ijk_state`
-    # stays defined for one-shot snapshot/apply use (snapshot is the
-    # source view's per-view IjkGrid in the new model — see
-    # `RepInScene.snapshot_ijk_slicers`).
+    # slicer_dispatch writes slicer state directly onto the active view's
+    # per-view IjkGrid; `_on_active_panel_change` republishes the new
+    # active view's snapshot into the flat `ui_slices_*` / `ui_range_*`
+    # state vars on panel switch. Each view owns its own slicer state.
 
     # --- Threshold chain wiring -------------------------------------------
-    # The data layer (SourceRegistry / IjkGrid) owns the chain. The engine's
-    # job is to:
-    #   1. Publish the chain to `ui_threshold_chain` so the UI can render it.
-    #   2. Forward UI events (add / delete / set_range / set_visible) into
-    #      the data layer via controller methods.
-    # No per-rep persistence dicts on the state side — chains live with
-    # their rep in the data layer until the rep is unloaded.
+    # The data layer (SourceRegistry / IjkGrid) owns the chain. The engine
+    # publishes it to `ui_threshold_chain` for the UI and forwards UI
+    # events (add / delete / set_range / set_visible) into the data layer
+    # via controller methods. Chains live with their rep in the data layer
+    # until the rep is unloaded — no per-rep persistence dicts state-side.
 
     def _refresh_threshold_ui_for_active_grid():
-        # Phase 3a: threshold chain is per-view for non-IjkGrid reps.
-        # Publish the chain belonging to the currently-active panel.
+        # Threshold chain is per-view for non-IjkGrid reps. Publish the
+        # chain belonging to the currently-active panel.
         threshold_dispatch.refresh_threshold_ui_for_active_grid(
             state, _scene_registry, _source_registry,
         )
 
     def _refresh_descriptive_stats():
         """Recompute `ui_stats_tables` for every property pinned in
-        `ui_stats_pinned_paths`. Triggered by the union of state
-        changes below (pinned set, per-property panel state, view
-        list, threshold chain, realization picks, …) — the stats are
-        computed cheaply (transient Threshold + DescriptiveStatistics
-        per row, deleted afterwards) so re-running on every relevant
-        signal is acceptable."""
+        `ui_stats_pinned_paths`. Triggered by the union of state changes
+        below (pinned set, panel state, view list, threshold chain,
+        realization picks, …). Stats are computed cheaply (transient
+        Threshold + DescriptiveStatistics per row, deleted afterwards) so
+        re-running on every relevant signal is acceptable."""
         try:
             stats_dispatch.publish_descriptive_stats(
                 state, _scene_registry, _source_registry, _tree,
             )
         except Exception as _e:
-            print(f"[WARNING] publish descriptive stats failed: {_e}")
-        # Re-derive every open Compare-stats panel's resolved items
-        # from the fresh tables — stale rows drop out automatically.
-        # publish_compare_items is now per-property (new signature
-        # takes array_path); iterate the singleton-panel registry to
-        # know which properties have a live panel that needs a push.
+            pass
+        # Re-derive every open Compare-stats panel's resolved items from
+        # the fresh tables — stale rows drop out automatically. Iterate
+        # the singleton-panel registry to know which properties have a
+        # live panel that needs a push.
         compare_panels = getattr(state, "ui_stats_compare_panel", {}) or {}
         for _ap in list(compare_panels.keys()):
             try:
                 _refresh_compare_stats(_ap)
             except Exception as _e:
-                print(f"[WARNING] _refresh_compare_stats({_ap}) failed: {_e}")
+                pass
 
     def _open_stats_if_closed() -> None:
         """Open the Stats floating overlay only when it's not
@@ -531,15 +517,14 @@ def initialize_fespp_engine(
         try:
             mv.add_view(kind="stats")
         except Exception as exc:
-            print(f"[WARNING] open stats panel failed: {exc}")
+            pass
 
     @controller.set("toggle_stats_display")
     def toggle_stats_display(array_path):
-        """Tree button entry-point: add / remove `array_path` from
-        the stats-pinned set. The `ui_stats_pinned_paths` change
-        handler republishes the tables. On first pin, opens the
-        singleton stats dockview tab at the bottom (no focus
-        steal)."""
+        """Tree button entry-point: add / remove `array_path` from the
+        stats-pinned set. The `ui_stats_pinned_paths` change handler
+        republishes the tables. On first pin, opens the singleton stats
+        dockview tab without stealing focus."""
         pinned_before = list(getattr(state, "ui_stats_pinned_paths", []) or [])
         stats_dispatch.toggle_stats_pinned(state, array_path)
         pinned_after = list(getattr(state, "ui_stats_pinned_paths", []) or [])
@@ -549,16 +534,13 @@ def initialize_fespp_engine(
 
     @controller.set("open_stats_panel")
     def open_stats_panel():
-        """Toolbar 'View Statistics' button entry-point — pure
-        OPEN/CLOSE toggle. If the Stats floating overlay is
-        closed, opens it via `add_view(kind="stats")`; if it's
-        open, closes it via `remove_panel`. Doesn't touch
-        `ui_stats_pinned_paths` or `ui_stats_panel_state`, so the
-        user's pinned properties + per-Original snapshots survive
-        the cycle and reappear on next open. To raise an obscured
-        floating window, click twice (close, reopen) — dockview's
-        z-index singleton lifts the freshly-added group to the
-        top."""
+        """Toolbar 'View Statistics' button entry-point — pure open/close
+        toggle. Opens the Stats floating overlay via
+        `add_view(kind="stats")` when closed, closes it via
+        `remove_panel` when open. Doesn't touch `ui_stats_pinned_paths`
+        or `ui_stats_panel_state`, so the user's pinned properties +
+        per-Original snapshots survive the cycle. To raise an obscured
+        floating window, click twice (close, reopen)."""
         mv = getattr(server.context, "multi_view", None)
         if mv is None:
             return
@@ -567,18 +549,18 @@ def initialize_fespp_engine(
             try:
                 mv.remove_panel(existing)
             except Exception as exc:
-                print(f"[WARNING] close stats panel failed: {exc}")
+                pass
             return
         try:
             mv.add_view(kind="stats")
         except Exception as exc:
-            print(f"[WARNING] open stats panel failed: {exc}")
+            pass
 
-    # Stats hooks invoked from Vue templates via `trigger('name', […])`
-    # — `@server.trigger(name)` is the registration path that the
-    # Vue runtime resolves (controller-set methods are reachable as
-    # `controller.name(...)` from Python only, not from the
-    # template). Each delegates to a thin `stats_dispatch` helper.
+    # Stats hooks invoked from Vue templates via `trigger('name', […])`.
+    # `@server.trigger(name)` is the registration path the Vue runtime
+    # resolves (controller-set methods are reachable as
+    # `controller.name(...)` from Python only, not from the template).
+    # Each delegates to a thin `stats_dispatch` helper.
 
     @server.trigger("stats_set_original_real_idx")
     def _stats_set_original_real_idx(array_path, original_id, real_idx):
@@ -639,27 +621,23 @@ def initialize_fespp_engine(
         try:
             panel_id = mv.add_view(kind="stats_compare")
         except Exception as exc:
-            print("[WARNING] add_view(stats_compare) failed: " + str(exc))
             return
         panels[array_path] = panel_id
         state.ui_stats_compare_panel = panels
-        # Stash the property the panel binds to so the panel UI can
-        # read it from a single state var without threading
+        # Stash the property the panel binds to so the panel UI can read
+        # it from a single state var without threading
         # panel_id<->array_path lookups in Vue expressions.
         state["ui_stats_compare_array_path_" + str(panel_id)] = array_path
-        # Lazy import: the seeds dict below needs the canonical
-        # metric-key list to default visible_metrics to "all". The
-        # later _refresh_compare_stats import is independent.
+        # Lazy import: the seeds dict below needs the canonical metric-key
+        # list to default visible_metrics to "all".
         from fespp_on_trame.app.core.engine import compare_matrix
-        # Seed per-panel option defaults so the toolbar v_models
-        # bind cleanly on first render.
+        # Seed per-panel option defaults so the toolbar v_models bind
+        # cleanly on first render.
         seeds = {
-            # Visible-metrics list seeded with every canonical metric
-            # key — the user prunes individual columns via the
-            # Columns menu in the panel toolbar. Inverted semantics
-            # vs the old hidden_metrics state var (which seeded to
-            # [] = "hide nothing"); the new flag is "show what is in
-            # the list", so the default has to be every key.
+            # Visible-metrics list seeded with every canonical metric key;
+            # the user prunes individual columns via the Columns menu in
+            # the panel toolbar. "show what is in the list" semantics, so
+            # the default has to be every key.
             ("ui_stats_compare_visible_metrics_" + str(panel_id)): list(compare_matrix._METRIC_KEYS),
             ("ui_stats_compare_baseline_" + str(panel_id)): "",
             ("ui_stats_compare_order_" + str(panel_id)): [],
@@ -686,7 +664,7 @@ def initialize_fespp_engine(
         try:
             state.change(*watched)(_on_compare_stats_options_changed)
         except Exception as exc:
-            print("[WARNING] compare-stats watcher for " + str(panel_id) + ": " + str(exc))
+            pass
         _refresh_compare_stats(array_path)
 
     # --- Distribution panel: option-driven re-compute -----------------------
@@ -714,10 +692,9 @@ def initialize_fespp_engine(
 
     def _csv_data_url(csv_text):
         """Encode a CSV string as a base64 data URL so the toolbar's
-        `<a :href download>` resolves to a browser download without
-        needing a dedicated HTTP route. Cheap for histogram-size
-        payloads (a few KB) — switch to a route if compare ever
-        produces 100k+ row CSVs."""
+        `<a :href download>` resolves to a browser download without a
+        dedicated HTTP route. Cheap for histogram-size payloads (a few
+        KB); a route would be better for 100k+ row CSVs."""
         import base64
         b = csv_text.encode("utf-8")
         return "data:text/csv;base64," + base64.b64encode(b).decode("ascii")
@@ -725,8 +702,8 @@ def initialize_fespp_engine(
     def _refresh_distribution(panel_id):
         """Re-run the compute for `panel_id` using its current option
         state vars + its stored context, then push the fresh figure +
-        meta + CSV. Defensive: any failure prints a warning and
-        leaves the prior figure in place."""
+        meta + CSV. Any failure prints a warning and leaves the prior
+        figure in place."""
         ctx = (getattr(state, "ui_distribution_contexts", {}) or {}).get(panel_id)
         if not ctx:
             return
@@ -759,7 +736,6 @@ def initialize_fespp_engine(
                     return_meta=True, **opts,
                 )
         except Exception as exc:
-            print(f"[WARNING] _refresh_distribution({panel_id}) failed: {exc}")
             return
         if fig is None:
             return
@@ -769,7 +745,6 @@ def initialize_fespp_engine(
             try:
                 upd(fig)
             except Exception as exc:
-                print(f"[WARNING] {ctrl_name} failed: {exc}")
                 try:
                     state[f"ui_distribution_figure_{panel_id}"] = fig.to_plotly_json()
                 except Exception:
@@ -796,10 +771,9 @@ def initialize_fespp_engine(
             pass
 
     def _refresh_compare_dist(array_path):
-        """Push a fresh compare figure into the singleton compare-
-        dist panel for array_path. Cart < 2 → placeholder figure
-        with 'add rows to compare' annotation so the panel stays
-        mounted (user feedback round 2026-06)."""
+        """Push a fresh compare figure into the singleton compare-dist
+        panel for array_path. Cart < 2 → placeholder figure with an
+        'add rows to compare' annotation so the panel stays mounted."""
         panels = getattr(state, "ui_stats_compare_dist_panel", {}) or {}
         panel_id = panels.get(array_path)
         if not panel_id:
@@ -826,7 +800,7 @@ def initialize_fespp_engine(
             else:
                 fig = result
         except Exception as exc:
-            print("[WARNING] _refresh_compare_dist(" + str(array_path) + "): " + str(exc))
+            pass
         if fig is None:
             try:
                 import plotly.graph_objects as go
@@ -866,11 +840,10 @@ def initialize_fespp_engine(
             pass
 
     def _refresh_compare_stats(array_path):
-        """Push fresh item list + CSV into the singleton Compare-
-        stats panel for array_path. Item list = stats_dispatch.
-        publish_compare_items(...). CSV = compare_matrix_csv(...).
-        Reads the per-panel options to apply transpose / hidden
-        metrics / sort BEFORE pushing (server-side filtering)."""
+        """Push fresh item list + CSV into the singleton Compare-stats
+        panel for array_path. Reads the per-panel options to apply
+        transpose / hidden metrics / sort BEFORE pushing (server-side
+        filtering)."""
         panels = getattr(state, "ui_stats_compare_panel", {}) or {}
         panel_id = panels.get(array_path)
         if not panel_id:
@@ -881,7 +854,6 @@ def initialize_fespp_engine(
                 array_path,
             )
         except Exception as exc:
-            print("[WARNING] _refresh_compare_stats(" + str(array_path) + "): " + str(exc))
             items = []
         # Server-side sort (so the cell-class annotations indices line
         # up with the displayed row order — the template iterates the
@@ -903,13 +875,12 @@ def initialize_fespp_engine(
             items = [items[i] for i in order]
         baseline_key = getattr(state, "ui_stats_compare_baseline_" + str(panel_id), "") or ""
         # User-defined manual order (drag-to-reorder). When non-empty,
-        # rebuilds the items list in that key order; keys not present
-        # in the order list trail at the end (newly-added rows).
+        # rebuilds the items list in that key order; keys not present in
+        # the order list trail at the end (newly-added rows).
         user_order = list(getattr(state, "ui_stats_compare_order_" + str(panel_id), []) or [])
         if user_order:
             by_key = {it.get("key"): it for it in items}
             ordered = [by_key[k] for k in user_order if k in by_key]
-            # Append anything not in the order (new cart additions).
             seen = set(user_order)
             for it in items:
                 if it.get("key") not in seen:
@@ -935,10 +906,9 @@ def initialize_fespp_engine(
             it["profile"] = compare_matrix.profile_tag(
                 row.get("Skewness"), row.get("Kurtosis"),
             )
-        # Highlight mode is now implicit from baseline_key: when the
-        # user picked a baseline row, render Δ comparisons; when the
-        # picker is "(no baseline)" (empty string), fall back to
-        # extrema (min/max) so the user still sees a useful visual cue.
+        # Highlight mode is implicit from baseline_key: a picked baseline
+        # row renders Δ comparisons; "(no baseline)" (empty string) falls
+        # back to extrema (min/max) so the user still sees a visual cue.
         mode = "baseline" if baseline_key else "extrema"
         annotations = compare_matrix.highlight_annotations_for_items(
             items, mode,
@@ -953,9 +923,8 @@ def initialize_fespp_engine(
         # toolbar's Download button binds to the data URL state var.
         try:
             from fespp_on_trame.app.core.engine import compare_matrix
-            # The new visible_metrics state var inverts the old
-            # hidden_metrics; items_to_csv still takes the legacy
-            # hidden_metrics argument so we invert here.
+            # visible_metrics is the inverse of items_to_csv's
+            # hidden_metrics argument, so invert here.
             visible = getattr(
                 state, "ui_stats_compare_visible_metrics_" + str(panel_id),
                 list(compare_matrix._METRIC_KEYS),
@@ -974,27 +943,24 @@ def initialize_fespp_engine(
             pass
 
     def _spawn_distribution_panel(*, kind, context):
-        """Create a fresh Distribution panel + register its per-panel
-        watcher + push the initial figure.
+        """Create a fresh Distribution panel, register its per-panel
+        watcher, and push the initial figure.
 
-        `kind`: "single" | "compare". `context`: dict carrying the
-        row info (single) or the selection list (compare). The
-        context is stored under
-        `state.ui_distribution_contexts[panel_id]` so the watcher
-        can re-run the same compute when options change.
+        `kind`: "single" | "compare". `context`: dict carrying the row
+        info (single) or the selection list (compare), stored under
+        `state.ui_distribution_contexts[panel_id]` so the watcher can
+        re-run the same compute when options change.
 
-        Order of operations matters: `mv.add_view(kind="distribution")`
-        runs the template build synchronously Python-side, which is
-        when `setattr(controller, "update_distribution_figure_<id>",
-        widget.update)` happens — so the controller method exists by
-        the time this helper returns."""
+        `mv.add_view(kind="distribution")` builds the template
+        synchronously Python-side, which is when `setattr(controller,
+        "update_distribution_figure_<id>", widget.update)` happens — so
+        the controller method exists by the time this helper returns."""
         mv = getattr(server.context, "multi_view", None)
         if mv is None:
             return None
         try:
             panel_id = mv.add_view(kind="distribution")
         except Exception as exc:
-            print(f"[WARNING] add_view(distribution) failed: {exc}")
             return None
         # Store the context so the watcher can re-compute on demand.
         contexts = dict(getattr(state, "ui_distribution_contexts", {}) or {})
@@ -1019,27 +985,25 @@ def initialize_fespp_engine(
                 state[k] = v
             except Exception:
                 pass
-        # Register the per-panel watcher on every option var. Trame
-        # supports `state.change(*names)(callback)` as the runtime
-        # form of the decorator — the callback is fired whenever any
-        # of the listed vars mutates.
+        # Register the per-panel watcher on every option var.
+        # `state.change(*names)(callback)` is the runtime form of the
+        # decorator: the callback fires whenever any listed var mutates.
         def _on_options_changed(**_kwargs):
             _refresh_distribution(panel_id)
         try:
             state.change(*_distribution_option_vars(panel_id))(_on_options_changed)
         except Exception as exc:
-            print(f"[WARNING] state.change registration for {panel_id} failed: {exc}")
+            pass
         # Initial compute pushes figure + meta + CSV.
         _refresh_distribution(panel_id)
         return panel_id
 
     @server.trigger("open_row_histogram")
     def _open_row_histogram(array_path, row_kind, row_id):
-        """Per-Stats-row chart icon — opens a NEW floating
-        Distribution panel for that row's histogram. Multi-instance:
-        every click spawns its own panel so users can compare
-        multiple distributions side-by-side without losing earlier
-        ones. The user closes via the dockview `×`."""
+        """Per-Stats-row chart icon — opens a new floating Distribution
+        panel for that row's histogram. Multi-instance: every click
+        spawns its own panel so users can compare multiple distributions
+        side-by-side. The user closes via the dockview `×`."""
         _spawn_distribution_panel(
             kind="single",
             context={
@@ -1074,14 +1038,10 @@ def initialize_fespp_engine(
 
     @server.trigger("toggle_stats_display")
     def _toggle_stats_display_trigger(array_path):
-        # Same body as `controller.toggle_stats_display` so the
-        # tree's chart icon (which goes through the controller call
-        # pattern) and the panel's × buttons (which go through
-        # `trigger('toggle_stats_display', …)`) share the
-        # auto-open-stats-tab side effect. Kept as a separate
-        # callable rather than `server.trigger` re-decorating the
-        # existing controller method to avoid the silent override
-        # gotchas of the latter pattern.
+        # Delegates to `controller.toggle_stats_display` so the tree's
+        # chart icon (controller call) and the panel's × buttons
+        # (`trigger('toggle_stats_display', …)`) share the
+        # auto-open-stats-tab side effect.
         controller.toggle_stats_display(array_path)
 
     @controller.set("threshold_add")
@@ -1113,7 +1073,11 @@ def initialize_fespp_engine(
             _activator, _view, name, visible,
         )
 
-    @state.change("active_representation_path", "ui_active_node_reservoir_type_rep")
+    @state.change(
+        "active_representation_path",
+        "ui_active_node_reservoir_type_rep",
+        "ui_active_node_reservoir_rep_path",
+    )
     def on_active_grid_change(**kwargs):
         _refresh_threshold_ui_for_active_grid()
         # Mirror the new active grid's stored slicer/range state into
@@ -1121,19 +1085,19 @@ def initialize_fespp_engine(
         try:
             _push_active_ijk_state_to_ui()
         except Exception as _e:
-            print(f"[WARNING] push active ijk state failed: {_e}")
+            pass
         # Refresh the slice-plane panel from the newly-active rep's
         # SlicePlane state. Per-rep instance, so switching reps must
         # repaint the panel.
         try:
             slice_dispatch.publish_slice_state(state, _scene_registry)
         except Exception as _e:
-            print(f"[WARNING] publish slice state failed: {_e}")
+            pass
         # Same for the clip-plane panel.
         try:
             clip_dispatch.publish_clip_state(state, _scene_registry)
         except Exception as _e:
-            print(f"[WARNING] publish clip state failed: {_e}")
+            pass
         _refresh_descriptive_stats()
 
     @state.change(
@@ -1174,15 +1138,12 @@ def initialize_fespp_engine(
           - `ui_active_realization_by_array_by_view` — a view picked
             a different realization → that view's row recomputes.
           - `ui_threshold_chain` — a threshold was added / removed /
-            edited → the affected view's row recomputes (post-
-            threshold output).
+            edited → the affected view's row recomputes.
           - `ui_slice_*` / `ui_clip_*` / `ui_slices_*` — slice / clip /
-            IJK slicer edits go through `publish_slice_state` /
-            `publish_clip_state` / `_push_active_ijk_state_to_ui`
-            which rewrite these flat vars from the drawer target
-            view's per-view state. Listening to them catches the
-            per-view edits without needing a "stats might be stale"
-            signal from each dispatcher."""
+            IJK slicer edits rewrite these flat vars from the drawer
+            target view's per-view state; listening to them catches the
+            per-view edits without a "stats might be stale" signal from
+            each dispatcher."""
         _refresh_descriptive_stats()
 
     def _follow_mode_target_from_active():
@@ -1202,26 +1163,21 @@ def initialize_fespp_engine(
 
     @state.change("fespp_active_panel_id")
     def _on_active_panel_change(**_):
-        """Per-view scenes: when the user clicks a different panel tab,
-        the slice / clip / threshold / IJK-slicer state they edit now
-        belongs to the new panel's scene. Re-publish the descriptors
-        so the panel sliders + chain reflect THAT panel's actual
-        state instead of the previously-active panel's.
+        """When the user clicks a different panel tab, the slice / clip /
+        threshold / IJK-slicer state they edit now belongs to the new
+        panel's scene. Re-publish the descriptors so the panel sliders +
+        chain reflect THAT panel's actual state.
 
-        `active_representation_path` may not change on a tab switch
-        (same rep activated in both panels), so the existing
-        `on_active_grid_change` handler doesn't fire. This handler
-        closes the loop for slice + clip (Phase 1.b.2) + threshold
-        chain (Phase 3a) + IjkGrid slicers (Phase 3b).
+        `active_representation_path` may not change on a tab switch (same
+        rep activated in both panels), so `on_active_grid_change`
+        doesn't fire; this handler closes the loop for slice, clip,
+        threshold chain, and IjkGrid slicers.
 
-        Also: when the Attributes drawer is in follow-active mode
-        (drawer_target_view_pinned=False), mirror the active panel id
-        onto `drawer_target_view_id` so the edit panels stay locked
-        on the focused view — but only when that panel is actually
-        a render view. The Stats / Diff tabs aren't editable, so
-        when one of them is focused we keep targeting the first
-        render panel instead. Pinned mode is left alone — the user
-        has explicitly chosen a target."""
+        Also: in follow-active mode (drawer_target_view_pinned=False),
+        mirror the active panel id onto `drawer_target_view_id` so the
+        edit panels stay locked on the focused view — but only when that
+        panel is a render view (the non-editable Stats / Diff tabs keep
+        targeting the first render panel). Pinned mode is left alone."""
         if not state.drawer_target_view_pinned:
             new_target = _follow_mode_target_from_active()
             if state.drawer_target_view_id != new_target:
@@ -1229,25 +1185,24 @@ def initialize_fespp_engine(
         try:
             slice_dispatch.publish_slice_state(state, _scene_registry)
         except Exception as _e:
-            print(f"[WARNING] publish slice state on panel change: {_e}")
+            pass
         try:
             clip_dispatch.publish_clip_state(state, _scene_registry)
         except Exception as _e:
-            print(f"[WARNING] publish clip state on panel change: {_e}")
+            pass
         try:
             _refresh_threshold_ui_for_active_grid()
         except Exception as _e:
-            print(f"[WARNING] refresh threshold ui on panel change: {_e}")
+            pass
         try:
             _push_active_ijk_state_to_ui()
         except Exception as _e:
-            print(f"[WARNING] push active ijk state on panel change: {_e}")
+            pass
         _refresh_descriptive_stats()
         # Pinned mode: the multi_view's `_on_view_activated` has just
-        # called `pvsimple.SetActiveView(active_panel.pv_view)` via
-        # ptc's base class. That clobbers the active view the drawer
-        # target picked. Restore it so SolidColorPanel / RepresentBy
-        # keep editing the pinned target.
+        # called `pvsimple.SetActiveView(active_panel.pv_view)`, clobbering
+        # the active view the drawer target picked. Restore it so
+        # SolidColorPanel / RepresentBy keep editing the pinned target.
         if state.drawer_target_view_pinned:
             _sync_pvsimple_active_to_target()
 
@@ -1264,17 +1219,16 @@ def initialize_fespp_engine(
                 state.drawer_target_view_id = new_target
 
     def _sync_pvsimple_active_to_target():
-        """Force `pvsimple.GetActiveView()` to return the drawer
-        target's pv_view. The legacy panels (`SolidColorPanel`,
+        """Force `pvsimple.GetActiveView()` to return the drawer target's
+        pv_view. The legacy panels (`SolidColorPanel`,
         `RepresentationTypePanel` via `ptc.RepresentBy`) read this
-        global — in pinned mode the drawer target differs from
-        `fespp_active_panel_id` and the multi_view's
-        `_on_view_activated` would otherwise set pvsimple's active
-        view back to the focused panel, making those panels edit
-        the wrong view.
+        global; in pinned mode the drawer target differs from
+        `fespp_active_panel_id` and the multi_view's `_on_view_activated`
+        would otherwise point pvsimple's active view at the focused
+        panel, making those panels edit the wrong view.
 
-        No-op when the drawer target is empty or the scene isn't
-        resolved yet (boot window)."""
+        No-op when the drawer target is empty or the scene isn't resolved
+        yet (boot window)."""
         target = getattr(state, "drawer_target_view_id", "") or ""
         if not target:
             return
@@ -1288,46 +1242,43 @@ def initialize_fespp_engine(
 
     @state.change("drawer_target_view_id")
     def _on_drawer_target_view_change(**_):
-        """When the Attributes drawer's target view changes (either via
-        the picker's pinned VSelect or an auto-sync triggered by an
-        active-panel event), republish every UI flat var the edit
-        panels read from so the sliders / chains / IJK state reflect
-        the new target's actual configuration. Mirrors the publishers
-        called from `_on_active_panel_change` — we deliberately don't
-        share the body because the two events fire on slightly
-        different conditions (the active-panel handler also tweaks
-        `drawer_target_view_id` itself in follow mode, which is a
-        no-op once we land here on the next state.change tick).
+        """When the Attributes drawer's target view changes (via the
+        picker's pinned VSelect or an auto-sync from an active-panel
+        event), republish every UI flat var the edit panels read from so
+        the sliders / chains / IJK state reflect the new target's
+        configuration. Mirrors the publishers called from
+        `_on_active_panel_change` (the body isn't shared because the two
+        events fire on slightly different conditions).
 
-        Also re-points pvsimple's global active view at the target so
-        the legacy panels (SolidColor, RepresentBy) edit the right
-        view in pinned mode."""
+        Also re-points pvsimple's global active view at the target so the
+        legacy panels (SolidColor, RepresentBy) edit the right view in
+        pinned mode."""
         _sync_pvsimple_active_to_target()
         try:
             slice_dispatch.publish_slice_state(state, _scene_registry)
         except Exception as _e:
-            print(f"[WARNING] publish slice state on target view change: {_e}")
+            pass
         try:
             clip_dispatch.publish_clip_state(state, _scene_registry)
         except Exception as _e:
-            print(f"[WARNING] publish clip state on target view change: {_e}")
+            pass
         try:
             _refresh_threshold_ui_for_active_grid()
         except Exception as _e:
-            print(f"[WARNING] refresh threshold ui on target view change: {_e}")
+            pass
         try:
             _push_active_ijk_state_to_ui()
         except Exception as _e:
-            print(f"[WARNING] push active ijk state on target view change: {_e}")
+            pass
 
     @state.change("fespp_render_panels")
     def _on_render_panels_change(fespp_render_panels=None, **_):
-        """Auto-depin when the pinned view is closed, and re-anchor
-        the follow-mode target when the active panel isn't a render
-        view (e.g. the user has the Stats / Diff tab focused). We
-        watch the `fespp_render_panels` publisher (MultiView emits
-        it on every add/close), so this also re-evaluates the target
-        whenever a new render view appears."""
+        """Auto-depin when the pinned view is closed, and re-anchor the
+        follow-mode target when the active panel isn't a render view
+        (e.g. the Stats / Diff tab is focused). Watches the
+        `fespp_render_panels` publisher (MultiView emits it on every
+        add/close), so it also re-evaluates the target when a new render
+        view appears."""
         panels = fespp_render_panels or []
         ids = {p.get("id") for p in panels}
         if state.drawer_target_view_pinned:
@@ -1364,12 +1315,12 @@ def initialize_fespp_engine(
             state, controller, _scene_registry, _view, mode,
         )
 
-    # Phase 3c — "Copy from View X" controllers. Each one snapshots a
-    # source view's state for a single concern and applies it to the
-    # destination (defaults to the currently-active panel). The
-    # underlying primitives live on RepInScene; SceneRegistry.replicate_view
-    # is the multi-rep variant (used by view split). These are the
-    # single-concern variants the UI panel headers will bind to.
+    # "Copy from View X" controllers. Each snapshots a source view's
+    # state for a single concern and applies it to the destination
+    # (defaults to the currently-active panel). The underlying primitives
+    # live on RepInScene; SceneRegistry.replicate_view is the multi-rep
+    # variant (used by view split). These are the single-concern variants
+    # the UI panel headers bind to.
 
     def _copy_concern(src_view, dst_view, concern, rep_path=None):
         """Internal: dispatch a single-concern copy. dst_view defaults
@@ -1383,8 +1334,8 @@ def initialize_fespp_engine(
         if not src_view or not dst_view or src_view == dst_view:
             return
         if rep_path:
-            # Single rep — bypass replicate_view's iteration so the
-            # user can target one rep at a time via the panel.
+            # Single rep — bypass replicate_view's iteration so the user
+            # can target one rep at a time via the panel.
             src_scene = _scene_registry.get_scene(str(src_view))
             dst_scene = _scene_registry.get_scene(str(dst_view))
             if src_scene is None or dst_scene is None:
@@ -1403,7 +1354,7 @@ def initialize_fespp_engine(
                 elif concern == "ijk_slicers":
                     dst_rep.apply_ijk_slicers(src_rep.snapshot_ijk_slicers())
             except Exception as exc:
-                print(f"[copy {concern}] {src_view}→{dst_view}/{rep_path}: {exc}")
+                pass
         else:
             # All reps in src — same machinery as view-split inheritance.
             _scene_registry.replicate_view(
@@ -1436,7 +1387,7 @@ def initialize_fespp_engine(
                 elif concern == "ijk_slicers":
                     _push_active_ijk_state_to_ui()
             except Exception as exc:
-                print(f"[copy {concern}] republish failed: {exc}")
+                pass
         try:
             controller.view_update()
         except Exception:
@@ -1460,10 +1411,10 @@ def initialize_fespp_engine(
 
     # ------------------------------------------------------------------
     # Per-view multi-realization wiring.
-    # Loading is driven by the assembly tree: each MR / MR+TS parent is
-    # a grouping; checking it loads every realization child as a
-    # distinct suffixed VTK array `<title>_real_<idx>`. This block only
-    # tracks which realization each panel's ColorBy binds to.
+    # Loading is driven by the assembly tree: each MR / MR+TS parent is a
+    # grouping; checking it loads every realization child as a distinct
+    # suffixed VTK array `<title>_real_<idx>`. This block only tracks
+    # which realization each panel's ColorBy binds to.
 
     def _refresh_panel_mr_specs(**_):
         """Recompute the per-panel MR specs map that drives the
@@ -1519,13 +1470,11 @@ def initialize_fespp_engine(
             array_path_str = str(array_path)
             idx_int = int(idx)
         except (TypeError, ValueError) as exc:
-            print(f"[WARNING] set_view_realization invalid args: {exc}")
             return
         prev = realization_dispatch.get_active_realization_for_view(
             state, panel_id_str, array_path_str,
         )
         if prev == idx_int:
-            # No-op — slider clicked on the already-active value.
             return
         realization_dispatch.set_active_realization_for_view(
             state, panel_id_str, array_path_str, idx_int,
@@ -1577,7 +1526,6 @@ def initialize_fespp_engine(
             array_path_str = str(array_path)
             idx_int = int(idx)
         except (TypeError, ValueError) as exc:
-            print(f"[WARNING] set_global_realization invalid args: {exc}")
             return
         specs_by_panel = state.ui_panel_active_mr_specs_by_id or {}
         for panel_id, specs in specs_by_panel.items():
@@ -1615,9 +1563,9 @@ def initialize_fespp_engine(
     @state.change("time_index")
     def changeTimeLabel(**kwargs):
         time_realization.change_time_label(state, _tree)
-        # Global TC moved → time step changed for every view at
-        # global time → stats reflecting the active view need to
-        # recompute on the new ViewTime.
+        # Global TC moved → time step changed for every view at global
+        # time → stats reflecting the active view recompute on the new
+        # ViewTime.
         _refresh_descriptive_stats()
 
     @controller.set("register_per_view_time_label")
@@ -1626,19 +1574,17 @@ def initialize_fespp_engine(
             state, _tree, time_value_var, label_var,
         )
         # Per-view TC: hook the panel's time-value var so a per-view
-        # scrub also refreshes stats when the panel is the active one.
-        # The handler is unconditional (cheap when not active — the
-        # stats compute itself short-circuits when active_color_array_name
-        # is empty or the rep / view don't match).
+        # scrub also refreshes stats. Unconditional — the stats compute
+        # short-circuits when active_color_array_name is empty or the rep
+        # / view don't match.
         @state.change(time_value_var)
         def _on_view_time_change(**_):
             _refresh_descriptive_stats()
 
     # load_mode "auto" → every checkbox toggle pushes immediately to
-    # ParaView (legacy behaviour). "manual" → toggles only update the
-    # per-tab selection state; the toolbar Load button pushes the
-    # aggregated selection in one shot. Independent from visibility,
-    # which is driven by the per-node eye icons.
+    # ParaView. "manual" → toggles only update the per-tab selection
+    # state; the toolbar Load button pushes the aggregated selection in
+    # one shot. Independent from visibility (driven by the eye icons).
 
     @state.change("ui_select_node_surface")
     def on_change_ui_select_node_surface(**kwargs):

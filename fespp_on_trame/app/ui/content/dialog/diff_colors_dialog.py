@@ -131,8 +131,8 @@ class DiffColorsDialog:
                 calc = pvsimple.FindSource(_DIFF_CALC_NAME)
                 mv = self.server.context.multi_view
                 diff_view = None
-                if mv is not None and mv._diff_panel_id is not None:
-                    diff_view = mv._pv_internal.get(mv._diff_panel_id)
+                if mv is not None and mv.diff_panel_id() is not None:
+                    diff_view = mv.get_pv_view(mv.diff_panel_id())
                 if calc is not None:
                     pvsimple.SetActiveSource(calc)
                 if diff_view is not None:

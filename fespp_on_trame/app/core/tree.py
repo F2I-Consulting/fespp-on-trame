@@ -25,11 +25,10 @@ def _sibling_sort_key(node):
     '!!!PARTIAL!!!' display marker is stripped so a partial stub sorts by
     its real name among its siblings.
 
-    PRESENTATIONAL ONLY: this reorders the emitted `ui_subtree_*` dicts
-    (what the VTreeview renders). Node identity everywhere else is by
-    `id` / `path`, never by sibling list position (the C++ assembly walk,
-    `find_*`, dataset/partition indexing, MR/timeseries, selection are all
-    order-independent), so reordering these dicts is safe."""
+    PRESENTATIONAL ONLY: reorders the emitted `ui_subtree_*` dicts (what
+    the VTreeview renders). Node identity everywhere else is by
+    `id` / `path`, never by sibling list position, so reordering is
+    safe."""
     title = str(node.get("title") or "")
     if title.startswith(_PARTIAL_PREFIX):
         title = title[len(_PARTIAL_PREFIX):]
@@ -51,8 +50,7 @@ def _eye_field(element_type):
 
     Returns the EyeKind value string ('rep' / 'array' / 'marker') or None
     when the node carries no eye of its own (groupings, Frame/MarkerFrame
-    folders — their children carry the eyes). This is the single source of
-    truth that replaces the scattered `item.type !== 'Frame' …` JS gates."""
+    folders — their children carry the eyes)."""
     desc = element_type.eye_descriptor()
     return desc.kind.value if desc is not None else None
 
@@ -72,12 +70,11 @@ class Tree():
         # Kinds that count as "representations" — i.e. have a VTK source
         # behind them. Used by find_representation_node() to walk up
         # from a leaf (Property, Marker, ...) to its rep parent.
-        # NOTE: 'Wellbore' (the WellboreFeature, e.g. "55/33-3") is NOT a
-        # representation — it's a pure folder (C++: isGroupingType /
-        # MapperType::Folder, no geometry of its own). It stays a grouping
-        # via is_grouping/_GROUPING_KINDS (expand/collapse + bulk-select);
-        # only its child Trajectory/Frame/Marker/Completion reps carry an
-        # eye + colour.
+        # 'Wellbore' (the WellboreFeature, e.g. "55/33-3") is NOT a
+        # representation — it's a pure folder with no geometry of its own.
+        # It stays a grouping (expand/collapse + bulk-select); only its
+        # child Trajectory/Frame/Marker/Completion reps carry an eye +
+        # colour.
         self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'partial']
 
     def add_subtreeview_data(self, parent_id: int, child_index: int, treeview_type, disabled=False) -> None:
@@ -95,12 +92,11 @@ class Tree():
         node_path = self._data_assembly.GetNodePath(node_id)
 
         # Mark ANY partial node (a partial rep stub OR a partial property
-        # leaf, e.g. a WellboreChannel with no data) regardless of the
-        # inherited treeview_type. Use a per-node LOCAL flag — do NOT
-        # mutate the function-scoped `disabled` that is forwarded to
-        # children (line ~116), else a partial rep's real descendants
-        # would be wrongly disabled. A partial object has only Title +
-        # UUID, no data → it must show "!!!PARTIAL!!!" and be uncheckable.
+        # leaf, e.g. a WellboreChannel with no data). Use a per-node LOCAL
+        # flag — do NOT mutate the function-scoped `disabled` forwarded to
+        # children, else a partial rep's real descendants would be wrongly
+        # disabled. A partial object has only Title + UUID, no data → it
+        # must show "!!!PARTIAL!!!" and be uncheckable.
         node_is_partial = node_type in ('partial', 'Partial')
         if node_is_partial and not (node_title or '').startswith('!!!PARTIAL!!!'):
             node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
@@ -132,21 +128,16 @@ class Tree():
         rep_path_attr = self.find_path(rep_ancestor_id) if rep_ancestor_id is not None else None
 
         # is_grouping: node that behaves as a FOLDER in the tree — the
-        # custom checkbox renders a tri-state indicator (marked /
-        # minus-box / blank) from descendant_ids ∩ ui_select_node_*, and
-        # checking it bulk-selects its children.
-        #
-        # Two sub-cases:
+        # custom checkbox renders a tri-state indicator from
+        # descendant_ids ∩ ui_select_node_*, and checking it bulk-selects
+        # its children. Two sub-cases:
         #   - pure organisational nodes (Collection / Wellbore / Feature /
         #     Interpretation / Partial) — no VTK source of their own.
         #   - frames (Frame = WellboreFrame logs, MarkerFrame = marker
-        #     set): these DO own a per-view source (C++ MapperSet), but in
-        #     the TREE they are folders — no eye of their own, checking
-        #     them selects every child log / marker. They stay in
+        #     set): these DO own a per-view source, but in the TREE they
+        #     are folders (no eye of their own). They stay in
         #     `_representation_type_in` so `find_representation_node` on a
-        #     channel/marker leaf still resolves UP to the frame (the
-        #     rendering anchor hosting the per-(rep, view) extractor).
-        #     i.e. "folder for the tree, representation for the source".
+        #     channel/marker leaf still resolves UP to the frame.
         et = _et.for_kind(node_type)
         is_grouping = et.is_grouping()
         eye = _eye_field(et)

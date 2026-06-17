@@ -1,8 +1,8 @@
 """Scope-aware background editor.
 
-A self-contained class that renders the "Background" section of the
-GlobalSettingsDialog. The block it emits switches based on the value
-of the state var passed via `scope_var`:
+Renders the "Background" section of the GlobalSettingsDialog. The
+block it emits switches on the value of the state var passed via
+`scope_var`:
 
   - scope == "global" → `ptc.PalettePicker`. Clicking a palette runs
     `simple.LoadPalette()` (ParaView's global palette settings), and
@@ -16,15 +16,13 @@ of the state var passed via `scope_var`:
         `view.BackgroundColorMode = "Single Color" | "Gradient"`
       * Color pickers → `view.Background` / `view.Background2`.
 
-State vars (back-compat with one another between scopes):
-  - `bg_use_palette` (bool)
-  - `bg_mode` ("Single Color" | "Gradient")
-  - `bg_color1`, `bg_color2` (hex strings — what VColorPicker emits)
+State vars: `bg_use_palette` (bool), `bg_mode` ("Single Color" |
+"Gradient"), `bg_color1`/`bg_color2` (hex strings VColorPicker emits).
 
-When the scope changes, the class reads the target view's current
-state and pushes it into those state vars so the controls reflect
-reality. A `_syncing` flag prevents the read-back from re-triggering
-the write handlers in a loop.
+On scope change the class reads the target view's current state and
+pushes it into those state vars so the controls reflect reality. The
+`_syncing` flag prevents that read-back from re-triggering the write
+handlers in a loop.
 """
 from paraview import simple as pvsimple
 from trame.app import get_server
@@ -67,9 +65,8 @@ class BackgroundEditor:
         self._server = get_server()
         self._state = self._server.state
         self._controller = self._server.controller
-        # Set when we are pushing values into state from a view read,
-        # so the per-var @change handlers don't push those same values
-        # back into the view.
+        # True while pushing view values into state, so the per-var
+        # @change handlers don't write those same values back.
         self._syncing = False
 
         st = self._state
@@ -78,9 +75,8 @@ class BackgroundEditor:
         st.setdefault("bg_color1", "#5c6c7a")
         st.setdefault("bg_color2", "#1133aa")
 
-        # Scope changes drive the read-back from the target view.
+        # Scope change → read-back; per-control change → write-back.
         st.change(scope_var)(self._on_scope_change)
-        # Per-control changes drive the write-back to the target view.
         st.change("bg_use_palette")(self._on_use_palette_change)
         st.change("bg_mode")(self._on_mode_change)
         st.change("bg_color1")(self._on_color1_change)
@@ -134,7 +130,7 @@ class BackgroundEditor:
         view = self._pv_view()
         if view is None:
             # Global scope: leave bg_* vars at their last per-view
-            # values (the per-view section won't be rendered anyway).
+            # values (the per-view section isn't rendered anyway).
             return
         self._syncing = True
         try:
@@ -226,11 +222,9 @@ class BackgroundEditor:
             classes="text-caption text-uppercase font-weight-bold mb-2",
         )
 
-        # Global scope: ptc.PalettePicker. Behaviour unchanged from
-        # the legacy single-view setup — palette change is applied
-        # via simple.LoadPalette which is global ParaView, and the
-        # broadcast on_data_change handler pushes a fresh frame to
-        # every panel.
+        # Global scope: ptc.PalettePicker. The palette is applied via
+        # simple.LoadPalette (global ParaView) and the broadcast
+        # on_data_change handler pushes a fresh frame to every panel.
         with html.Div(
             v_if=f"{scope} === 'global'",
             classes="d-flex align-center",
@@ -269,10 +263,9 @@ class BackgroundEditor:
                     classes="mb-3",
                 )
                 # Color 1 (Background) — always shown when not using
-                # palette. The swatch is the VBtn activator; clicking
-                # opens a VMenu with a VColorPicker.
+                # the palette.
                 self._color_row("Color 1", "bg_color1")
-                # Color 2 (Background2) — shown only in Gradient mode.
+                # Color 2 (Background2) — only in Gradient mode.
                 with html.Div(v_if="bg_mode === 'Gradient'", classes="mt-2"):
                     self._color_row("Color 2", "bg_color2")
 
@@ -280,8 +273,7 @@ class BackgroundEditor:
         """Single labelled colour-picker row: a swatch button that
         toggles a VColorPicker popover. close_on_content_click=False
         keeps the picker open while the user drags the hue/value
-        sliders so each intermediate value is committed live to the
-        view (no debouncing — looks responsive enough in practice)."""
+        sliders so each intermediate value commits live to the view."""
         with html.Div(classes="d-flex align-center"):
             html.Span(
                 f"{label}:",
@@ -301,11 +293,9 @@ class BackgroundEditor:
                             " border: '1px solid rgba(0,0,0,0.2)' }",
                         ),
                     )
-                # Background colour has no transparency semantics —
-                # `hexa`/`rgba`/`hsla` modes would show an opacity
-                # slider for nothing. The bg_color1/bg_color2 state
-                # vars are already 6-char "#rrggbb" strings (see
-                # `_rgb_to_hex` / `_hex_to_rgb`).
+                # Background colour has no transparency, so stick to
+                # hex modes (no opacity slider). bg_color1/bg_color2
+                # are 6-char "#rrggbb" strings.
                 vuetify3.VColorPicker(
                     v_model=(color_state,),
                     mode="hex",

@@ -1,23 +1,5 @@
 """Unified per-representation registry.
 
-DEPRECATION NOTICE (Phase 4, post-3a/3b/3c):
-  The per-rep compat shims below (`add_threshold`, `delete_threshold`,
-  `set_range`, `set_visible`, `get_chain`, `slice_state`, `slice_set`,
-  `clip_state`, `clip_set`) are SUPERSEDED by per-(rep, view)
-  `RepInScene` ownership via `scene_registry`. They remain reachable
-  via the threshold_dispatch / slicer_dispatch fallback paths when
-  the per-view IjkGrid / per-view extractor isn't built yet (early
-  boot / `vtkEPCCollectorClone` unavailable). Do not call from new
-  code. Phase 5 removal pending real-world validation.
-
-  Read-side methods (`available_arrays`, `array_data_range`,
-  `all_visible_thresholds`, `all_chain_proxies`, `get_threshold`)
-  are still safe to use as data-layer accessors — the per-view
-  pipelines share the same EPCCollector and surface the same arrays.
-
-  `get`, `get_ijk_grid`, `get_extract_block`, `apply_z_scale`,
-  `apply_representation`, `sync`, `release` remain in active use.
-
 One entry per loaded RESQML representation, regardless of its type:
   - `IjkGrid` — slicer + volume + threshold pipeline (in `ijkgrid.py`).
   - `ExtractBlockRepresentation` — ExtractBlock + threshold pipeline
@@ -44,15 +26,16 @@ The engine talks to this registry through a single compat surface:
   registry.release(rep_path)
   registry.release_all()
 
-Internally the registry keeps two dicts (one per concrete type) because
-the lifecycle of an IjkGrid is driven by a *property* node id (passed
-to `set_node_id`) while the lifecycle of an ExtractBlockRepresentation
-is driven by a *rep path*. This asymmetry is hidden from callers.
+The DEPRECATED mutating shims are superseded by per-(rep, view) `RepInScene`
+ownership via `scene_registry`; they remain reachable as a fallback when the
+per-view pipeline isn't built yet (early boot / `vtkEPCCollectorClone`
+unavailable). The read-side methods stay valid as data-layer accessors since
+the per-view pipelines share the same EPCCollector and surface the same arrays.
 
-After REFACTOR_PLAN.md sujet 2 lands fully, `IjkGrid` will inherit
-from a common `Representation` base class and the two dicts will
-collapse into one. The compat surface above is forward-compatible
-with that future state — callers don't notice the difference."""
+Internally the registry keeps two dicts (one per concrete type) because an
+IjkGrid's lifecycle is driven by a *property* node id (via `set_node_id`)
+while an ExtractBlockRepresentation's is driven by a *rep path*. This
+asymmetry is hidden from callers."""
 from typing import Optional
 
 from fespp_on_trame.app.core.sources.extract_block import ExtractBlockRepresentation
@@ -164,18 +147,16 @@ class SourceRegistry:
     # Chain (per-rep)
 
     def get_chain(self, rep_path: str):
-        """DEPRECATED: superseded by `RepInScene.get_chain()` per-view.
-        Still reachable via threshold_dispatch's fallback for early-boot
-        callers before scene_registry is ready; single-fire warning so
-        the fallback hits stay visible."""
+        """DEPRECATED: superseded by `RepInScene.get_chain()` (per-view).
+        Reachable only via the threshold_dispatch fallback before
+        scene_registry is ready."""
         from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
         _warn_deprecated("SourceRegistry.get_chain")
         inst = self.get_instance(rep_path)
         return inst.get_chain() if inst is not None else []
 
     def add_threshold(self, rep_path: str, parent_name, array: str):
-        """DEPRECATED: superseded by per-view threshold ops on
-        `RepInScene`. Same fallback warning rationale as `get_chain`."""
+        """DEPRECATED: superseded by per-view threshold ops on `RepInScene`."""
         from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
         _warn_deprecated("SourceRegistry.add_threshold")
         inst = self.get_instance(rep_path)
@@ -232,14 +213,10 @@ class SourceRegistry:
         eb = self._extract_blocks.get(rep_path)
         return eb.deepest_visible_threshold() if eb is not None else None
 
-    # Slice plane (per-rep) — DEPRECATED, no callers remaining.
-    #
-    # Phase 1.b moved slice / clip ownership onto `RepInScene` (per
-    # (rep, view)). The dispatchers in `slice_dispatch.py` and
-    # `clip_dispatch.py` route through `SceneRegistry.get_rep(view, rep)`
-    # so these compat shims are unreachable from the engine flow.
-    # Kept here as a safety net during the migration window; Phase 5
-    # (aggressive cleanup) deletes them.
+    # Slice plane (per-rep) — DEPRECATED. Slice / clip ownership lives on
+    # `RepInScene` (per (rep, view)); the slice/clip dispatchers route
+    # through `SceneRegistry.get_rep(view, rep)`, so these shims are
+    # unreachable from the engine flow. Kept as a safety net.
 
     def slice_state(self, rep_path: str) -> dict:
         """DEPRECATED: superseded by `RepInScene.slice_state()`."""
@@ -348,17 +325,14 @@ class SourceRegistry:
         try:
             ijk.set_node_id(prop_node_id)
         except Exception as e:
-            import traceback
-            print(f"[WARNING] IjkGrid.set_node_id({rep_path}): {e}")
-            traceback.print_exc()
+            pass
         if ijk.source is None:
             # Creation failed at the collector level.
             self._ijk_grids.pop(rep_path, None)
             return None
-        # Phase 3b: fan the property change to every per-view IjkGrid
-        # owned by scenes so split views stay in step with the active
-        # property. Best-effort: scene_registry may not be wired up
-        # yet (engine boot ordering); silently skip in that case.
+        # Fan the property change to every per-view IjkGrid owned by scenes so
+        # split views stay in step with the active property. Best-effort:
+        # scene_registry may not be wired up yet during engine boot.
         try:
             from trame.app import get_server
             scene_reg = getattr(get_server().context, "scene_registry", None)
@@ -425,12 +399,12 @@ class SourceRegistry:
             if not ijk_rep_path:
                 continue
             chosen_prop_for_grid.setdefault(ijk_rep_path, reservoir_node_id)
-        # Fallback: derive IjkGrid targets from `selectors` directly so
-        # sync stays self-sufficient when `state.ui_select_node_reservoir`
-        # hasn't flushed yet on the same tick (reselect-after-deselect-all
-        # path: `fespp_data_selectors` change fires before the reservoir
-        # state var is observed). Without this the IjkGrid branch sees
-        # an empty input and no-ops, leaving the rep unbuilt.
+        # Fallback: derive IjkGrid targets from `selectors` directly so sync
+        # stays self-sufficient when `state.ui_select_node_reservoir` hasn't
+        # flushed yet on the same tick (the `fespp_data_selectors` change can
+        # fire before the reservoir state var is observed). Without this the
+        # IjkGrid branch sees an empty input and no-ops, leaving the rep
+        # unbuilt.
         for sel in selectors or []:
             rp = self._rep_path_for(sel)
             if rp is None or self._rep_type_for(rp) != "IjkGrid":

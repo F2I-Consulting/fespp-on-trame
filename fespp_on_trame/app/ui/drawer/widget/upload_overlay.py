@@ -26,6 +26,6 @@ class UploadOverlay:
                 width=6,
             )
             html.P(
-                "{{ upload_progress > 0 ? 'Upload… ' + upload_progress + '%' : 'Transfert en cours…' }}",
+                "{{ upload_progress > 0 ? 'Upload… ' + upload_progress + '%' : 'Uploading…' }}",
                 style="color: white; font-size: 0.95rem; margin: 0;",
             )

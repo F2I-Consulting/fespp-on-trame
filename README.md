@@ -9,6 +9,18 @@ FESPP is a ParaView plugin developed by F2I-Consulting that enables the visualiz
 
 For more information about FESPP, visit: https://github.com/F2I-Consulting/fespp
 
+## Developer documentation
+
+A full developer/handoff wiki lives under [`doc/wiki/`](doc/wiki/) (GitHub-wiki
+format — copy into the repo's wiki, or browse the `.md` files directly):
+
+- **[Home](doc/wiki/Home.md)** — entry point and navigation.
+- **[Architecture](doc/wiki/Architecture.md)** — layers, the per-view scene model, end-to-end data flows, and the `state.*` catalog.
+- **[Build and Run](doc/wiki/Build-and-Run.md)** — image build, run, the dev loop, and runtime internals (where the logs actually go).
+- **[Glossary](doc/wiki/Glossary.md)** — RESQML/EPC/FESAPI + ParaView + Trame terms.
+- A precise **per-file reference** page per subsystem (Core/Sources, Element-Types, Engine, UI…).
+- **[Refactoring Notes](doc/wiki/Refactoring-Notes.md)** — opportunities for the fork.
+
 ## Features
 
 - **Remote Visualization**: Access ParaView through a web interface using Trame

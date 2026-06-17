@@ -6,11 +6,9 @@ no custom label was attached). `register_per_view_time_label` does the
 same wiring for each panel's own slider so per-view readouts match the
 global format.
 
-Realization handling moved out of this module: the legacy global
-cursor (`ui_slices_real` → collector.set_realization_index) is gone.
 Per-view realization selection is owned by
 `fespp_on_trame.app.core.engine.realization_dispatch` (state map
-`ui_active_realization_by_array_by_view`).
+`ui_active_realization_by_array_by_view`), not this module.
 """
 import re
 

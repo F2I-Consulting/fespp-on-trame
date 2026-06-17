@@ -1,46 +1,32 @@
 """Per-rep data source for non-IjkGrid representations.
 
-DEPRECATION NOTICE (Phase 4, post-3a/3b/3c):
-  - `slice_set` / `slice_state` / `clip_set` / `clip_state` /
-    `clip_output` are SUPERSEDED by `RepInScene` (per-(rep, view)
-    ownership). They remain as a Phase 2 fallback used only when
-    `vtkEPCCollectorClone` isn't available (logged as `clone=shared`
-    in `[SCENE_REG]`). Do not call from new code.
-  - `add_threshold` / `delete_threshold` / `set_range` / `set_visible`
-    on this class are SUPERSEDED by `RepInScene._chain` + the
-    per-view dispatch in `threshold_dispatch`. Same fallback caveat.
-  - `_chain` is no longer mutated by the engine in the normal path
-    and will stay empty unless the fallback fires.
-
-Phase 5 removal is planned once the per-view paths are validated
-under real-world use.
+DEPRECATED: the per-(rep, view) equivalents on `RepInScene` supersede the
+slice / clip / threshold methods here. This class remains as a fallback used
+only when `vtkEPCCollectorClone` isn't available (the scene's clone is the
+collector source itself); `_chain` stays empty unless that fallback fires. Do
+not call the slice/clip/threshold methods from new code.
 
 One `ExtractBlockRepresentation` instance per loaded RESQML rep
-(UnstructuredGrid, Trajectory, Grid2d, PointSet, Polyline,
-PolylineSet, TriangulatedSet, …). (`Wellbore` is NOT a rep — it's a
-grouping folder; only its child Trajectory/Frame/Marker reps load.)
-Each instance owns:
+(UnstructuredGrid, Trajectory, Grid2d, PointSet, Polyline, PolylineSet,
+TriangulatedSet, …). (`Wellbore` is NOT a rep — it's a grouping folder; only
+its child Trajectory/Frame/Marker reps load.) Each instance owns:
 
   - a single `ExtractBlock` proxy created via the collector's
-    `ExtractRepPath` / `ExtractedRepProducerName` properties (this
-    is the C++ "WithoutCopy" semantics: ShallowCopy in RequestData,
-    no real data duplication);
-  - an ordered list of `ChainEntry` describing a deletable
-    threshold chain. Each entry has its own Threshold proxy chained
-    onto its parent (or onto the rep source if the parent is None /
-    hidden).
+    `ExtractRepPath` / `ExtractedRepProducerName` properties (C++
+    "WithoutCopy" semantics: ShallowCopy in RequestData, no real data
+    duplication);
+  - an ordered list of `ChainEntry` describing a deletable threshold chain.
+    Each entry has its own Threshold proxy chained onto its parent (or onto
+    the rep source if the parent is None / hidden).
 
 Visibility rules:
-  - An entry is shown iff `entry.visible` AND it has no visible
-    descendant (otherwise the descendant subsumes the entry's
-    rendered contribution).
-  - The rep source is hidden when at least one chain tip is shown,
-    or when the user toggled the rep's eye off
-    (`state.ui_hidden_rep_paths`).
+  - An entry is shown iff `entry.visible` AND it has no visible descendant
+    (otherwise the descendant subsumes the entry's rendered contribution).
+  - The rep source is hidden when at least one chain tip is shown, or when
+    the user toggled the rep's eye off (`state.ui_hidden_rep_paths`).
 
-The class is independent of `SourceRegistry` (the manager in
-`source_registry.py`) — that one holds a dict of instances and
-forwards the per-rep calls."""
+The class is independent of `SourceRegistry` (in `source_registry.py`), which
+holds a dict of instances and forwards the per-rep calls."""
 import re
 
 from trame.app import get_server
@@ -51,8 +37,13 @@ from fespp_on_trame.app.core.sources.representation import (
     _sanitize,
     _find_registered_proxy,
     _apply_default_tint,
+    inherit_display,
+    arrays_from_source,
+    array_range_from_source,
+    resolve_assoc,
 )
 from fespp_on_trame.app.utils.naming import make_valid_vtk_name
+from fespp_on_trame.app.core.sources import threshold_chain
 
 
 server = get_server()
@@ -125,7 +116,6 @@ def _warn_deprecated(name: str) -> None:
     if name in _DEPRECATED_WARNED:
         return
     _DEPRECATED_WARNED.add(name)
-    print(f"[DEPRECATED] {name} — see doc/REFACTOR_PER_VIEW_PHASE_3.md.")
 
 
 # Max number of unique values for which we treat an array as
@@ -322,25 +312,17 @@ def _read_lut_annotations(array_name):
 
 
 class ExtractBlockRepresentation:
-    """One non-IjkGrid representation backed by an ExtractBlock
-    filter on the FESPP collector, plus its threshold chain.
+    """One non-IjkGrid representation backed by an ExtractBlock filter on
+    the FESPP collector, plus its threshold chain.
 
-    DEPRECATED (Phase 3a+): for non-IjkGrid reps every per-(rep, view)
-    operation now lives on `RepInScene` (slice / clip / threshold
-    chain, all anchored on the per-view `EnergisticsExtractor` chained
-    on `vtkEPCCollectorClone`). This class is kept around solely as:
-
-      1. A fallback when the plugin DLL pre-dates `vtkEPCCollectorClone`
-         and `ViewScene._create_clone` falls back to the shared
-         collector source.
-      2. A back-compat target for engine code paths that still flow
-         through `SourceRegistry.{add_threshold,slice_set,clip_set,…}`
-         compat shims.
-
-    The slice/clip/threshold methods on this class call
-    `_warn_deprecated` on first use and emit a single `[DEPRECATED]`
-    line to the server log so we can identify any caller still relying
-    on them after Phase 4 ships."""
+    DEPRECATED: per-(rep, view) slice / clip / threshold ownership lives on
+    `RepInScene` (anchored on the per-view `EnergisticsExtractor` chained on
+    `vtkEPCCollectorClone`). This class is kept solely as a fallback when the
+    plugin DLL pre-dates `vtkEPCCollectorClone` (so `ViewScene._create_clone`
+    falls back to the shared collector source), and as a back-compat target
+    for the `SourceRegistry` compat shims. The slice/clip/threshold methods
+    emit a single `[DEPRECATED]` log line on first use so any remaining caller
+    is identifiable."""
 
     def __init__(self, collector, tree, rep_path: str):
         self._collector = collector
@@ -348,14 +330,13 @@ class ExtractBlockRepresentation:
         self._rep_path = rep_path
         self._source = None  # set by _create_source()
         self._chain: list = []
-        # Plane slice / clip (MVP: single axis-aligned plane per rep).
-        # Lazily bound after `_create_source` succeeds so we can pass
-        # the ExtractBlock proxy as upstream.
+        # Plane slice / clip. Lazily bound after `_create_source` succeeds so
+        # the ExtractBlock proxy can be passed as upstream.
         self._slice = None
         self._clip = None
         if not self._create_source():
-            # Caller (SourceRegistry.get_or_create_extract_block) checks `self.source is None`
-            # and discards a half-built instance.
+            # Caller checks `self.source is None` and discards a half-built
+            # instance.
             return
 
     # ------------------------------------------------------------------
@@ -379,34 +360,22 @@ class ExtractBlockRepresentation:
     # Source lifecycle
 
     def _create_source(self) -> bool:
-        """Create the per-rep `EnergisticsExtractor` chained on the
-        collector source.
+        """Create the per-rep `EnergisticsExtractor` chained on the collector
+        source.
 
-        Historically this delegated to the collector's `ExtractRepPath`
-        proxy property whose command runs the C++
-        `vtkEPCCollector::SetExtractRepPath` — which itself calls
-        `controller->RegisterPipelineProxy(extract, regName)` to publish
-        the new producer. That path silently FAILED to re-publish the
-        proxy on a second-pass `rep_path` (same path that was previously
-        released via `pvsimple.Delete`), leaving the proxy invisible to
-        `_sm.ProxyManager().GetProxy("sources", regName)` even though
-        the C++ readback returned a non-empty `regName`. Net symptom:
-        deselect-all + reselect rendered nothing.
-
-        Fix: bypass the C++ ExtractRepPath path entirely and build the
-        `EnergisticsExtractor` via `_create_plugin_filter_proxy` — same
-        helper `RepInScene._ensure_extractor` uses successfully. The
-        helper's final fallback (`spm->NewProxy + spm->RegisterProxy`)
-        publishes the proxy reliably on every call (see PARAVIEW.md
-        "LoadPlugin doesn't always refresh pvsimple namespace" for the
-        documented rationale of this register-direct pattern)."""
+        Built via `_create_plugin_filter_proxy` (not the collector's
+        `ExtractRepPath` C++ command): its register-direct fallback
+        (`spm->NewProxy + spm->RegisterProxy`) publishes the proxy reliably
+        on every call, including re-selecting a `rep_path` previously released
+        via `pvsimple.Delete`. See PARAVIEW.md "LoadPlugin doesn't always
+        refresh pvsimple namespace"."""
         from fespp_on_trame.app.core.sources.representation import (
             _create_plugin_filter_proxy,
         )
 
         collector_src = self._collector.get_source()
-        # Match the old C++-side naming so any other code that referenced
-        # the legacy `rep_<rep_path-with-_>` name still resolves.
+        # Match the C++-side `rep_<rep_path-with-_>` naming so code that
+        # references that name still resolves.
         reg_name = "rep" + self._rep_path.replace("/", "_")
         ext = _create_plugin_filter_proxy(
             proxy_class="EnergisticsExtractor",
@@ -475,11 +444,9 @@ class ExtractBlockRepresentation:
         self._slice = SlicePlane(self._rep_path, self._source, state)
 
     def slice_state(self) -> dict:
-        """Return the current slice descriptor — enabled, axis, offset,
-        bounds — for the UI panel to bind to. Always returns a dict,
-        even pre-slice: the UI reads bounds to seed the range slider.
-
-        DEPRECATED: superseded by `RepInScene.slice_state()` (per-view)."""
+        """Slice descriptor (enabled, axis, offset, bounds) for the UI panel.
+        Always returns a dict, even pre-slice: the UI reads bounds to seed the
+        range slider. DEPRECATED: superseded by `RepInScene.slice_state()`."""
         _warn_deprecated("ExtractBlockRepresentation.slice_state")
         self._ensure_slice()
         if self._slice is None:
@@ -490,12 +457,10 @@ class ExtractBlockRepresentation:
         return self._slice.to_dict()
 
     def slice_set(self, enabled=None, axis=None, offset=None):
-        """Patch the plane params and re-render. When the enabled bit
-        flips, also re-run the chain-visibility resolver so the rep's
-        source / chain tips get hidden (slice replaces them visually)
-        or restored.
-
-        DEPRECATED: superseded by `RepInScene.slice_set()` (per-view)."""
+        """Patch the plane params and re-render. Flipping `enabled` re-runs the
+        chain-visibility resolver so the rep source / chain tips are hidden
+        (slice replaces them) or restored.
+        DEPRECATED: superseded by `RepInScene.slice_set()`."""
         _warn_deprecated("ExtractBlockRepresentation.slice_set")
         self._ensure_slice()
         if self._slice is None:
@@ -528,11 +493,10 @@ class ExtractBlockRepresentation:
 
     def clip_set(self, enabled=None, axis=None, offset=None,
                  inside_out=None):
-        """Patch the clip params and re-render. Flipping `enabled`
-        re-runs the visibility resolver so the rep source / chain tip
-        gets replaced by the clip's output (or restored).
-
-        DEPRECATED: superseded by `RepInScene.clip_set()` (per-view)."""
+        """Patch the clip params and re-render. Flipping `enabled` re-runs the
+        visibility resolver so the rep source / chain tip is replaced by the
+        clip's output (or restored).
+        DEPRECATED: superseded by `RepInScene.clip_set()`."""
         _warn_deprecated("ExtractBlockRepresentation.clip_set")
         self._ensure_clip()
         if self._clip is None:
@@ -584,48 +548,13 @@ class ExtractBlockRepresentation:
 
     def available_arrays(self):
         """Return [(assoc, name), ...] for the rep's data arrays."""
-        src = self._source
-        if src is None:
-            return []
-        out = []
-        seen = set()
-        for store_attr, assoc in (("CellData", "CELLS"), ("PointData", "POINTS")):
-            try:
-                store = getattr(src, store_attr)
-                for i in range(store.GetNumberOfArrays()):
-                    a = store.GetArray(i)
-                    if a is None:
-                        continue
-                    name = a.Name
-                    key = (assoc, name)
-                    if name and key not in seen:
-                        seen.add(key)
-                        out.append(key)
-            except Exception:
-                pass
-        return out
+        return arrays_from_source(self._source)
 
     def array_data_range(self, array_name: str):
-        src = self._source
-        if src is None or not array_name:
-            return None
-        for store_attr in ("CellData", "PointData"):
-            try:
-                store = getattr(src, store_attr)
-                for i in range(store.GetNumberOfArrays()):
-                    a = store.GetArray(i)
-                    if a is not None and a.Name == array_name:
-                        rng = a.GetRange()
-                        return (float(rng[0]), float(rng[1]))
-            except Exception:
-                pass
-        return None
+        return array_range_from_source(self._source, array_name)
 
     def _resolve_assoc(self, array_name: str):
-        for a, n in self.available_arrays():
-            if n == array_name:
-                return a
-        return None
+        return resolve_assoc(self._source, array_name)
 
     # ------------------------------------------------------------------
     # Threshold chain — public API
@@ -635,17 +564,13 @@ class ExtractBlockRepresentation:
         return [e.to_dict() for e in self._chain]
 
     def add_threshold(self, parent_name, array: str):
-        """Create a new threshold node attached under `parent_name`
-        (or under the rep's source if None). Returns the new node's
-        name, or None on failure.
-
-        DEPRECATED: superseded by `RepInScene.add_threshold()` (per-view).
-        See `doc/REFACTOR_PER_VIEW_PHASE_3.md` for migration notes."""
+        """Create a new threshold node attached under `parent_name` (or under
+        the rep's source if None). Returns the new node's name, or None on
+        failure. DEPRECATED: superseded by `RepInScene.add_threshold()`."""
         _warn_deprecated("ExtractBlockRepresentation.add_threshold")
         if self._source is None or not array:
             return None
         if parent_name is not None and not any(e.name == parent_name for e in self._chain):
-            print(f"[WARNING] add_threshold: unknown parent {parent_name!r}")
             return None
         assoc = self._resolve_assoc(array)
         if not assoc:
@@ -683,7 +608,6 @@ class ExtractBlockRepresentation:
             proxy.UpperThreshold = float(rng[1])
             proxy.UpdatePipeline()
         except Exception as e:
-            print(f"[WARNING] Threshold creation for {self._rep_path}/{array}: {e}")
             return None
 
         entry = ChainEntry(
@@ -699,29 +623,11 @@ class ExtractBlockRepresentation:
         )
         self._chain.append(entry)
 
-        # Inherit display props from upstream so the chain proxy
-        # mirrors its parent visually (color array + LUT in
-        # property-color mode, DiffuseColor + Opacity in SolidColor
-        # mode) from the moment it appears.
-        view = pvsimple.GetActiveView()
-        if view is not None:
-            try:
-                src_disp = pvsimple.GetDisplayProperties(upstream, view=view)
-                thr_disp = pvsimple.GetRepresentation(proxy=proxy, view=view)
-                if src_disp is not None and thr_disp is not None:
-                    for attr in (
-                        "Representation", "Scale", "ColorArrayName", "LookupTable",
-                        "DiffuseColor", "AmbientColor", "Opacity",
-                    ):
-                        try:
-                            val = getattr(src_disp, attr)
-                            if attr in ("Scale", "ColorArrayName", "DiffuseColor", "AmbientColor"):
-                                val = list(val)
-                            setattr(thr_disp, attr, val)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+        # Inherit display props from upstream so the chain proxy mirrors its
+        # parent visually (color array + LUT in property-color mode,
+        # Diffuse/Ambient + Opacity in SolidColor mode) from the moment it
+        # appears. Legacy path → the active view.
+        inherit_display(upstream, proxy, pvsimple.GetActiveView())
 
         self._refresh_chain_visibility()
         return base_name
@@ -766,7 +672,7 @@ class ExtractBlockRepresentation:
                     e.proxy.UpperThreshold = e.high
                     e.proxy.UpdatePipeline()
                 except Exception as exc:
-                    print(f"[WARNING] set_range({name}): {exc}")
+                    pass
                 return
 
     def set_visible(self, name: str, visible: bool):
@@ -799,84 +705,34 @@ class ExtractBlockRepresentation:
     # Chain plumbing
 
     def _entry_by_name(self, name):
-        for e in self._chain:
-            if e.name == name:
-                return e
-        return None
+        return threshold_chain.entry_by_name(self._chain, name)
 
     def _effective_input_for_parent(self, parent_name):
-        """Resolve the upstream proxy a new/refreshed child should
-        read from. parent_name=None → rep source. Otherwise walk up
-        the chain skipping hidden ancestors."""
-        if parent_name is None:
-            return self._source
-        cursor = self._entry_by_name(parent_name)
-        while cursor is not None and not cursor.visible:
-            cursor = self._entry_by_name(cursor.parent_name)
-        if cursor is None:
-            return self._source
-        return cursor.proxy
+        """Resolve the upstream proxy a new/refreshed child should read
+        from. parent_name=None → rep source. Otherwise walk up the chain
+        skipping hidden ancestors. Graph logic shared via threshold_chain;
+        the ROOT here is the rep source."""
+        return threshold_chain.effective_input_for_parent(
+            self._chain, parent_name, self._source)
 
     def _has_visible_descendant(self, name: str):
-        """True iff at least one entry transitively rooted at `name`
-        (excluding name itself) is visible."""
-        # Direct children where parent_name == name:
-        direct = [e for e in self._chain if e.parent_name == name]
-        for child in direct:
-            if child.visible:
-                return True
-            if self._has_visible_descendant(child.name):
-                return True
-        return False
+        return threshold_chain.has_visible_descendant(self._chain, name)
 
     def _refresh_chain_visibility(self):
-        """Recompute Input wiring + display.Visibility for every node
-        in the chain. Called after add/delete/set_visible, plus on
-        slice / clip toggle.
-
-        Display rules:
-          - chain entry shown iff entry.visible AND no visible descendant
-          - rep source hidden when a chain tip is shown, when the user
-            barred the rep eye, OR when slice / clip is enabled (each
-            "replaces" the rep visually — clip shows the clipped half
-            colored like the rep, slice adds a red cross-section)"""
-        view = pvsimple.GetActiveView()
-        rep_hidden_by_user = self._rep_path in (state.ui_hidden_rep_paths or [])
-        rep_hidden_by_slice = self._slice is not None and self._slice.enabled
-        rep_hidden_by_clip = self._clip is not None and self._clip.enabled
-        rep_hidden = (rep_hidden_by_user
-                      or rep_hidden_by_slice or rep_hidden_by_clip)
-
-        any_shown = False
-        for entry in self._chain:
-            upstream = self._effective_input_for_parent(entry.parent_name)
-            try:
-                if entry.proxy.Input is not upstream:
-                    entry.proxy.Input = upstream
-                    entry.proxy.UpdatePipeline()
-            except Exception as exc:
-                print(f"[WARNING] rewire {entry.name}: {exc}")
-            if view is None:
-                continue
-            try:
-                tip = entry.visible and not self._has_visible_descendant(entry.name)
-                show = tip and not rep_hidden
-                if show:
-                    pvsimple.Show(proxy=entry.proxy, view=view)
-                    any_shown = True
-                else:
-                    pvsimple.Hide(proxy=entry.proxy, view=view)
-            except Exception:
-                pass
-
-        if view is not None and self._source is not None:
-            try:
-                if rep_hidden or any_shown:
-                    pvsimple.Hide(proxy=self._source, view=view)
-                else:
-                    pvsimple.Show(proxy=self._source, view=view)
-            except Exception:
-                pass
+        """Recompute Input wiring + display.Visibility for every node in the
+        chain, then re-assert the rep source. Legacy policy → the ACTIVE view,
+        the GLOBAL rep-hidden bucket, and `self._source` as both the chain head
+        and the primary to hide/show. Delegates to
+        threshold_chain.refresh_chain_visibility (shared with RepInScene)."""
+        rep_hidden = (
+            self._rep_path in (state.ui_hidden_rep_paths or [])
+            or (self._slice is not None and self._slice.enabled)
+            or (self._clip is not None and self._clip.enabled)
+        )
+        threshold_chain.refresh_chain_visibility(
+            self._chain, pvsimple.GetActiveView(), self._source, self._source,
+            rep_hidden,
+        )
 
     # ------------------------------------------------------------------
     # Display helpers (z-scale, representation type)

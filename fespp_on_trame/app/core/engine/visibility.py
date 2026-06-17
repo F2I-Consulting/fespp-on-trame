@@ -111,10 +111,9 @@ def toggle_marker_visibility(state, controller, server, source_registry, tree,
         try:
             rep_in_scene.set_marker_visible(marker_path, new_visible)
         except Exception as exc:
-            print(f"[WARNING] set_marker_visible({marker_path}, {panel_id}): {exc}")
+            pass
     else:
-        print(f"[WARNING] toggle_marker_visibility({marker_path}, {panel_id}):"
-              f" no RepInScene for {r_path}")
+        pass
 
     if view is not None:
         try:
@@ -131,10 +130,6 @@ def toggle_marker_visibility(state, controller, server, source_registry, tree,
             controller.view_update()
         except Exception:
             pass
-    print(
-        f"[VIS-MARKER] {marker_path} → {'show' if new_visible else 'hide'} "
-        f"(panel={panel_id or 'active'})"
-    )
 
 
 def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
@@ -195,7 +190,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
 
     srcs, view = source_resolver.sources_for_rep_path(source_registry, rep_path, view=view)
     if not srcs:
-        print(f"[WARNING] toggle_rep_visibility({rep_path}, {panel_id}): no source found")
+        pass
 
     if show:
         # For IjkGrid the per-mode Show/Hide pattern is intricate
@@ -208,21 +203,20 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
             try:
                 ijk.show(view=view)
             except Exception as _e:
-                print(f"[WARNING] IjkGrid.show(view) raised: {_e}")
+                pass
         else:
             # ExtractBlock side — the rep's `add_source` set
             # Representation + tint on the active view's display only.
-            # For panels other than the original, the display we're
-            # about to flip Vis=1 on has PV's defaults; re-assert
-            # Representation and tint so SolidColor matches the
-            # user's pick.
+            # For other panels the display we're about to flip Vis=1 on
+            # has PV's defaults, so re-assert Representation and tint to
+            # match the user's pick.
             rep_type = state.representation_active or "Surface"
             grid_color = (state.solid_color_by_rep or {}).get(rep_path)
             for src in srcs:
                 try:
                     pvsimple.Show(src, view=view)
                 except Exception as _e:
-                    print(f"[WARNING] Show raised: {_e}")
+                    pass
                 try:
                     d = pvsimple.GetDisplayProperties(src, view=view)
                     if d is not None:
@@ -236,7 +230,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                         if sm is not None:
                             sm.UpdateVTKObjects()
                 except Exception as _e:
-                    print(f"[WARNING] Visibility flag flip raised: {_e}")
+                    pass
     else:
         # Hide: flip Visibility on every source of the rep (slicers,
         # volume crop, rep_data extractor) so the panel goes dark
@@ -245,7 +239,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
             try:
                 pvsimple.Hide(src, view=view)
             except Exception as _e:
-                print(f"[WARNING] Hide raised: {_e}")
+                pass
             try:
                 d = pvsimple.GetDisplayProperties(src, view=view)
                 if d is not None:
@@ -254,7 +248,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                     if sm is not None:
                         sm.UpdateVTKObjects()
             except Exception as _e:
-                print(f"[WARNING] Visibility flag flip raised: {_e}")
+                pass
     if view is not None:
         try:
             view.SMProxy.UpdateVTKObjects()
@@ -268,7 +262,3 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
             pass
     else:
         controller.view_update()
-    print(
-        f"[VIS] {rep_path} → {'show' if show else 'hide'} "
-        f"({len(srcs)} sources, panel={panel_id or 'active'})"
-    )

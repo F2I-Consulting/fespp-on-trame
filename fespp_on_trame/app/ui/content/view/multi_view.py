@@ -42,10 +42,8 @@ class FesppMultiView(ptc.MultiView):
         self._first_view_adopted = False
         self._diff_panel_id = None
         # Singleton dockview tab for the descriptive-statistics panel.
-        # Set on `add_view(kind="stats")`, cleared on its `_on_view_closed`.
-        # Tracked here so callers can detect whether the view already
-        # exists before creating another one (the tree's chart icon
-        # opens / focuses it on first pin).
+        # Tracked so callers can detect whether the view already exists
+        # before creating another one.
         self._stats_panel_id = None
         super().__init__(**kwargs)
         # Public state — tree views iterate this to render one eye per
@@ -72,8 +70,7 @@ class FesppMultiView(ptc.MultiView):
         sync with what's actually on screen.
 
         Empty render panels are still listed here on purpose: their
-        chips appear closed (the rep is in the panel's hidden bucket
-        — see _seed_per_view_hidden_state for the seeding logic),
+        chips appear closed (the rep is in the panel's hidden bucket),
         and the user can click them to incrementally populate the
         empty scene from the tree."""
         render = []
@@ -126,10 +123,9 @@ class FesppMultiView(ptc.MultiView):
 
         Active-realization bucket (per (panel, array_path) → idx):
           - Same shape as the active-array bucket. Must mirror it on
-            replicate, otherwise an MR property carried over without
-            its idx makes `apply_color_array` look up the unsuffixed
-            name (which no longer exists — every MR is suffixed
-            `_real_<idx>`) and the new panel falls back to SolidColor.
+            replicate: every MR array is suffixed `_real_<idx>`, so a
+            carried-over MR property without its idx would resolve to a
+            non-existent unsuffixed name and fall back to SolidColor.
             Empty for the non-replicate cases."""
         st = self.server.state
         hidden_by_view = dict(st.ui_hidden_rep_paths_by_view or {})
@@ -159,10 +155,8 @@ class FesppMultiView(ptc.MultiView):
         else:
             hidden_by_view[panel_id] = list(st.ui_hidden_rep_paths or [])
             active_by_view[panel_id] = dict(st.ui_active_array_by_rep or {})
-            # First view has no ref-bucket to copy from; if the legacy
-            # global active_realization map exists, mirror it (it's
-            # written by toggle_dataarray_color when the active panel
-            # picks an MR), else leave empty.
+            # First view has no ref-bucket to copy from; mirror the
+            # existing active_realization map if present, else empty.
             real_by_view[panel_id] = dict(real_by_view.get(panel_id, {}) or {})
             marker_by_view[panel_id] = list(marker_by_view.get(panel_id, []) or [])
         st.ui_hidden_rep_paths_by_view = hidden_by_view
@@ -233,11 +227,8 @@ class FesppMultiView(ptc.MultiView):
         pv_view.MakeRenderWindowInteractor(True)
         self._pv_internal[panel_id] = pv_view
 
-        # Per-view scene registry hook (refactor Phase 1) — see
-        # doc/REFACTOR_VIEW_SCENES.md. The scene is created up front
-        # so any per-(rep, view) work (Phase 1.b onward) has its
-        # owner ready. The legacy source_registry remains the data
-        # path until later phases migrate behavior over.
+        # Per-view scene registry hook. The scene is created up front
+        # so any per-(rep, view) work has its owner ready.
         scene_registry = getattr(self.server.context, "scene_registry", None)
         if scene_registry is not None:
             try:
@@ -251,33 +242,27 @@ class FesppMultiView(ptc.MultiView):
                     self.server.state.ui_loaded_rep_paths or [],
                 )
             except Exception as exc:
-                print(f"[multi_view] scene_registry.add_view({panel_id}) failed: {exc}")
+                pass
 
         # Diff view starts empty; render views replicate by default.
         if replicate is None:
             replicate = kind == "render"
         if replicate and ref_view is not None:
             self._replicate_visibility(ref_view, pv_view)
-            # `_replicate_visibility` already mirrored ColorArrayName /
-            # LookupTable on each display via `_copy_display_props`, and
+            # `_replicate_visibility` mirrored display props and
             # `_seed_per_view_hidden_state` below mirrors the ref
-            # panel's active-array bucket — so the new panel shows the
-            # same coloring as the source. The user can diverge from
-            # there by clicking the per-view eye chips in the tree.
+            # panel's active-array bucket, so the new panel shows the
+            # same coloring as the source; the user can then diverge
+            # via the per-view eye chips in the tree.
             #
-            # Phase 3c: replicate per-(rep, view) state too — threshold
-            # chain, slice plane, clip plane. Without this the new
-            # panel starts with empty chain / disabled slice + clip
-            # even when the source panel has them set, breaking the
-            # "split copies state" UX contract (decision D2).
+            # Also replicate the per-(rep, view) state — threshold
+            # chain, slice plane, clip plane — so a split copies the
+            # source panel's full scene state, not just its visibility.
             if scene_registry is not None and ref_panel_id:
                 try:
                     scene_registry.replicate_view(ref_panel_id, panel_id)
                 except Exception as exc:
-                    print(
-                        f"[multi_view] scene_registry.replicate_view"
-                        f"({ref_panel_id}→{panel_id}) failed: {exc}"
-                    )
+                    pass
         elif kind == "render" and ref_view is not None:
             # Empty render view (replicate=False) — pre-hide every
             # existing source in this panel so subsequent lazy display
@@ -299,7 +284,7 @@ class FesppMultiView(ptc.MultiView):
             try:
                 scene_registry.apply_visible_markers(panel_id)
             except Exception as exc:
-                print(f"[multi_view] apply_visible_markers({panel_id}) failed: {exc}")
+                pass
 
         self._panel_titles[panel_id] = panel_title
         self._panel_kinds[panel_id] = kind
@@ -416,13 +401,11 @@ class FesppMultiView(ptc.MultiView):
             except Exception:
                 pass
 
-            # Per-view LUT / PWF: ColorBy + `swap_to_scene_tfs` above
-            # already created this scene's scoped LUTs (seeded from
-            # the global singleton, which carries PV's auto-default —
-            # NOT the ref view's tweaks since those live on the ref
-            # scene's scoped LUTs). Mirror the ref's LUT / PWF values
-            # now so the new view's first frame shows the same
-            # gradient the user has been editing.
+            # Per-view LUT / PWF: ColorBy created this scene's scoped
+            # LUTs seeded from the global singleton (PV's auto-default,
+            # not the ref view's tweaks which live on the ref scene's
+            # scoped LUTs). Mirror the ref's LUT / PWF values now so the
+            # new view's first frame shows the same gradient.
             if ref_panel_id and scene_registry is not None:
                 try:
                     ref_scene = scene_registry.get_scene(ref_panel_id)
@@ -430,7 +413,7 @@ class FesppMultiView(ptc.MultiView):
                     if ref_scene is not None and new_scene is not None:
                         new_scene.replicate_tfs_from(ref_scene)
                 except Exception as exc:
-                    print(f"[multi_view] replicate_tfs_from failed: {exc}")
+                    pass
 
             # ColorBy can lazily create displays for chain proxies in
             # the new view with default Visibility=1. Re-enforce
@@ -465,9 +448,7 @@ class FesppMultiView(ptc.MultiView):
         same id on `state.fespp_stats_panel_id` so callers (the tree's
         chart icon, the toolbar button) can detect existence and
         focus the tab instead of creating a duplicate."""
-        # Lazy import — avoid circular at module load (drawer panel
-        # imports state defaults, which are populated by the engine
-        # init that wires multi_view).
+        # Lazy import — avoids a circular import at module load time.
         from fespp_on_trame.app.ui.content.panel.descriptive_stats_panel import (
             DescriptiveStatsPanel,
         )
@@ -512,20 +493,16 @@ class FesppMultiView(ptc.MultiView):
                         classes="text-caption text-medium-emphasis",
                     )
                 DescriptiveStatsPanel().render()
-            # NOTE: no active-panel blue inset on the Stats panel.
-            # Stats is a singleton overlay — the "active for
-            # editing" semantics that drive that border on render
-            # panels don't apply, and dockview's floating window
-            # chrome (1px border + drop shadow) already separates
-            # the panel from the views below it.
-            # Minimize button — overflows up into the floating
-            # window's tabstrip via negative top (same trick render
-            # panels use). The `.dv-content-container` overflow:
-            # visible rule in shared/styles.py keeps it from being
-            # clipped. Clicking toggles ui_stats_panel_minimized,
-            # which scripts.py mirrors to a body class, which
-            # styles.py uses to collapse the floating shell to a
-            # single tabstrip row.
+            # No active-panel blue inset on the Stats panel: it's a
+            # singleton overlay, so the "active for editing" semantics
+            # that drive that border on render panels don't apply.
+            #
+            # Minimize / maximize buttons — overflow up into the
+            # floating window's tabstrip via negative top (the
+            # `.dv-content-container` overflow:visible rule in
+            # shared/styles.py keeps them from being clipped). Clicking
+            # toggles ui_stats_panel_minimized, mirrored to a body class
+            # that styles.py uses to collapse the floating shell.
             with html.Div(
                 style=(
                     "position: absolute;"
@@ -587,17 +564,12 @@ class FesppMultiView(ptc.MultiView):
                         " ? 'Restore Stats panel size'"
                         " : 'Maximize Stats panel' }}",
                     )
-        # Open as a FLOATING overlay so Stats hovers over the
-        # render views without splitting the dockview grid — users
-        # with multiple render views asked for this explicitly.
-        # `floating` accepts `{width, height, position: {left|right,
-        # top|bottom}}` per the dockview bundle (defaults fall back
-        # to {left:100, top:100, width:300, height:300} when bare,
-        # too small for the multi-property table). Dockview adds:
-        # drop shadow + 1px border, 8 resize handles (4 edges + 4
-        # corners), and the standard close × on the tab. The user
-        # drags the tabstrip's empty area to move the panel, and
-        # Shift+drag the tab back into the grid to re-dock.
+        # Open as a FLOATING overlay so Stats hovers over the render
+        # views without splitting the dockview grid. `floating` accepts
+        # `{width, height, position: {left|right, top|bottom}}`; the
+        # bundle defaults ({left:100, top:100, width:300, height:300})
+        # are too small for the multi-property table. The user drags the
+        # tabstrip to move the panel, Shift+drag the tab to re-dock.
         self.add_panel(
             panel_id, panel_title, template_name,
             floating={
@@ -610,16 +582,13 @@ class FesppMultiView(ptc.MultiView):
         return panel_id
 
     def _add_distribution_panel(self, panel_id, template_name, panel_title):
-        """Build one floating Distribution overlay INSTANCE. Multi-
+        """Build one floating Distribution overlay instance. Multi-
         instance: every per-row Hist click + every Compare-histograms
-        click spawns a fresh panel via add_view(kind="distribution"),
-        so this method runs once per click — no singleton tracking,
-        no minimize/maximize chrome (close × + drag/resize on the
-        dockview shell are enough; cross-panel chrome would need
-        per-instance marker classes which adds noise for little
-        gain). HTML-only template: no pv_view, no scene_registry
-        entry, no per-panel state buckets (the Plotly figure state
-        var is scoped per-panel by DistributionPanel.state_var)."""
+        click spawns a fresh panel, so this runs once per click (no
+        singleton tracking, no minimize/maximize chrome). HTML-only
+        template: no pv_view, no scene_registry entry, no per-panel
+        state buckets (the Plotly figure state var is scoped per-panel
+        by DistributionPanel.state_var)."""
         from fespp_on_trame.app.ui.content.panel.distribution_panel import (
             DistributionPanel,
         )
@@ -630,9 +599,9 @@ class FesppMultiView(ptc.MultiView):
                 "position:relative; height:100%; width:100%;"
                 " background-color: #fafafa;"
             )
-            # Kitware-verified wrapping: Vuetify chain (no html.Div
-            # flex column + min-height:0, which collapsed Plotly to
-            # 0×0 in our earlier dockview floating shell).
+            # Plotly needs a Vuetify VContainer/VRow/VCol wrapper here;
+            # an html.Div flex column collapses it to 0×0 in a dockview
+            # floating shell.
             with vuetify3.VContainer(
                 fluid=True,
                 classes="pa-0 ma-0",
@@ -695,31 +664,21 @@ class FesppMultiView(ptc.MultiView):
         return panel_id
 
     def _on_view_closed(self, panel_id):
-        # Capture the panel's kind BEFORE popping it so the kind-
-        # gated cleanup branches further down (distribution /
-        # stats_compare) actually run. The previous code popped the
-        # kind first and then guarded every branch on
-        # `self._panel_kinds.get(panel_id) == "..."` — which always
-        # returned None, leaving the per-panel state vars and the
-        # singleton registries (ui_stats_compare_panel,
-        # ui_stats_compare_dist_panel) leaking. Symptom: closing the
-        # Compare-stats panel made it un-reopenable because the
-        # stale array_path -> panel_id entry survived and
-        # _open_compare_stats kept hitting the focus-existing branch
-        # against a dead panel.
+        # Capture the panel's kind BEFORE popping it so the kind-gated
+        # cleanup branches further down (distribution / stats_compare)
+        # can still read it.
         panel_kind = self._panel_kinds.get(panel_id)
         self._html_views.pop(panel_id, None)
         self._panel_titles.pop(panel_id, None)
         self._panel_kinds.pop(panel_id, None)
-        # Per-view scene registry hook (refactor Phase 1) — tear down
-        # the ViewScene that was created in add_view so the per-(rep,
+        # Tear down the ViewScene created in add_view so the per-(rep,
         # view) bookkeeping doesn't leak.
         scene_registry = getattr(self.server.context, "scene_registry", None)
         if scene_registry is not None:
             try:
                 scene_registry.remove_view(panel_id)
             except Exception as exc:
-                print(f"[multi_view] scene_registry.remove_view({panel_id}) failed: {exc}")
+                pass
         # Drop the panel's per-view buckets so a future panel with
         # the same id doesn't inherit stale state.
         hidden_by_view = dict(self.server.state.ui_hidden_rep_paths_by_view or {})
@@ -753,11 +712,9 @@ class FesppMultiView(ptc.MultiView):
             self._stats_panel_id = None
             self.server.state.fespp_stats_panel_id = ""
         # Distribution panels are multi-instance — no singleton field
-        # to clear. Drop the per-panel figure state var, the option
-        # vars, the meta + CSV vars, and the stored context so the
-        # next panel with the same id (unlikely — `_view_count` is
-        # monotonic, but defensive) starts clean. Same for the
-        # controller method registered by DistributionPanel.render.
+        # to clear. Drop the per-panel figure / option / meta / CSV
+        # state vars, the stored context, and the controller method
+        # registered by DistributionPanel.render.
         if panel_kind == "distribution":
             per_panel_vars = (
                 f"ui_distribution_figure_{panel_id}",
@@ -798,12 +755,8 @@ class FesppMultiView(ptc.MultiView):
                     self.server.state.ui_stats_compare_dist_panel = compare_panels
             except Exception:
                 pass
-            # Mirror the dist-panel singleton cleanup for the
-            # Compare-stats singleton map. Defensive: a closed
-            # distribution panel can't be registered in
-            # `ui_stats_compare_panel`, but checking is cheap and
-            # keeps the two singleton maps consistent across odd
-            # close orders.
+            # Defensively mirror the cleanup for the Compare-stats
+            # singleton map too, keeping the two maps consistent.
             try:
                 stats_compare_panels = dict(
                     self.server.state.ui_stats_compare_panel or {},
@@ -823,12 +776,9 @@ class FesppMultiView(ptc.MultiView):
                     delattr(self.server.controller, ctrl_attr)
             except Exception:
                 pass
-        # Compare-stats panels are multi-instance singleton-per-
-        # property — boot._open_compare_stats registers them in
-        # `ui_stats_compare_panel[array_path]`. Mirror the
-        # distribution cleanup: drop the singleton entry + null out
-        # the per-panel state vars so a future panel with the same
-        # id starts clean.
+        # Compare-stats panels are singleton-per-property, registered
+        # in `ui_stats_compare_panel[array_path]`. Drop the singleton
+        # entry and null out the per-panel state vars.
         if panel_kind == "stats_compare":
             per_panel_vars = (
                 f"ui_stats_compare_array_path_{panel_id}",
@@ -876,16 +826,13 @@ class FesppMultiView(ptc.MultiView):
         # Never propagate the diff panel as ParaView's active view: tree
         # eye-clicks (which retarget pvsimple.GetActiveView()) must keep
         # acting on the user's render views. The diff view's own work
-        # (compute_diff, diff colors editor) sets the active view
-        # explicitly and restores it when done.
+        # sets the active view explicitly and restores it when done.
         #
-        # Also skip the legacy-mirror sync for the diff panel: the diff
-        # panel's per-view buckets are empty by design, and pushing
-        # those empties onto ui_hidden_rep_paths / ui_active_array_by_rep
-        # would trigger _on_active_array_change which clears ColorBy on
-        # whatever PV thinks is active — i.e. the previous render
-        # panel — and the user sees its render view go to SolidColor as
-        # a side effect of clicking the diff tab.
+        # Also skip the legacy-mirror sync: the diff panel's per-view
+        # buckets are empty by design, and pushing those empties onto
+        # ui_hidden_rep_paths / ui_active_array_by_rep would trigger
+        # _on_active_array_change and clear ColorBy on the previous
+        # render panel (sending it to SolidColor).
         if panel_id == self._diff_panel_id:
             return
         # Stats panel has no pv_view — `super()._on_view_activated`
@@ -970,6 +917,23 @@ class FesppMultiView(ptc.MultiView):
         if self._active_panel_id is None:
             return None
         return self._pv_internal.get(self._active_panel_id)
+
+    def panel_pv_views(self):
+        """Public read-only snapshot ``{panel_id: PV render view}`` for every
+        panel — for callers that fan an action across all views (camera /
+        orientation / transformation editors, diff). Returns a copy so callers
+        can't mutate the internal map."""
+        return dict(self._pv_internal)
+
+    def panel_html_views(self):
+        """Public read-only snapshot ``{panel_id: trame VtkRemoteView}`` for
+        every panel. Copy, like `panel_pv_views`."""
+        return dict(self._html_views)
+
+    def diff_panel_id(self):
+        """Public accessor for the current diff panel id (or None when no
+        diff view exists)."""
+        return self._diff_panel_id
 
     def update_active(self, *_args, **_kwargs):
         v = self.active_html_view()
@@ -1133,8 +1097,8 @@ class FesppMultiView(ptc.MultiView):
         Vis=1 Rep='Outline' one.
 
         Skips per-view proxies (those belonging to OTHER scenes) since
-        lazily creating a display for them in `new_view` is exactly
-        the phantom-outline bug we want to avoid."""
+        lazily creating a display for them in `new_view` would paint a
+        phantom outline."""
         for source_id, src in pvsimple.GetSources().items():
             name = source_id[0] if isinstance(source_id, tuple) else source_id
             if name and name.startswith("fespp_diff"):
@@ -1160,12 +1124,10 @@ class FesppMultiView(ptc.MultiView):
         that the user expects hidden.
 
         Skips per-view proxies (belonging to OTHER scenes): mirroring
-        their visibility from ref into new makes no sense (they
-        render in their own scene's pv_view only), and calling
+        their visibility from ref into new makes no sense (they render
+        in their own scene's pv_view only), and calling
         `GetDisplayProperties` on them lazily creates Vis=1 display
-        proxies in BOTH views by side effect — that's the bug that
-        produced 'source par-dessus the threshold + duplicate scalar
-        bars' after view split (smoke test 2026-05-27)."""
+        proxies in BOTH views by side effect."""
         for source_id, src in pvsimple.GetSources().items():
             name = source_id[0] if isinstance(source_id, tuple) else source_id
             if name and name.startswith("fespp_diff"):
@@ -1369,29 +1331,19 @@ class FesppMultiView(ptc.MultiView):
             PerViewCameraToolbar(panel_id).render()
 
     def _render_panel_actions(self, panel_id):
-        """Per-render-panel action chrome: three small buttons that
-        overflow upward into the dockview tab row (negative top, with
-        overflow:visible forced on dockview's content containers via
-        app_layout CSS). Sitting on the tab row means the buttons get
-        the dockview theme's dark background regardless of the panel's
-        own background, so they stay readable.
-
-        Buttons:
-          +Right → opens NewViewContentDialog with direction=right,
-                   reference=this panel.
-          +Below → idem with direction=below.
-          ⚙     → opens ViewSettingsDialog (rename + future settings)
-                   targeted on this panel."""
+        """Per-render-panel action chrome: small buttons (TC toggle,
+        MR toggle, ⚙ settings) that overflow upward into the dockview
+        tab row (negative top, with overflow:visible forced on
+        dockview's content containers via app_layout CSS). Sitting on
+        the tab row gives the buttons the dockview theme's dark
+        background regardless of the panel's own background, so they
+        stay readable."""
         controller = self.server.controller
-        # Buttons sit centered in the dockview tab row. We size the
-        # wrapper to the row height (--dv-tabs-and-actions-container-
-        # height is dockview's standard CSS var) and let align-center
-        # center the buttons inside.
-        #
-        # `right` is reactive: when the top toolbar is hidden, the
-        # floating show-toolbar chevron lives at top-right of the
-        # viewport — we slide the chrome 48px to the left so the two
-        # don't overlap.
+        # Buttons sit centered in the dockview tab row, sized to the row
+        # height (--dv-tabs-and-actions-container-height is dockview's
+        # standard CSS var). `right` is reactive: when the top toolbar
+        # is hidden, the floating show-toolbar chevron lives at the
+        # viewport top-right, so the chrome slides left to avoid overlap.
         with html.Div(
             classes="d-flex align-center",
             style=(
@@ -1403,21 +1355,16 @@ class FesppMultiView(ptc.MultiView):
                 " gap: 4px;"
                 " pointer-events: auto;`",
             ),
-            # Sitting on top of dockview's tab row, our buttons' click
-            # events would otherwise bubble up and dockview would
-            # interpret the mousedown as a tab activation request —
-            # forcing the user to switch active panel just to use the
-            # buttons. Stop both events at the wrapper so dockview
-            # never sees them while leaving the buttons fully clickable.
+            # Stop mousedown/click at the wrapper so dockview doesn't
+            # read them as a tab-activation request (which would force a
+            # panel switch just to use these buttons).
             mousedown="$event.stopPropagation()",
             click="$event.stopPropagation()",
         ):
             tc_visible_var = f"show_panel_tc_{panel_id}"
             mr_visible_var = f"show_panel_mr_{panel_id}"
-            # TC toggle — icon mirrors the current `show_panel_tc_<id>`
-            # value: clock when the TC is visible in the panel, clock-
-            # remove when hidden. Greyed out when the panel has no TS
-            # property active (`panel_has_ts_by_id`).
+            # TC toggle — disabled when the panel has no TS property
+            # active (`panel_has_ts_by_id`).
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(
@@ -1435,9 +1382,7 @@ class FesppMultiView(ptc.MultiView):
                         click=f"{tc_visible_var} = !{tc_visible_var}",
                     )
                 html.Span("Toggle in-view TimeControl")
-            # MR toggle — sibling of the TC toggle. Layers icon mirrors
-            # the current `show_panel_mr_<id>` value, off variant when
-            # hidden. Greyed out when the panel has no MR property
+            # MR toggle — disabled when the panel has no MR property
             # active (`panel_has_mr_by_id`).
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
@@ -1456,34 +1401,6 @@ class FesppMultiView(ptc.MultiView):
                         click=f"{mr_visible_var} = !{mr_visible_var}",
                     )
                 html.Span("Toggle in-view Realization picker")
-            with vuetify3.VTooltip(location="bottom"):
-                with vuetify3.Template(v_slot_activator="{ props }"):
-                    vuetify3.VBtn(
-                        icon="mdi-view-split-vertical",
-                        v_bind="props",
-                        variant="text",
-                        size="small",
-                        color="white",
-                        click=(
-                            controller.open_new_view_dialog,
-                            f"['right', '{panel_id}']",
-                        ),
-                    )
-                html.Span("Split right (add view)")
-            with vuetify3.VTooltip(location="bottom"):
-                with vuetify3.Template(v_slot_activator="{ props }"):
-                    vuetify3.VBtn(
-                        icon="mdi-view-split-horizontal",
-                        v_bind="props",
-                        variant="text",
-                        size="small",
-                        color="white",
-                        click=(
-                            controller.open_new_view_dialog,
-                            f"['below', '{panel_id}']",
-                        ),
-                    )
-                html.Span("Split below (add view)")
             with vuetify3.VTooltip(location="bottom"):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(

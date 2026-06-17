@@ -52,7 +52,7 @@ class ClipPlanePanel:
                 ),
             )
             vuetify3.VSpacer()
-            # Phase 3c: one-shot snapshot/apply from a peer view.
+            # One-shot snapshot/apply from a peer view.
             render_copy_menu("clip")
 
         html.Div(

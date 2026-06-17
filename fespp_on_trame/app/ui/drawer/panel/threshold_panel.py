@@ -47,9 +47,9 @@ class ThresholdPanel:
                     color="green",
                     classes="mr-2",
                 )
-                # Phase 3c: one-shot copy of the threshold chain from
-                # another view onto the active panel. Hidden when
-                # there's only one render panel.
+                # One-shot copy of the threshold chain from another view
+                # onto the active panel. Hidden when there's only one
+                # render panel.
                 render_copy_menu("threshold")
             with vuetify3.VExpansionPanelText(classes="pa-2"):
                 self._render_body()
@@ -206,9 +206,9 @@ class ThresholdPanel:
                         " low: $event[0], high: $event[1] }"
                     ),
                 )
-                # Continuous (default) — same range slider as before,
-                # with a fine step (range / 1000) so the thumbs slide
-                # smoothly over the value space.
+                # Continuous (default) — range slider with a fine step
+                # (range / 1000) so the thumbs slide smoothly over the
+                # value space.
                 vuetify3.VRangeSlider(
                     v_else=True,
                     model_value=("[entry.low, entry.high]",),

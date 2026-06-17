@@ -1,10 +1,9 @@
 """Per-representation display type panel.
 
-Wraps ptc.RepresentBy in an expansion panel placed inside each rep's
-attribute panel. ptc.RepresentBy already targets the ParaView active source
-and re-syncs through controller.on_active_proxy_change, so the per-rep
-behavior is obtained simply by ensuring SetActiveSource(rep_source) runs
-when the active resqml representation changes (handled in fespp_active).
+Wraps ptc.RepresentBy in an expansion panel inside each rep's attribute
+panel. RepresentBy targets the ParaView active source, so per-rep behavior
+relies on SetActiveSource(rep_source) running when the active resqml
+representation changes (handled in fespp_active).
 """
 from trame.app import get_server
 from trame.widgets import vuetify3, html

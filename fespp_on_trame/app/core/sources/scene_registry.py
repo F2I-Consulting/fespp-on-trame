@@ -1,40 +1,13 @@
 """SceneRegistry — façade exposed to the engine for per-view scenes.
 
-See `doc/REFACTOR_VIEW_SCENES.md`. The registry owns:
+The registry owns:
 
   - one `ViewScene` per render view (created on `add_view`, dropped
     on `remove_view`);
   - global data-layer ops (push selectors to the EPCCollector,
     apply Z-scale across all scenes, apply representation type).
-
-For Phase 1 the registry COEXISTS with the existing
-`SourceRegistry`. The engine continues to drive
-data-loading / threshold / slice-clip through SourceRegistry, while
-SceneRegistry only tracks the view→reps mapping. As phases
-progress, methods will move from SourceRegistry to SceneRegistry.
-
-Every state-mutating method emits a `[SCENE_REG]` log line to
-stdout so the per-view bookkeeping is visible in the server log
-without any client-side instrumentation. Logs are concise (one line
-per mutation + a multi-line dump on demand) — easy to grep for.
 """
 from typing import Optional
-
-
-def _log_state(prefix: str, scenes: list, collector_source=None) -> None:
-    """Multi-line dump of the current view→reps mapping. Used after
-    every mutation so the server log stays self-narrating."""
-    print(f"[SCENE_REG] {prefix} | views={len(scenes)}")
-    for scene in scenes:
-        reps = list(scene._reps.keys())
-        clone_state = (
-            "shared"
-            if collector_source is not None and scene.clone is collector_source
-            else type(scene.clone).__name__ if scene.clone is not None else "None"
-        )
-        print(f"[SCENE_REG]   {scene.view_id} ({len(reps)} reps) clone={clone_state}")
-        for rp in reps:
-            print(f"[SCENE_REG]     {rp}")
 
 
 class SceneRegistry:
@@ -49,14 +22,13 @@ class SceneRegistry:
     # View lifecycle (called by FesppMultiView on add_view / close)
 
     def add_view(self, view_id, pv_view):
-        """Idempotent: returns the existing scene if already created.
-        The PV view is captured so the scene knows where to render
-        its per-view filters (Phase 1.b)."""
+        """Idempotent: returns the existing scene if already created. The PV
+        view is captured so the scene knows where to render its per-view
+        filters."""
         from fespp_on_trame.app.core.sources.view_scene import ViewScene
         view_id = str(view_id)
         existing = self._scenes.get(view_id)
         if existing is not None:
-            print(f"[SCENE_REG] add_view({view_id}) | already present, no-op")
             return existing
         scene = ViewScene(
             view_id=view_id,
@@ -65,8 +37,6 @@ class SceneRegistry:
             tree=self.tree,
         )
         self._scenes[view_id] = scene
-        _log_state(f"add_view({view_id})", list(self._scenes.values()),
-                   self.collector.get_source() if self.collector is not None else None)
         return scene
 
     def remove_view(self, view_id) -> None:
@@ -75,24 +45,21 @@ class SceneRegistry:
         view_id = str(view_id)
         scene = self._scenes.pop(view_id, None)
         if scene is None:
-            print(f"[SCENE_REG] remove_view({view_id}) | not present, no-op")
             return
         try:
             scene.destroy()
-        except Exception as exc:
-            print(f"[SCENE_REG] remove_view({view_id}) destroy failed: {exc}")
-        _log_state(f"remove_view({view_id})", list(self._scenes.values()),
-                   self.collector.get_source() if self.collector is not None else None)
+        except Exception:
+            pass
 
     def get_scene(self, view_id):
         return self._scenes.get(str(view_id))
 
     def scene_for_pv_view(self, pv_view):
-        """Reverse lookup: scene whose `pv_view` proxy IS `pv_view`.
-        Used by `source_resolver.apply_color_array` to find the scene
-        that owns a display's view so it can swap in a per-view LUT.
-        Returns None when `pv_view` doesn't belong to any scene
-        (legacy / pre-Phase-1 callers passing the global active view)."""
+        """Reverse lookup: scene whose `pv_view` proxy IS `pv_view`. Used by
+        `source_resolver.apply_color_array` to find the scene that owns a
+        display's view so it can swap in a per-view LUT. Returns None when
+        `pv_view` doesn't belong to any scene (a caller passing the global
+        active view)."""
         if pv_view is None:
             return None
         for scene in self._scenes.values():
@@ -131,22 +98,15 @@ class SceneRegistry:
     # reps set. Called by the engine after a data_load run.
 
     def sync_loaded_reps(self, loaded_rep_paths) -> None:
-        """For every scene, add a RepInScene for each loaded rep that
-        isn't there yet, and remove RepInScenes whose rep_path is
-        no longer loaded. Idempotent. Skips the log when no scene
-        was mutated.
+        """For every scene, add a RepInScene for each loaded rep that isn't
+        there yet, and remove RepInScenes whose rep_path is no longer loaded.
+        Idempotent. Skips the log when no scene was mutated.
 
-        Phase 3a: after `scene.add_rep(r)` we **eagerly** force the
-        per-view EnergisticsExtractor creation + replicate the active
-        view's ColorBy state for that rep onto the new scene. Without
-        this, a split view doesn't get its per-view pipeline until the
-        user clicks a property in it — and meanwhile the new view
-        shows a stale legacy display (the Z-fighting / phantom-outline
-        bug observed during smoke test).
-
-        This is the minimal "view split inherits active view state"
-        bootstrap for slice/clip/threshold; the full snapshot/apply
-        replication (D2 from the RFC) lands in Phase 3c."""
+        After `scene.add_rep(r)` it eagerly forces per-view
+        EnergisticsExtractor creation and replicates the active view's ColorBy
+        state for that rep onto the new scene, so a split view paints its
+        per-view pipeline immediately instead of waiting for the user to click
+        a property in it (and showing a stale legacy display meanwhile)."""
         loaded = set(loaded_rep_paths or [])
         added = 0
         removed = 0
@@ -159,12 +119,6 @@ class SceneRegistry:
             for r_path in existing - loaded:
                 scene.remove_rep(r_path)
                 removed += 1
-        if added or removed:
-            _log_state(
-                f"sync_loaded_reps | +{added} added, -{removed} removed",
-                list(self._scenes.values()),
-                self.collector.get_source() if self.collector is not None else None,
-            )
 
     def _eager_setup_rep_in_scene(self, scene, rep, rep_path) -> None:
         """Make a freshly-added (scene, rep_path) pair render
@@ -181,24 +135,23 @@ class SceneRegistry:
         view that still needs an explicit click to color)."""
         if rep is None or not rep_path:
             return
-        # (1) Force per-view extractor (skips IjkGrid as Phase 3b territory).
+        # (1) Force per-view extractor.
         try:
             rep.source()
         except Exception as exc:
-            print(f"[SCENE_REG] eager source({scene.view_id}/{rep_path}): {exc}")
             return
 
-        # (1b) A rep the engine flagged hidden in THIS view's bucket
-        # (every NON-active panel at first load) is BUILT above but must
-        # not RENDER here — so a newly-selected rep appears only in the
-        # active view. The non-IJK extractor already honoured the bucket
-        # inside `_ensure_extractor`; this also covers the IJK per-view
-        # pipeline (whose `IjkGrid.show()` always re-shows its slicers).
+        # (1b) A rep the engine flagged hidden in THIS view's bucket (every
+        # NON-active panel at first load) is BUILT above but must not RENDER
+        # here, so a newly-selected rep appears only in the active view. The
+        # non-IJK extractor already honoured the bucket inside
+        # `_ensure_extractor`; this also covers the IJK per-view pipeline
+        # (whose `IjkGrid.show()` always re-shows its slicers).
         try:
             if rep._hidden_in_scene():
                 rep.hide_in_scene_view()
         except Exception as exc:
-            print(f"[SCENE_REG] eager hide({scene.view_id}/{rep_path}): {exc}")
+            pass
 
         # (2) Replicate the active view's ColorBy for this rep onto
         #     the new scene. The bind point per rep is stored in
@@ -250,7 +203,7 @@ class SceneRegistry:
                 realization_idx=realization_idx,
             )
         except Exception as exc:
-            print(f"[SCENE_REG] eager colorby({scene.view_id}/{rep_path}): {exc}")
+            pass
 
     def _source_registry(self):
         """Lazy fetch of `source_registry` from server.context — same
@@ -297,34 +250,26 @@ class SceneRegistry:
             try:
                 rep.set_marker_visible(marker_path, True)
             except Exception as exc:
-                print(f"[SCENE_REG] apply_visible_markers"
-                      f"({view_id}/{marker_path}): {exc}")
+                pass
 
     # ------------------------------------------------------------------
-    # Phase 3b — per-view IjkGrid sync
+    # Per-view IjkGrid sync
     #
-    # The engine drives IjkGrid property selection through the legacy
-    # `SourceRegistry.ensure_ijk_grid(rep_path, prop_node_id)` flow.
-    # When that fires we fan the new property to every per-view
-    # IjkGrid so split views stay in step with the active selection.
-    # Without this hook, a property change updates only the legacy
-    # shared IjkGrid and the per-view variants render the previous
-    # property until they're recreated.
+    # The engine drives IjkGrid property selection through
+    # `SourceRegistry.ensure_ijk_grid(rep_path, prop_node_id)`. When that
+    # fires we fan the new property to every per-view IjkGrid so split views
+    # stay in step with the active selection; otherwise the per-view variants
+    # would render the previous property until recreated.
 
     def mirror_legacy_ijk_state(self, rep_path, legacy_ijk) -> None:
-        """Copy the legacy IjkGrid's full slicer / volume / mode /
-        visibility state onto every per-view IjkGrid for `rep_path`.
+        """Copy the legacy IjkGrid's full slicer / volume / mode / visibility
+        state onto every per-view IjkGrid for `rep_path`.
 
-        Stop-gap until per-view IjkGrid SLICER divergence is wired up
-        through the UI panel — for now per-view IjkGrids stay in
-        lockstep with the legacy slicer config (the per-view
-        divergence in Phase 3b applies to ColorBy / slice plane /
-        clip plane / threshold chain, which is the bulk of the user's
-        visual story). Slicer-position divergence per view requires
-        the `ui_slices_*` state vars to become per-view, plus a
-        republish on panel switch — separate epic. Until then, this
-        mirror prevents the per-view variants from rendering stale
-        slicer positions after a UI edit on the active panel."""
+        Per-view IjkGrids stay in lockstep with the legacy slicer config
+        (per-view divergence covers ColorBy / slice plane / clip plane /
+        threshold chain). This mirror keeps the per-view variants from
+        rendering stale slicer positions after a UI edit on the active
+        panel."""
         if not rep_path or legacy_ijk is None:
             return
         for scene in self._scenes.values():
@@ -353,8 +298,7 @@ class SceneRegistry:
                 ijk.apply_volume_visible(legacy_ijk._volume_visible)
                 ijk.show()
             except Exception as exc:
-                print(f"[SCENE_REG] mirror_legacy_ijk_state"
-                      f"({scene.view_id}/{rep_path}): {exc}")
+                pass
 
     def refresh_per_view_ijk_for_rep(self, rep_path, prop_node_id) -> None:
         """For each scene that has a RepInScene for `rep_path`, call
@@ -371,21 +315,19 @@ class SceneRegistry:
             try:
                 rep.refresh_per_view_ijk_property(prop_node_id)
             except Exception as exc:
-                print(f"[SCENE_REG] refresh_per_view_ijk_for_rep"
-                      f"({scene.view_id}/{rep_path}): {exc}")
+                pass
 
     # ------------------------------------------------------------------
-    # Phase 3c — view replication via snapshot/apply primitives
+    # View replication via snapshot/apply primitives
     #
-    # Builds on `RepInScene.snapshot_*` / `apply_*`. Used by:
-    #   - the "Copy from View X" buttons (when wired up in Phase 3c UI);
-    #   - the view-split inheritance handler (decision D2: a new view
-    #     starts with the active view's full state).
+    # Builds on `RepInScene.snapshot_*` / `apply_*`. Used by the "Copy from
+    # View X" buttons and the view-split inheritance handler (a new view
+    # starts with the active view's full state).
     #
-    # `_eager_setup_rep_in_scene` above provides the BOOTSTRAP for new
-    # reps in a new scene (per-view extractor + ColorBy replication).
-    # `replicate_view` extends that with per-concern state copy: every
-    # rep's slice / clip / threshold chain is mirrored from src to dst.
+    # `_eager_setup_rep_in_scene` above bootstraps new reps in a new scene
+    # (per-view extractor + ColorBy replication). `replicate_view` extends
+    # that with per-concern state copy: every rep's slice / clip / threshold
+    # chain is mirrored from src to dst.
 
     def replicate_view(self, src_view_id, dst_view_id, *,
                        concerns: tuple[str, ...] = ("threshold", "slice", "clip", "ijk_slicers")) -> None:
@@ -395,16 +337,13 @@ class SceneRegistry:
         single concern (e.g. "Copy threshold chain from View 2" calls
         `replicate_view(2, active, concerns=("threshold",))`).
 
-        Default concerns include `ijk_slicers` (Phase 3b full): a split
-        view inherits the source view's per-view IjkGrid slicer / volume
-        / mode state. Non-IjkGrid reps return empty `snapshot_ijk_slicers`
-        and the apply is a no-op for them, so the concern is safe to
-        include unconditionally."""
+        The `ijk_slicers` concern makes a split view inherit the source
+        view's per-view IjkGrid slicer / volume / mode state. Non-IjkGrid reps
+        return an empty `snapshot_ijk_slicers` and the apply is a no-op for
+        them, so the concern is safe to include unconditionally."""
         src = self.get_scene(str(src_view_id))
         dst = self.get_scene(str(dst_view_id))
         if src is None or dst is None:
-            print(f"[SCENE_REG] replicate_view({src_view_id}→{dst_view_id}):"
-                  f" src/dst not found")
             return
         if src is dst:
             return
@@ -421,24 +360,22 @@ class SceneRegistry:
                 try:
                     dst_rep.apply_ijk_slicers(src_rep.snapshot_ijk_slicers())
                 except Exception as exc:
-                    print(f"[SCENE_REG] replicate ijk_slicers {dst_view_id}/{rep_path}: {exc}")
+                    pass
             if "threshold" in concerns:
                 try:
                     dst_rep.apply_threshold_chain(src_rep.snapshot_threshold_chain())
                 except Exception as exc:
-                    print(f"[SCENE_REG] replicate threshold {dst_view_id}/{rep_path}: {exc}")
+                    pass
             if "slice" in concerns:
                 try:
                     dst_rep.apply_slice(src_rep.snapshot_slice())
                 except Exception as exc:
-                    print(f"[SCENE_REG] replicate slice {dst_view_id}/{rep_path}: {exc}")
+                    pass
             if "clip" in concerns:
                 try:
                     dst_rep.apply_clip(src_rep.snapshot_clip())
                 except Exception as exc:
-                    print(f"[SCENE_REG] replicate clip {dst_view_id}/{rep_path}: {exc}")
-        print(f"[SCENE_REG] replicate_view({src_view_id}→{dst_view_id})"
-              f" concerns={concerns}")
+                    pass
 
     # ------------------------------------------------------------------
     # Teardown

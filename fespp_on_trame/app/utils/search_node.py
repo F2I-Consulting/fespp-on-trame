@@ -1,6 +1,3 @@
-# -----------------------------------------------------------------------------
-# find parent node 
-# -----------------------------------------------------------------------------
 def find_parent_id(tree, node_id) -> None:
     for item in tree:
         if item.get("id") == node_id:
@@ -9,18 +6,12 @@ def find_parent_id(tree, node_id) -> None:
             return find_parent_id(item["children"], node_id)
     return None
 
-# -----------------------------------------------------------------------------
-# find node by id
-# -----------------------------------------------------------------------------
 def find_item_node_id(tree, node_id) -> None:
     for item in tree:
         if item.get("id") == node_id:
             return item
     return None
 
-# -----------------------------------------------------------------------------
-# find node id -> path
-# -----------------------------------------------------------------------------
 def node_id_to_path(tree, node_id) -> str:
     for node in tree:
         if node.get("id") == node_id:
@@ -31,9 +22,6 @@ def node_id_to_path(tree, node_id) -> str:
                 return path
     return None
 
-# -----------------------------------------------------------------------------
-# find node id -> title
-# -----------------------------------------------------------------------------
 def node_id_to_title(tree, node_id) -> str:
     for node in tree:
         if node.get("id") == node_id:
@@ -44,9 +32,6 @@ def node_id_to_title(tree, node_id) -> str:
                 return title
     return None
 
-# -----------------------------------------------------------------------------
-# find node id -> type
-# -----------------------------------------------------------------------------
 def node_id_to_type(tree, node_id) -> str:
     for node in tree:
         if node.get("id") == node_id:
@@ -57,9 +42,6 @@ def node_id_to_type(tree, node_id) -> str:
                 return type
     return None
 
-# -----------------------------------------------------------------------------
-# find ijkgrid parent node id
-# -----------------------------------------------------------------------------
 def find_ijkgrid(tree, node_id) -> None:
     if node_id == 0:
         return

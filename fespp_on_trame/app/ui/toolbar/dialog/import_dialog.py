@@ -7,11 +7,11 @@ from fespp_on_trame.app.io.http_download import download_file_from_url
 # Inline JS run on Import-button click.
 #   "files" tab: streams a multipart POST to /upload (or
 #     /api/<sid>/upload behind the proxy). Reaches `window` via
-#     ownerDocument.defaultView so it bypasses Vue 3's template
-#     whitelist; filters the FileList against upload_file_names so
-#     per-file removals stick; sends raw binary, no base64.
-#   "osdu" tab: just toggles execute_action so the Python handler
-#     downloads via download_file_from_url.
+#     ownerDocument.defaultView to bypass Vue 3's template whitelist;
+#     filters the FileList against upload_file_names so per-file
+#     removals stick; sends raw binary (no base64).
+#   "osdu" tab: toggles execute_action so the Python handler downloads
+#     via download_file_from_url.
 _IMPORT_CLICK_JS = (
     "upload_debug='start';"
     "if (import_tab === 'files') {"
@@ -89,9 +89,8 @@ class ImportDialog:
 
     def _on_execute_action(self, execute_action, **kwargs):
         """Run the right import path when execute_action flips to True.
-        Local-file uploads are NOT handled here — the inline JS above
-        sends a multipart POST to /upload directly. We only handle
-        remote URLs and OSDU here."""
+        Handles remote URLs and OSDU only; local-file uploads go
+        straight to /upload via the inline JS above."""
         if not execute_action:
             return
 
@@ -100,7 +99,12 @@ class ImportDialog:
         if current_tab == "osdu":
             self._handle_osdu_import()
         elif self.state.remote_files_location:
-            list_url = self.state.remote_files_location.split('|')
+            # URLs are separated with '&' (per the field label/placeholder).
+            list_url = [
+                u.strip()
+                for u in self.state.remote_files_location.split('&')
+                if u.strip()
+            ]
             temp_dir = mkdtemp()
             epc_paths = []
 
@@ -121,15 +125,12 @@ class ImportDialog:
         open so the user can pick a dataspace once the connection is
         up."""
         if not self.state.osdu_etp_url:
-            print("Error: ETP URL is required")
             return
 
         if not self.state.osdu_data_partition:
-            print("Error: OSDU Data Partition is required")
             return
 
         if not self.state.osdu_token:
-            print("Error: OSDU Token is required")
             return
 
         etp_url = self.state.osdu_etp_url
@@ -163,12 +164,10 @@ class ImportDialog:
             max_width="760",
         ):
             with vuetify3.VCard():
-                # Title (harmonized)
                 with vuetify3.VCardTitle(classes="d-flex align-center bg-blue-grey-lighten-5"):
                     vuetify3.VIcon(icon="mdi-cloud-upload", class_="mr-0", color="blue")
                     html.Span("Import from", classes="pl-4")
 
-                # Tabs for From Files / From OSDU (styled like drawer tabs)
                 with vuetify3.VCardText(classes="py-2"):
                     with vuetify3.VTabs(
                         v_model=("import_tab", "files"),
@@ -201,8 +200,7 @@ class ImportDialog:
 
                             vuetify3.VDivider(classes="mb-4")
 
-                            # Local file upload via HTTP multipart (no
-                            # base64-over-WebSocket).
+                            # Local file upload via HTTP multipart.
                             with vuetify3.VRow(classes="ma-0"):
                                 with vuetify3.VCol(cols="12", classes="pa-0"):
                                     with html.Div(classes="d-flex align-center mb-3"):
@@ -233,12 +231,11 @@ class ImportDialog:
                                                 " opacity: 0; cursor: pointer; z-index: 1;"
                                             ),
                                             # A native <input type=file> REPLACES its FileList on
-                                            # every pick/drop — it never accumulates. To make
+                                            # every pick/drop, so it never accumulates. To make
                                             # successive drops add up, keep the File objects in a
-                                            # plain array on the element (`_fesppFiles`) and append
-                                            # each new batch (de-duped by name+size). File refs stay
-                                            # valid even after the input's own FileList is replaced.
-                                            # The Import JS reads `_fesppFiles`, not `input.files`.
+                                            # plain array on the element (`_fesppFiles`), de-duped
+                                            # by name+size. The Import JS reads `_fesppFiles`, not
+                                            # `input.files`.
                                             change=(
                                                 "var _inp=$event.target;"
                                                 "var _acc=_inp._fesppFiles||[];"
@@ -253,8 +250,6 @@ class ImportDialog:
                                             ),
                                         )
 
-                                    # Selected-files list (one per row,
-                                    # individual remove).
                                     with html.Div(
                                         v_show="upload_file_count > 0 && !upload_uploading",
                                         style="margin-top: 8px; border-radius: 4px; overflow: hidden;",
@@ -286,10 +281,9 @@ class ImportDialog:
                                                     variant="text",
                                                     size="x-small",
                                                     color="red-lighten-2",
-                                                    # Drop this file from BOTH the display list and
+                                                    # Drop this file from both the display list and
                                                     # the input's accumulated array, so a later drop
-                                                    # doesn't re-introduce it (the change handler
-                                                    # rebuilds upload_file_names from `_fesppFiles`).
+                                                    # doesn't re-introduce it.
                                                     click=(
                                                         "var _doc=($event&&$event.target)?$event.target.ownerDocument:document;"
                                                         "var _inp=_doc&&_doc.getElementById('fesppFileInput');"
@@ -300,7 +294,6 @@ class ImportDialog:
                                                     style="flex-shrink: 0; margin-left: 4px;",
                                                 )
 
-                                    # Progress bar — visible during upload.
                                     with html.Div(
                                         v_show="upload_uploading",
                                         style="margin-top: 16px;",
@@ -313,7 +306,7 @@ class ImportDialog:
                                             indeterminate=("upload_progress === 0",),
                                         )
                                         html.P(
-                                            "{{ upload_progress > 0 ? 'Upload en cours… ' + upload_progress + '%' : 'Transfert en cours…' }}",
+                                            "{{ upload_progress > 0 ? 'Uploading… ' + upload_progress + '%' : 'Transferring…' }}",
                                             style="text-align: center; color: #607d8b; font-size: 0.85rem; margin-top: 4px;",
                                         )
 

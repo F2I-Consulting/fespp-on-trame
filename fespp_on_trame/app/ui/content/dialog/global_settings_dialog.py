@@ -29,8 +29,7 @@ class GlobalSettingsDialog:
 
         state.setdefault("global_settings_dialog_visible", False)
         # Hardcoded "global" — the editors read this state var and
-        # branch on its value. With the VSelect removed, it stays
-        # locked to "global" for this dialog's lifetime.
+        # branch on its value. Locked to "global" for this dialog.
         state.setdefault(_SCOPE_VAR, _GLOBAL)
 
         controller.global_settings_open = self.open
@@ -41,8 +40,7 @@ class GlobalSettingsDialog:
 
     def open(self):
         # Re-assert the scope on every open so a stale per-view value
-        # left over from an earlier debug / external write doesn't
-        # leak into the global dialog.
+        # can't leak into the global dialog.
         self.state.settings_scope = _GLOBAL
         self.state.global_settings_dialog_visible = True
 

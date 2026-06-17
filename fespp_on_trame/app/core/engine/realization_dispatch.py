@@ -11,8 +11,8 @@ with other views.
 
 This module owns the per-(view, array_path) realization choice in
 `state.ui_active_realization_by_array_by_view`. No reconcile with
-the plugin is needed — loading is already handled by the tree
-selection mechanism; the picker only drives ColorBy through
+the plugin is needed — loading is handled by the tree selection
+mechanism; the picker only drives ColorBy through
 `source_resolver.apply_color_array(realization_idx=...)`.
 
 Orthogonal to `active_array.py`: this module owns the realization
@@ -62,8 +62,7 @@ def available_realization_indices(tree, array_path: str) -> list[int]:
 
 def default_realization_for(state, tree, array_path: str) -> Optional[int]:
     """Pick the realization index to use on first activation of an MR
-    property in a view. The smallest available index — there is no
-    longer a global cursor to honour."""
+    property in a view: the smallest available index."""
     available = available_realization_indices(tree, array_path)
     return available[0] if available else None
 
@@ -136,9 +135,8 @@ def recompute_global_mr_specs(state) -> list:
     `mixed` flag set when the panels using this MR property don't all
     agree on the active index.
 
-    Sort order follows `recompute_panel_mr_specs` (alphabetical on
-    title) so the global control row order matches what users see in
-    each panel."""
+    Sorted alphabetically on title (like `recompute_panel_mr_specs`)
+    so the global control row order matches the per-panel order."""
     specs_by_panel = state.ui_panel_active_mr_specs_by_id or {}
     if not specs_by_panel:
         return []

@@ -35,11 +35,10 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     def __init__(self):
         # Force hexa format BEFORE the parent applies its #RRGGBB default.
-        # Alpha 00 → NaN cells fully transparent by default (the app
-        # convention: valid values get flat-1 opacity via the PWF, NaN
-        # cells are hidden unless the user dials in an alpha here). The
-        # red hue is kept so a user raising the alpha gets a visible
-        # "no data" marker.
+        # App convention: valid values get flat-1 opacity via the PWF;
+        # NaN cells default to alpha 00 (transparent) unless the user
+        # dials in an alpha here. The red hue means raising the alpha
+        # yields a visible "no data" marker.
         state.setdefault("nan_color", "#FF000000")
         super().__init__()
 
@@ -112,12 +111,10 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         self.build_opacity_editor_table()
 
     def _should_apply_state_change(self) -> bool:
-        """Drawer instances never own state.colors / state.opacities /
-        etc. while the diff-colors dialog is open — the dialog's own
-        editor is the writer at that point, and our drawer handler
-        would otherwise overwrite the active tree array's LUT with the
-        diff's values. Subclasses can override (e.g. the diff dialog's
-        editor inverts this check)."""
+        """While the diff-colors dialog is open it owns state.colors /
+        state.opacities, so the drawer editor must stand down to avoid
+        clobbering the active tree array's LUT. Subclasses can override
+        (the diff dialog's editor inverts this check)."""
         return not bool(self.state.diff_colors_dialog_visible)
 
     def update_scalar_range(self) -> None:
@@ -128,7 +125,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         Query the target scene's `RepInScene.source()` (per-view
         EnergisticsExtractor) so MR `_real_<idx>` arrays are found —
         ptc's `self.source_proxy` (= `GetActiveSource`) returns the
-        legacy shared `ExtractBlock` which doesn't carry them."""
+        shared `ExtractBlock`, which doesn't carry them."""
         raw_name = self.state.active_color_array_name or ""
         if not raw_name:
             self.state.scalar_range = [0, 1]
@@ -139,9 +136,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             self.state.scalar_range = [0, 1]
             return
         # Prefer the per-view scene's RepInScene source for the array
-        # info lookup (Phase 3a/3b — MR `_real_<idx>` arrays live on
-        # the per-view EnergisticsExtractor, not on the legacy
-        # ExtractBlock that `GetActiveSource()` returns).
+        # info lookup — MR `_real_<idx>` arrays live on the per-view
+        # EnergisticsExtractor, not on the ExtractBlock that
+        # `GetActiveSource()` returns.
         source = None
         try:
             from trame.app import get_server
@@ -177,20 +174,14 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             self.state.scalar_range = [0, 1]
             return
         try:
-            # Force a FULL pipeline pass (RequestData), not just the
-            # info pass — the per-view IjkGrid's rep_data extractor
-            # (`_src_extract_init`, returned by `RepInScene.source()`
-            # for IjkGrid reps) is built with only
-            # `UpdatePipelineInformation()` at creation time (see
-            # `IjkGrid.set_node_id` per-view path); without a data
-            # pass here `GetDataInformation()` reports
+            # Force a FULL pipeline pass (RequestData), not just the info
+            # pass — the per-view IjkGrid's rep_data extractor (returned
+            # by `RepInScene.source()`) is built with only
+            # `UpdatePipelineInformation()` at creation time. Without a
+            # data pass here `GetDataInformation()` reports
             # `NumberOfCells=0` and `GetArrayInformation(base_name)`
-            # returns None even though the property array is present
-            # on the downstream slicers. Symptom: the
-            # ColorOpacityEditor widget shows no range / a flat
-            # histogram while the scalar bar and on-screen render
-            # are correct — observed on TimeSeries IjkGrid after a
-            # 2nd selector add.
+            # returns None even though the property array is present on
+            # the downstream slicers.
             source.UpdatePipeline()
             source_info = source.GetDataInformation()
         except Exception:
@@ -239,11 +230,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             return
         super().on_colors_changed(*args, **kwargs)
         # ptc's `update_color_transfer_function` writes RGBPoints but
-        # never calls Render — the LUT is mutated server-side and the
-        # client never sees the new gradient. AND in pinned mode the
-        # default `view_update` would refresh the focused panel, not
-        # the drawer target where the edit actually applies. Render +
-        # push to the target panel explicitly.
+        # never Renders, and in pinned mode the default `view_update`
+        # refreshes the focused panel rather than the drawer target
+        # where the edit applies. Render + push to the target explicitly.
         source_resolver.render_and_push_target(self.server.controller)
 
     @change("preset_name")
@@ -278,10 +267,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 has_transparency = any(op[1] < 0.999 for op in opacities)
                 lut.EnableOpacityMapping = 1 if has_transparency else 0
         super().on_opacities_changed(*args, **kwargs)
-        # Parent's `update_opacity_transfer_function` does call Render
-        # + view_update, but on the FOCUSED panel (active view in
-        # pvsimple). Re-Render + push on the drawer target so pinned
-        # mode refreshes the right panel.
+        # Parent's `update_opacity_transfer_function` Renders the FOCUSED
+        # panel (active view in pvsimple). Re-Render + push on the drawer
+        # target so pinned mode refreshes the right panel.
         source_resolver.render_and_push_target(self.server.controller)
 
     @change("nan_color")

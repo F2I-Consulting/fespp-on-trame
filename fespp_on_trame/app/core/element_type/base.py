@@ -12,9 +12,9 @@ from .enums import (
 
 
 class ElementType:
-    """Base contract. Defaults are deliberately a NEUTRAL standard rep — the
-    base is only hit directly by the unknown-kind fallback; every concrete
-    family (Grouping / Representation / Leaf) sets its own defaults."""
+    """Base contract. Defaults are a NEUTRAL standard rep — the base is only
+    hit directly by the unknown-kind fallback; every concrete family
+    (Grouping / Representation / Leaf) sets its own defaults."""
 
     #: runtime kind strings this class matches (set on concrete classes)
     KINDS: tuple = ()
@@ -66,9 +66,9 @@ class ElementType:
 
     # --- Child management (frames: channels / markers) ------------------
     # Default no-ops — only FrameRep subclasses own children. `ris` is the
-    # RepInScene (Option A: it keeps the per-(rep,view) state; the stateless
-    # singleton reads/writes it). This is where the per-type behaviour lives
-    # (exclusive log vs multi marker), not a scattered `if kind ==`.
+    # RepInScene: it keeps the per-(rep, view) state, the stateless singleton
+    # reads/writes it. Per-type behaviour (exclusive log vs multi marker)
+    # lives in those overrides.
 
     def set_child_visible(self, ris, child_path, visible):
         """Show/hide one child partition (channel/marker) in the rep's view."""
@@ -104,9 +104,9 @@ class ElementType:
         """Hide this rep's per-view pipeline in ris.scene.pv_view."""
         return None
 
-    # --- Source construction (Option A: ris keeps the state) ------------
+    # --- Source construction --------------------------------------------
     # `ensure_source` returns the HEAD proxy ColorBy/display use; the actual
-    # per-(rep,view) proxy is built by the strategy and STORED on `ris`
+    # per-(rep, view) proxy is built by the strategy and STORED on `ris`
     # (ris._extractor / ris._per_view_ijk). Base = no source.
 
     def ensure_source(self, ris):

@@ -112,10 +112,8 @@ class PlaneWidget:
                 "representations", "ImplicitPlaneWidgetRepresentation",
             )
         except Exception as exc:
-            print(f"[WARNING] PlaneWidget create {self._id_suffix}: {exc}")
             return
         if widget is None:
-            print(f"[WARNING] PlaneWidget proxy not registered in this PV build")
             return
 
         reg_name = f"plane_widget_{_sanitize(self._id_suffix)}"
@@ -135,7 +133,7 @@ class PlaneWidget:
             if cs is not None and hasattr(cs, "PlaceWidget"):
                 cs.PlaceWidget([b[0], b[1], b[2], b[3], b[4], b[5]])
         except Exception as exc:
-            print(f"[WARNING] PlaneWidget PlaceWidget: {exc}")
+            pass
 
         # Attach to the view's hidden reps so the interactor sees it.
         try:
@@ -144,7 +142,7 @@ class PlaneWidget:
                 hidden.AddProxy(widget)
                 view.SMProxy.UpdateVTKObjects()
         except Exception as exc:
-            print(f"[WARNING] PlaneWidget add to view: {exc}")
+            pass
 
         _set_prop_scalar(widget, "Enabled", 1)
         _set_prop_scalar(widget, "Visibility", 1)
@@ -164,7 +162,7 @@ class PlaneWidget:
         try:
             self._obs_tag = widget.AddObserver("EndInteractionEvent", _on_end)
         except Exception as exc:
-            print(f"[WARNING] PlaneWidget AddObserver: {exc}")
+            pass
         self._view = view
 
     def sync(self, origin, normal):

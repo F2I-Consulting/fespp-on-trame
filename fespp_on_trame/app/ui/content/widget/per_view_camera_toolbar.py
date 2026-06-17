@@ -1,8 +1,8 @@
 """Per-view camera control toolbar.
 
-Renders the same set of buttons as the legacy global ResetCameraButtons
-(reset / +X / +Y / +Z / 2D↔3D toggle), but scoped to a single render
-panel plus the panels it's linked to via `state.view_links`.
+Renders reset / +X / +Y / +Z / 2D↔3D-toggle buttons scoped to a
+single render panel plus the panels it's linked to via
+`state.view_links`.
 
 Each panel owns its own instance. Pair it with `ViewLinkMenu` (the
 magnet button) which mutates `state.view_links` to define the
@@ -33,7 +33,7 @@ class PerViewCameraToolbar:
         mv = getattr(self._server.context, "multi_view", None)
         if mv is None:
             return [self._panel_id]
-        pv_internal = mv._pv_internal or {}
+        pv_internal = mv.panel_pv_views()
         linked = (self._state.view_links or {}).get(self._panel_id, [])
         out = [self._panel_id]
         for pid in linked:
@@ -50,8 +50,8 @@ class PerViewCameraToolbar:
             if v is not None:
                 yield self._panel_id, v, None
             return
-        pv_views = mv._pv_internal or {}
-        html_views = mv._html_views or {}
+        pv_views = mv.panel_pv_views()
+        html_views = mv.panel_html_views()
         for pid in self._target_panel_ids():
             pv_v = pv_views.get(pid)
             if pv_v is not None:

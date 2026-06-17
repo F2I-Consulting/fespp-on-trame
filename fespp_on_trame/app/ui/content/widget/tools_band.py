@@ -34,7 +34,7 @@ class ToolsBand:
                 " background: #f5f5f5;"
             ),
         ):
-            # Left-of-center spacer (keeps the center group centered).
+            # Left spacer keeps the center group centered.
             html.Div(style="flex: 1;")
             self._render_global_time_control()
             self._render_global_realization_picker()
@@ -43,11 +43,10 @@ class ToolsBand:
             self._render_settings_cog()
 
     def _render_global_time_control(self):
-        """Centered global TC. namespace="" keeps the legacy state
-        names (time_index / time_value) that changeTimeLabel and
-        TimeSeries still read. Outer v_if collapses the slot entirely
-        when no TS is in play, so the surrounding spacers collapse
-        the right group against the left edge with no leftover gap."""
+        """Centered global TC. namespace="" keeps the state names
+        (time_index / time_value) that changeTimeLabel and TimeSeries
+        read. The outer v_if collapses the slot entirely when no TS is
+        in play, so the spacers leave no leftover gap."""
         with html.Div(
             v_if=("ptc_show_vcr", False),
             classes="d-flex align-center",
@@ -74,14 +73,12 @@ class ToolsBand:
             GlobalRealizationPicker().render()
 
     def _render_stats_button(self):
-        """Open / close toggle for the Descriptive Statistics
-        floating overlay. Only rendered when at least one property
-        has its chart icon active in the tree
-        (`ui_stats_pinned_paths` non-empty) — without pinned
-        properties the panel would just show its empty-state hint,
-        and exposing the button is misleading. Pinned properties
-        + their per-Original snapshots survive a close, so
-        reopening shows the previous state."""
+        """Open / focus toggle for the Descriptive Statistics floating
+        overlay. Only rendered when at least one property is pinned
+        (`ui_stats_pinned_paths` non-empty); without one the panel
+        would only show its empty-state hint. Pinned properties + their
+        per-Original snapshots survive a close, so reopening restores
+        the previous state."""
         with html.Div(
             v_if=(
                 "ui_stats_pinned_paths"

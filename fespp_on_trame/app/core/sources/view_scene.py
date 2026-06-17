@@ -1,31 +1,20 @@
 """ViewScene — one render view's sub-pipeline.
 
-See `doc/REFACTOR_VIEW_SCENES.md` for the full design rationale. In
-short: every render panel gets its own `ViewScene` that will own:
+Every render panel gets its own `ViewScene` that owns:
 
   - a `vtkEPCCollectorClone` source proxy chained on the global
-    EPCCollector (deferred to Phase 2 — until then the scene reuses
-    `collector.get_source()` directly);
-  - a dict of `RepInScene` instances, one per loaded rep currently
-    rendered in this view, each owning the per-(rep, view) filters
-    (slice / clip / threshold chain) that need to diverge across
-    views.
-
-Phase 1 status (this commit):
-  - Lifecycle (`__init__`, `add_rep`, `remove_rep`, `destroy`) wired
-    but the per-view PV pipeline isn't yet — `_clone` is set to the
-    collector's source proxy as a transparent stand-in. RepInScene
-    instances don't yet drive their own slice/clip; that comes in
-    Phase 1.b once the API is validated.
+    EPCCollector (falls back to `collector.get_source()` when the plugin
+    doesn't expose the clone);
+  - a dict of `RepInScene` instances, one per loaded rep currently rendered
+    in this view, each owning the per-(rep, view) filters (slice / clip /
+    threshold chain) that diverge across views.
 """
 from typing import Optional
 
 
 class ViewScene:
-    """Per-render-view scene root.
-
-    Currently a thin container that tracks which reps are loaded in
-    this view; expands over phases to own the per-view pipeline."""
+    """Per-render-view scene root — tracks which reps are loaded in this view
+    and owns its per-view pipeline (clone + per-(rep, view) reps + LUTs)."""
 
     def __init__(self, view_id, pv_view, collector, tree):
         """
@@ -40,43 +29,33 @@ class ViewScene:
         self.collector = collector
         self.tree = tree
 
-        # Phase 2: create a `vtkEPCCollectorClone` filter chained on the
-        # collector. ShallowCopy passthrough — zero data duplication,
-        # propagation 100% native PV (any update on the collector
-        # invalidates the clone, which invalidates downstream filters
-        # via the standard pipeline mechanism). The clone is NEVER
-        # shown in any view: it's a structural anchor in the SM graph,
-        # not a visible source. Phase 3 will chain per-(view, rep)
-        # ExtractBlocks on it; for now slice / clip still chain on
-        # the legacy per-rep ExtractBlock from SourceRegistry.
+        # `vtkEPCCollectorClone` filter chained on the collector. ShallowCopy
+        # passthrough — zero data duplication; any update on the collector
+        # invalidates the clone via the standard PV pipeline. The clone is
+        # NEVER shown: it's a structural anchor in the SM graph on which
+        # per-(view, rep) extractors chain, not a visible source.
         self._clone = self._create_clone() if collector is not None else None
 
         self._reps: dict = {}  # rep_path -> RepInScene
 
-        # Per-(scene, array) LUT / PWF proxies. Default PV behaviour
-        # makes `GetColorTransferFunction(name)` a singleton keyed by
-        # array name — every display ColorBy'd with the same name
-        # shares the same LUT, so a COE edit in one view bleeds into
-        # every other view. We register a distinct LUT (and matching
-        # opacity-tf) per `(scene, base_name)` under a unique name
-        # `f"{base}__{view_id}"` and re-assign each display's
-        # `LookupTable` / `ScalarOpacityFunction` to it after `ColorBy`.
-        # Maps below are populated lazily by `get_or_create_lut` /
+        # Per-(scene, array) LUT / PWF proxies. PV makes
+        # `GetColorTransferFunction(name)` a singleton keyed by array name, so
+        # every display ColorBy'd with the same name shares one LUT and a COE
+        # edit in one view would bleed into every other view. We register a
+        # distinct LUT (and matching opacity-tf) per `(scene, base_name)`
+        # under a unique name `f"{base}__{view_id}"` and re-assign each
+        # display's `LookupTable` / `ScalarOpacityFunction` to it after
+        # `ColorBy`. Populated lazily by `get_or_create_lut` /
         # `get_or_create_pwf`.
         self._luts: dict = {}   # base_array_name -> lut proxy
         self._pwfs: dict = {}   # base_array_name -> opacity-tf proxy
 
     def _create_clone(self):
-        """Instantiate the per-view `vtkEPCCollectorClone` proxy. Hides it
-        in every existing render view so PV's default lazy display
-        (Visibility=1, Outline) never paints a phantom overlay.
-
-        Resolution: see `_create_plugin_filter_proxy` in
-        `representation.py`. The pvsimple wrapper namespace is the
-        preferred fast path but PV 6.0 (at least in the Trame Docker
-        container) doesn't always refresh it after `LoadPlugin` — the
-        helper falls back to the `vtkSMSessionProxyManager.NewProxy`
-        path which always sees freshly-loaded plugin definitions."""
+        """Instantiate the per-view `vtkEPCCollectorClone` proxy and hide it
+        in every existing render view so PV's default lazy display never
+        paints a phantom Outline overlay. Built via `_create_plugin_filter_proxy`
+        so it resolves even when the pvsimple wrapper namespace hasn't
+        refreshed after `LoadPlugin`."""
         try:
             from paraview import simple as pvsimple
             from fespp_on_trame.app.core.sources.representation import (
@@ -90,11 +69,6 @@ class ViewScene:
                 inputs={"Input": input_src},
             )
             if clone is None:
-                print(
-                    f"[ViewScene {self.view_id}] EPCCollectorClone definition"
-                    " missing from server — plugin dll may be out of date"
-                    " or not loaded."
-                )
                 return self.collector.get_source()
 
             # The clone is a structural data node, not a visual one —
@@ -109,7 +83,6 @@ class ViewScene:
                 pass
             return clone
         except Exception as exc:
-            print(f"[ViewScene {self.view_id}] EPCCollectorClone create failed: {exc}")
             # Fallback to the shared collector source so the scene
             # still has a non-None clone reference (downstream code
             # treats it as an opaque handle).
@@ -146,7 +119,7 @@ class ViewScene:
             try:
                 rep.delete()
             except Exception as exc:
-                print(f"[ViewScene {self.view_id}] remove_rep({rep_path}) failed: {exc}")
+                pass
 
     def reps(self):
         """Iterable view of the (rep_path, RepInScene) pairs currently
@@ -163,7 +136,7 @@ class ViewScene:
             try:
                 rep.delete()
             except Exception as exc:
-                print(f"[ViewScene {self.view_id}] destroy rep failed: {exc}")
+                pass
         self._reps.clear()
 
         # Delete the per-scene LUT / PWF proxies registered under our
@@ -198,7 +171,7 @@ class ViewScene:
                 from paraview import simple as pvsimple
                 pvsimple.Delete(self._clone)
             except Exception as exc:
-                print(f"[ViewScene {self.view_id}] clone delete failed: {exc}")
+                pass
         self._clone = None
 
     # ------------------------------------------------------------------
@@ -366,9 +339,9 @@ class ViewScene:
 
     @property
     def clone(self):
-        """The view-scoped scene root. In Phase 1 this is the collector
-        source itself; from Phase 2 onward it's the per-view
-        `vtkEPCCollectorClone` proxy chained on the collector."""
+        """The view-scoped scene root — the per-view `vtkEPCCollectorClone`
+        proxy chained on the collector (or the collector source itself when
+        the clone couldn't be created)."""
         return self._clone
 
     def __repr__(self) -> str:

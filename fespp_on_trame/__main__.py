@@ -1,9 +1,6 @@
 import base64
-import contextlib
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Literal
-from urllib.parse import urlparse
 
 import paraview.web.venv  # noqa: F401 # type: ignore # Needed to use ParaView with a venv
 from trame.decorators import TrameApp
@@ -98,36 +95,18 @@ if __name__ == "__main__":
         epc_file_path = None
 
         if app.mode == "remote_file":
-            with contextlib.ExitStack() as stack:
-                # TemporaryDirectory auto-cleans on context exit
-                tmp = stack.enter_context(TemporaryDirectory())
-
-                epc_file_name = urlparse(app.remote_epc_file_location).path.split("/")[
-                    -1
-                ]
-                h5_file_name = urlparse(app.remote_h5_file_location).path.split("/")[
-                    -1
-                ]
-
-                if not epc_file_name.endswith(".epc"):
-                    epc_file_name = f"{epc_file_name}.epc"
-
-                if not h5_file_name.endswith(".h5"):
-                    h5_file_name = f"{h5_file_name}.h5"
-
-                epc_file_handle = stack.enter_context(
-                    open(f"{tmp}/{epc_file_name}", "wb+")
-                )
-                h5_file_handle = stack.enter_context(
-                    open(f"{tmp}/{h5_file_name}", "wb+")
-                )
-
-                download_file_from_url(app.remote_epc_file_location, epc_file_handle)
-                download_file_from_url(app.remote_h5_file_location, h5_file_handle)
-                app_server.controller.load_epc_file(epc_file_handle.name)
-        else:
-            pass
-            # app_server.controller.load_epc_file(str(app.local_epc_file_path))
+            # Download the EPC and its companion H5 into the shared,
+            # session-lived temp dir, then load from the returned path.
+            # FESAPI resolves the H5 relative to the EPC, so both must land
+            # in the SAME directory. The shared temp_dir is cleaned at
+            # process exit / last-client-disconnect.
+            from fespp_on_trame.app.io.temp_dir import temp_dir
+            epc_file_path = download_file_from_url(
+                app.remote_epc_file_location, temp_dir
+            )
+            download_file_from_url(app.remote_h5_file_location, temp_dir)
+            app_server.controller.load_epc_file(epc_file_path)
+        # In local mode the EPC is loaded later via the upload route / UI.
 
         ui(app.server)
 

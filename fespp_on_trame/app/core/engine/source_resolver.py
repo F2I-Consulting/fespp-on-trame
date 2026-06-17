@@ -1,9 +1,7 @@
 """Source / display / color resolution helpers.
 
-These were closures inside `initialize_fespp_engine` (in `boot.py`);
-extracted here as free functions so boot.py shrinks toward a pure
-orchestration shell. Each function takes its dependencies
-(`source_registry`, `tree`) explicitly — no module-level state.
+Free functions taking their dependencies (`source_registry`, `tree`)
+explicitly — no module-level state.
 
 Functions:
   - `sources_for_rep_path(source_registry, rep_path, view=None)` →
@@ -83,10 +81,9 @@ def _vtk_array_range_from_clientside(pv_src, name, assoc):
 
 def _scene_clip_output_for_view(rep_path: str, view):
     """Return the Clip proxy owned by the RepInScene whose owning view
-    matches `view`, or None when no such RepInScene has clip
-    enabled. Phase 1.b.1: clip moved from the per-rep wrappers to
-    per-(rep, view) RepInScene; this lookup lets the ColorBy fan-out
-    still find the right clip output."""
+    matches `view`, or None when no such RepInScene has clip enabled.
+    Clip lives on per-(rep, view) RepInScene; this lookup lets the
+    ColorBy fan-out find the right clip output."""
     rep = _scene_rep_for_view(rep_path, view)
     if rep is None:
         return None
@@ -97,11 +94,10 @@ def _scene_clip_output_for_view(rep_path: str, view):
 
 
 def _scene_rep_for_view(rep_path: str, view):
-    """Return the RepInScene for (view, rep_path), or None when no
-    scene currently renders that rep in that view. Used by the
-    ColorBy fan-out to find the per-view extractor + chain (Phase
-    3a) so coloring targets the per-view pipeline, not the shared
-    legacy source."""
+    """Return the RepInScene for (view, rep_path), or None when no scene
+    currently renders that rep in that view. Used by the ColorBy fan-out
+    to find the per-view extractor + chain so coloring targets the
+    per-view pipeline, not the shared source."""
     try:
         from trame.app import get_server
         scenes = getattr(get_server().context, "scene_registry", None)
@@ -121,8 +117,7 @@ def channel_source_for(channel_path):
     when `channel_path` is not a channel or no frame RepInScene renders
     it. Each channel owns a PERSISTENT extractor (tube + point array), so
     the COE / stats read its data DIRECTLY even when a DIFFERENT channel
-    of the frame is the one displayed — no retarget needed (replaces the
-    old read-only-retarget dance)."""
+    of the frame is the one displayed — no retarget needed."""
     if not channel_path:
         return None
     try:
@@ -297,10 +292,9 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
     if view is None:
         return [], None
     out = []
-    # Clip output is per-(rep, view) since Phase 1.b.1 — look it up
-    # via the scene_registry on server.context. Slice's display is
-    # intentionally excluded (it's tinted red so the cross-section
-    # stands out against the underlying rep).
+    # Clip output is per-(rep, view) — look it up via the scene_registry
+    # on server.context. Slice's display is intentionally excluded (it's
+    # tinted red so the cross-section stands out against the rep).
     rep_in_scene_clip_out = _scene_clip_output_for_view(rep_path, view)
     rep_in_scene = _scene_rep_for_view(rep_path, view)
 
@@ -389,11 +383,11 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
     if not title:
         return None, None
     candidate_sources = []
-    # Phase 3a.1: when a view is supplied, consult that view's PER-VIEW
-    # source FIRST. For a wellbore frame the array lives on the CHANNEL's
-    # OWN extractor (array_path is the channel leaf), materialised on
-    # demand so it resolves even when hidden — the legacy frame-pathed
-    # source never carries it. Other reps use the primary extractor.
+    # When a view is supplied, consult that view's PER-VIEW source FIRST.
+    # For a wellbore frame the array lives on the CHANNEL's OWN extractor
+    # (array_path is the channel leaf), materialised on demand so it
+    # resolves even when hidden — the frame-pathed source never carries
+    # it. Other reps use the primary extractor.
     if view is not None:
         try:
             rep_in_scene = _scene_rep_for_view(rep_path, view)
@@ -419,10 +413,9 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
                 break
     sanitized = make_valid_vtk_name(title)
 
-    # Per-property MR path: look up the suffixed array name first.
-    # Falls through to the legacy lookup when the suffixed array
-    # isn't present (e.g. the plugin hasn't loaded it yet, or this
-    # build lacks Phase 2/3 of the contract).
+    # Per-property MR path: look up the suffixed array name first. Falls
+    # through to the unsuffixed lookup when the suffixed array isn't
+    # present (e.g. the plugin hasn't loaded it yet).
     if is_mr and realization_idx is not None:
         suffixed = f"{sanitized}_real_{int(realization_idx)}"
         for s in candidate_sources:
@@ -468,7 +461,7 @@ def hide_unused_scalar_bars(view=None):
         mgr = vtkSMTransferFunctionManager()
         mgr.UpdateScalarBars(view.SMProxy, 1)
     except Exception as exc:
-        print(f"[WARNING] hide_unused_scalar_bars: {exc}")
+        pass
 
 
 def swap_to_scene_tfs(displays, target_view, array_name):
@@ -477,9 +470,9 @@ def swap_to_scene_tfs(displays, target_view, array_name):
     bleed across views sharing PV's default singleton-per-name LUT.
 
     Returns `(scene_lut, scene_pwf)` for the caller's downstream use
-    (typically scalar-bar binding). Returns `(None, None)` when no
-    scene owns `target_view` (legacy / pre-Phase-1 callers, bootstrap)
-    — displays stay bound to PV's singleton LUT in that case.
+    (typically scalar-bar binding). Returns `(None, None)` when no scene
+    owns `target_view` (legacy callers, bootstrap) — displays stay bound
+    to PV's singleton LUT in that case.
 
     The actual scope name (`f"{array_name}__{view_id}"`) is generated
     by `ViewScene._scoped_tf_name` so the scope only lives in
@@ -506,7 +499,6 @@ def swap_to_scene_tfs(displays, target_view, array_name):
                 pass
         return scene_lut, scene_pwf
     except Exception as _exc:
-        print(f"[WARNING] swap_to_scene_tfs failed for {array_name!r}: {_exc}")
         return None, None
 
 
@@ -575,7 +567,6 @@ def resolve_target_scoped_lut(array_name):
             return base, None
         return base, scene.get_or_create_lut(base)
     except Exception as exc:
-        print(f"[WARNING] resolve_target_scoped_lut({array_name!r}): {exc}")
         return array_name, None
 
 
@@ -715,12 +706,10 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         # array_path was given but resolves to NOTHING: partial stub,
         # missing array, or (for a wellbore frame) a log on a partition
         # the extractor discards. For a user-driven eye-toggle
-        # (clear_on_empty=True) the user explicitly switched the eye to
-        # a property with no renderable data, so clear the stale ColorBy
-        # + hide the previous colour bar (the reported "stays on z
-        # index"). Re-apply/restore callers stay tolerant of transient
-        # load-time misses (default False). Returns False so the caller
-        # can surface a "no data to display" alert.
+        # (clear_on_empty=True), clear the stale ColorBy + hide the
+        # previous colour bar. Re-apply/restore callers stay tolerant of
+        # transient load-time misses (default False). Returns False so
+        # the caller can surface a "no data to display" alert.
         if clear_on_empty:
             _clear_coloring(displays, view)
         return False
@@ -734,12 +723,10 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     # Force the LUT range from the freshly-resolved VTK array.
     # `pvsimple.ColorBy`'s internal RescaleTransferFunctionToDataRange
     # reads a STALE proxy info cache when the upstream just re-extracted
-    # — a wellbore channel/marker pick re-points the per-view extractor's
-    # ExtractPath from the whole-frame composite to a single leaf
-    # partition, so PV emits "Could not determine array range" and leaves
-    # the LUT at [0,1]; the tube then paints as flat SolidColor / looks
-    # invisible. Mirror the activator's rescale-from-fresh-array
-    # workaround. Best-effort; skipped for indexed (categorical) LUTs
+    # (a wellbore channel/marker pick re-points the per-view extractor's
+    # ExtractPath to a single leaf partition), leaving the LUT at [0,1] so
+    # the tube paints flat. Read the range from the fresh client-side
+    # array instead. Best-effort; skipped for indexed (categorical) LUTs
     # whose annotations a numeric rescale would disturb.
     try:
         ris = _scene_rep_for_view(rep_path, target_view)

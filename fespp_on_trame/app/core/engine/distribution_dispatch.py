@@ -2,15 +2,13 @@
 
 Mirrors stats_dispatch's source-resolution chain (Original rows ride the
 unfiltered source_registry source; View rows ride the per-view
-post-clip/slice/threshold output via scene_registry.get_scene(view_id)).
-Replaces _compute_one_variable's noNaN-Threshold-then-DescriptiveStatistics
-transient chain with a single numpy.histogram (continuous) or Counter
-(discrete / categorical) on the raw vtk array values.
+post-clip/slice/threshold output via scene_registry.get_scene(view_id)),
+but bins with a single numpy.histogram (continuous) or Counter (discrete /
+categorical) on the raw vtk array values.
 
 Performance contract: the binning is pre-computed server-side and pushed
-as a single Plotly Bar trace via plotly.graph_objects.Figure. WebSocket
-payload stays at ~few KB regardless of source array size; see
-distribution_panel.py for why this matters.
+as a single Plotly trace, so the WebSocket payload stays at ~few KB
+regardless of source array size.
 """
 from __future__ import annotations
 
@@ -55,9 +53,7 @@ _DEFAULTS = {
 }
 
 # Vuetify-aligned palette cycled per trace in compute_compare_figure.
-# Picked to stay distinguishable on white background and to pair well
-# with the panel's teal-darken-2 / indigo-darken-2 chrome (which are
-# already in use for the toolbar and per-row chart icons).
+# Picked to stay distinguishable on a white background.
 _COLORWAY = [
     "#1976d2",  # blue (matches Vuetify primary)
     "#388e3c",  # green
@@ -82,8 +78,7 @@ def _numpy_imports():
 
 def _go_imports():
     """Lazy-import plotly.graph_objects so the engine boots even if
-    the plotly Python package isn't installed yet (Phase 1 added it
-    to deps but a stale venv may still be missing it)."""
+    the plotly Python package isn't installed in the venv."""
     import plotly.graph_objects as go
     return go
 
@@ -484,9 +479,7 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
         n_total = int(values.size) if hasattr(values, "size") else len(values)
         is_discrete = _is_discrete_kind(prop_kind)
         # Property name + (unit) when available, falling back to the
-        # property name alone. The unit helper returns "" until the
-        # FESPP-side UOM attribute lands on the tree (see TODO in
-        # stats_dispatch._unit_for_array_path).
+        # property name alone.
         unit = stats_dispatch._unit_for_array_path(tree, array_path)
         prop_label = title or array_path
         xaxis_value_label = f"{prop_label} ({unit})" if unit else prop_label
@@ -548,16 +541,10 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
                 pvsimple.SetActiveView(saved_active_view)
         except Exception:
             pass
-    # Title: "<property>" for Original rows, "<property> On View N"
-    # for View rows. Mirrors the Source-column label in the Stats
-    # table.
-    # Build the chart title with an optional (real, ts) suffix.
-    # The suffix is what disambiguates two rows that point at the
-    # same property but differ on the realization or the time-step.
-    # Mirrors the legacy stats-row label format so the cart legend
-    # entries read identically to what users saw in the Stats table
-    # before we moved Realization Index / Time Step into their own
-    # columns.
+    # Chart title: "<property>" for Original rows, "<property> On View N"
+    # for View rows, with an optional (real, ts) suffix that
+    # disambiguates two rows on the same property differing only by
+    # realization or time-step.
     is_ts_kind_local = kind in ("TimeSeries", "MultiRealizationTimeSeries")
     is_mr_kind_local = kind in ("MultiRealization", "MultiRealizationTimeSeries")
     ts_label = ""
@@ -705,7 +692,6 @@ def compute_compare_figure(state, tree, scene_registry, source_registry,
                 return_meta=True,
             )
         except Exception as exc:
-            print(f"[WARNING] compare_row_histograms: row {key} failed: {exc}")
             continue
         if result is None:
             continue

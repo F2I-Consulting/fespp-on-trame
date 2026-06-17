@@ -9,8 +9,8 @@ depends on which one is currently connected).
 
 `force_etp_refresh` re-runs UpdatePipelineInformation twice with a
 short sleep in between to give the ETP reader a chance to surface
-late-arriving entries (observed empirically when the server side
-deferred dataspace enumeration to a background task)."""
+late-arriving entries (the server may defer dataspace enumeration to a
+background task)."""
 import time as _time
 
 from paraview import simple as pvsimple
@@ -32,7 +32,6 @@ def connect_to_etp(state, etp_connector, etp_url, data_partition, token,
         print(f"Connected to ETP server: {etp_url}")
         state.etp_dataspaces = etp_connector.get_dataspaces()
     else:
-        print(f"Failed to connect to ETP server: {etp_url}")
         state.etp_dataspaces = []
 
 
@@ -40,12 +39,11 @@ def select_etp_dataspace(etp_connector, dataspace):
     if etp_connector.is_connected:
         etp_connector.set_dataspace(dataspace)
     else:
-        print("Error: Not connected to ETP server")
+        pass
 
 
 def force_etp_refresh(state, etp_connector, collector, tree):
     if not etp_connector.is_connected:
-        print("Error: Not connected to ETP server")
         return
     etp_source = etp_connector.get_source()
     etp_source.UpdatePipelineInformation()

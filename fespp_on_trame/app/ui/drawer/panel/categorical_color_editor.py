@@ -10,7 +10,6 @@ chosen color. We render one row per unique value with a `VColorPicker` (hexa
 NaN handling the user asked for).
 """
 import colorsys
-import time
 
 from trame.app import get_server
 from trame.widgets import vuetify3, html
@@ -56,7 +55,6 @@ def _set_int_property(lut, name: str, value: int) -> bool:
         lut.SMProxy.UpdateVTKObjects()
         return True
     except Exception as e:
-        print(f"[WARNING] _set_int_property({name}): {e}")
         return False
 
 
@@ -73,7 +71,6 @@ def _set_double_list_property(lut, name: str, values) -> bool:
         lut.SMProxy.UpdateVTKObjects()
         return True
     except Exception as e:
-        print(f"[WARNING] _set_double_list_property({name}): {e}")
         return False
 
 
@@ -90,7 +87,6 @@ def _set_string_list_property(lut, name: str, values) -> bool:
         lut.SMProxy.UpdateVTKObjects()
         return True
     except Exception as e:
-        print(f"[WARNING] _set_string_list_property({name}): {e}")
         return False
 
 
@@ -251,7 +247,6 @@ class CategoricalColorEditor(html.Div):
         if not array_name:
             state.categorical_entries = []
             return
-        _t0 = time.perf_counter()
 
         view = pvsimple.GetActiveView()
         active_source = pvsimple.GetActiveSource()
@@ -261,12 +256,10 @@ class CategoricalColorEditor(html.Div):
                 if s is active_source:
                     active_name = sid
                     break
-        print(f"[PERF cce] enter array={array_name!r} active_source={active_name!r}")
         if active_source is None or view is None:
             state.categorical_entries = []
             return
 
-        _t = time.perf_counter()
         try:
             vtk_obj = active_source.GetClientSideObject()
             vtk_out = vtk_obj.GetOutputDataObject(0) if vtk_obj else None
@@ -288,7 +281,6 @@ class CategoricalColorEditor(html.Div):
                         array_name = actual_name
                     break
             if vtk_arr is None or vtk_arr.GetNumberOfComponents() != 1:
-                print(f"[PERF cce] array {array_name!r} not found on active source — abort")
                 state.categorical_entries = []
                 return
             unique_vals = set()
@@ -299,20 +291,15 @@ class CategoricalColorEditor(html.Div):
                     continue
                 unique_vals.add(int(v))
             sorted_vals = sorted(unique_vals)
-        except Exception as e:
-            print(f"[WARNING] CategoricalColorEditor._refresh: array read failed: {e}")
+        except Exception:
             state.categorical_entries = []
             return
-        _ms_scan = int((time.perf_counter() - _t) * 1000)
-        print(f"[PERF cce] scan VTK array {n} cells → {len(sorted_vals)} uniques: {_ms_scan}ms")
 
-        _t = time.perf_counter()
         # Per-view LUT: read from the target view's scene-scoped LUT
         # (created lazily by `swap_to_scene_tfs` when the property was
         # first ColorBy'd) so the categorical palette displayed and
         # edited matches the LUT actually rendered in that view.
-        # Falls back to the global singleton when no scene resolves
-        # (legacy / pre-Phase-1 callers).
+        # Falls back to the global singleton when no scene resolves.
         _base_name, lut = source_resolver.resolve_target_scoped_lut(array_name)
         if lut is None:
             lut = pvsimple.GetColorTransferFunction(array_name)
@@ -330,8 +317,8 @@ class CategoricalColorEditor(html.Div):
                 op_prop = lut.SMProxy.GetProperty("IndexedOpacities")
                 if op_prop is not None:
                     existing_opacities = [op_prop.GetElement(i) for i in range(op_prop.GetNumberOfElements())]
-            except Exception as e:
-                print(f"[WARNING] read LUT props failed: {e}")
+            except Exception:
+                pass
 
             # First-time activation: seed the LUT with a categorical
             # preset. Try a few well-known names — availability varies
@@ -347,7 +334,6 @@ class CategoricalColorEditor(html.Div):
                                 col_prop.GetElement(i)
                                 for i in range(col_prop.GetNumberOfElements())
                             ]
-                            print(f"[PERF cce] applied preset {preset!r} ({len(existing_colors)//3} colors)")
                             break
                     except Exception:
                         continue
@@ -357,10 +343,8 @@ class CategoricalColorEditor(html.Div):
                 ann_map[int(float(annotations[j]))] = str(annotations[j + 1])
             except (ValueError, TypeError):
                 pass
-        _ms_read = int((time.perf_counter() - _t) * 1000)
 
         # Build entries; fill defaults for slots the LUT didn't have.
-        _t = time.perf_counter()
         entries = []
         new_colors = []
         new_opacities = []
@@ -384,7 +368,6 @@ class CategoricalColorEditor(html.Div):
             new_colors.extend([r, g, b])
             new_opacities.append(a)
             new_annotations.extend([str(v), label])
-        _ms_build = int((time.perf_counter() - _t) * 1000)
 
         state.categorical_entries = entries
 
@@ -393,20 +376,15 @@ class CategoricalColorEditor(html.Div):
         # required for the mapper to consume IndexedOpacities;
         # without it alpha values are silently ignored and every
         # category renders fully opaque.
-        _t = time.perf_counter()
-        ok_lookup = _set_int_property(lut, "IndexedLookup", 1)
-        ok_ann = _set_string_list_property(lut, "Annotations", new_annotations)
-        ok_col = _set_double_list_property(lut, "IndexedColors", new_colors)
-        ok_op = _set_double_list_property(lut, "IndexedOpacities", new_opacities)
-        ok_eom = _set_int_property(lut, "EnableOpacityMapping", 1)
-        _ms_push = int((time.perf_counter() - _t) * 1000)
-        print(f"[PERF cce] LUT push lookup={ok_lookup} ann={ok_ann} col={ok_col} op={ok_op} eom={ok_eom}: {_ms_push}ms")
+        _set_int_property(lut, "IndexedLookup", 1)
+        _set_string_list_property(lut, "Annotations", new_annotations)
+        _set_double_list_property(lut, "IndexedColors", new_colors)
+        _set_double_list_property(lut, "IndexedOpacities", new_opacities)
+        _set_int_property(lut, "EnableOpacityMapping", 1)
 
         # No Render here — the active.reservoir handler issues the
         # final Render after its own ColorBy + LUT setup. Calling
         # Render again would double the GPU paint cost.
-        _ms_total = int((time.perf_counter() - _t0) * 1000)
-        print(f"[PERF cce] read={_ms_read}ms build={_ms_build}ms push={_ms_push}ms TOTAL={_ms_total}ms")
 
     def _apply_color_change(self, index: int, hex_color: str):
         """Apply a single colour-picker change to the LUT and refresh

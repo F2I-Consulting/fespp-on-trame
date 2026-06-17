@@ -1,10 +1,8 @@
-"""Slicer / range / volume / representation dispatch — extracted from
-`boot.initialize_fespp_engine`.
+"""Slicer / range / volume / representation dispatch.
 
-Every function in this module receives its dependencies explicitly so
-boot.py can keep the trame decorator registrations (`@state.change`,
-`@controller.set`) as thin closure wrappers. The actual logic lives
-here.
+Every function receives its dependencies explicitly so boot.py can keep
+the trame decorator registrations (`@state.change`, `@controller.set`)
+as thin closure wrappers.
 
 Handlers covered:
   - `set_slider_value` — write the first slice position for an axis
@@ -21,55 +19,46 @@ Handlers covered:
     the scene."""
 from paraview import simple as pvsimple
 
+from fespp_on_trame.app.core.engine import view_routing
+
 
 def _target_panel_id(state):
     """The Attributes drawer's target view (picker-driven), falling
     back to the active panel for the boot window."""
-    return (
-        getattr(state, "drawer_target_view_id", "") or ""
-        or getattr(state, "fespp_active_panel_id", "") or ""
-    )
+    return view_routing.target_panel_id(state)
 
 
 def _target_pv_view(state, fallback_view):
     """Resolve the pv_view of the target panel via scene_registry,
-    falling back to `fallback_view` (the engine-captured legacy
-    `_view`) when nothing else applies — preserves the single-view
-    behaviour during early boot."""
-    target = _target_panel_id(state)
-    if not target:
-        return fallback_view
-    try:
-        from trame.app import get_server
-        ctx = get_server().context
-        scenes = getattr(ctx, "scene_registry", None)
-        if scenes is not None:
-            scene = scenes.get_scene(target)
-            if scene is not None and getattr(scene, "pv_view", None) is not None:
-                return scene.pv_view
-    except Exception:
-        pass
-    return fallback_view
+    falling back to `fallback_view` (the engine-captured `_view`)
+    during early boot."""
+    from trame.app import get_server
+    scenes = getattr(get_server().context, "scene_registry", None)
+    return view_routing.scene_pv_view(scenes, _target_panel_id(state), fallback_view)
 
 
 def _active_ijk_grid(state, source_registry):
     """Resolve the active IjkGrid for the currently-active panel.
 
-    Phase 3b: prefer the active view's per-view IjkGrid (owned by
+    Prefer the active view's per-view IjkGrid (owned by
     `RepInScene._per_view_ijk` via the `scene_registry`). Falls back
-    to the legacy shared IjkGrid when:
+    to the shared IjkGrid when:
       - the scene_registry isn't reachable yet (early boot);
       - the active view's RepInScene hasn't been created;
       - the per-view IjkGrid hasn't been built yet (no property
-        picked → fallback ensures Show()/extent init still happens
-        on legacy and gets mirrored into per-view at next build).
+        picked).
 
-    Routing through scene_registry makes slicer panel edits land on
-    the target view's pipeline only — splitting the views diverges
-    each view's slicer state from the panel switch onwards. The
-    "target view" is the Attributes drawer's picker (Brique A),
+    Routing through scene_registry keeps slicer panel edits on the
+    target view's pipeline only, so each view's slicer state can
+    diverge. The "target view" is the Attributes drawer's picker,
     which follows the active panel unless pinned."""
-    rep_path = state.active_representation_path
+    # Resolve through the RESERVOIR-tab rep path, NOT the global
+    # `active_representation_path`: the latter follows wellbore / surface
+    # selections and eye-click channel activations, which would point the
+    # IJK slicer at a non-grid rep so every slider edit resolves to None.
+    # `ui_active_node_reservoir_rep_path` tracks the reservoir tab's active
+    # grid (set / cleared only by `_handle_reservoir_change`).
+    rep_path = getattr(state, "ui_active_node_reservoir_rep_path", "") or ""
     if not rep_path:
         return None
     try:
@@ -94,25 +83,11 @@ def _active_ijk_grid(state, source_registry):
 
 
 def _render_and_push(state, controller, fallback_view):
-    """Server-render the target panel's pv_view, then push the frame
-    to its vtk.js client AND to the legacy active panel's. The dual
-    push covers both follow mode (target == active, single update)
-    and pinned mode (target != active, both clients refreshed)."""
-    pv_view = _target_pv_view(state, fallback_view)
-    if pv_view is not None:
-        try:
-            pvsimple.Render(view=pv_view)
-        except Exception:
-            pass
-    panel_id = _target_panel_id(state)
-    try:
-        controller.view_update_for(panel_id)
-    except Exception:
-        pass
-    try:
-        controller.view_update()
-    except Exception:
-        pass
+    """Server-render the target panel's pv_view, then dual-push to its
+    vtk.js client AND the active panel's (follow + pinned modes)."""
+    view_routing.render_and_push(
+        controller, _target_pv_view(state, fallback_view), _target_panel_id(state),
+    )
 
 
 def set_slider_value(state, index, value):
@@ -168,8 +143,8 @@ def update_slice_range(state, controller, source_registry, view,
 
 
 def update_slice_mode(state, controller, source_registry, view, mode):
-    """Mode flip (`slice` ↔ `range`) changes the set of "active
-    sources" — IjkGrid re-attaches its threshold chain accordingly
+    """Mode flip (`slice` ↔ `range`) changes the set of active
+    sources — IjkGrid re-attaches its threshold chain accordingly
     (rep_data + volume in range, rep_data + per-axis slicers in
     slice)."""
     active = _active_ijk_grid(state, source_registry)
@@ -202,8 +177,8 @@ def update_slice_visibility(state, controller, source_registry, view,
 
 def _set_scale_preserving_color(disp, scale):
     """Write `disp.Scale` while saving / restoring ColorArrayName +
-    LookupTable — the Scale write has been observed to clobber the active
-    coloring on some PV builds (same guard the TransformationEditor uses)."""
+    LookupTable — the Scale write can reset the active coloring on some
+    PV builds."""
     saved_color = None
     saved_lut = None
     try:
@@ -234,18 +209,15 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
     rep source and to every IjkGrid slicer / volume proxy.
 
     `state` is used by `_render_and_push` to resolve the target view
-    (Brique A drawer picker). Pre-Brique-A callers without `state`
-    need to update their call sites — see boot.py."""
+    (drawer picker)."""
     try:
         zs = float(zscale or 1.0)
     except (TypeError, ValueError):
         zs = 1.0
-    source_registry.apply_z_scale(zs)  # legacy ExtractBlocks
+    source_registry.apply_z_scale(zs)
     # Per-scene fan-out — the visible displays live on the per-(rep, view)
     # proxies (extractor + chain + slice/clip + per-view IjkGrid + per-child
-    # marker/channel extractors), NOT on the legacy shared sources. Without
-    # this a z-scale change never reaches the actually-rendered objects.
-    # Mirrors `propagate_representation`.
+    # marker/channel extractors), not on the shared sources.
     from trame.app import get_server
     scene_registry = getattr(get_server().context, "scene_registry", None)
     scenes = []
@@ -265,9 +237,9 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
                 try:
                     disp = pvsimple.GetRepresentation(proxy=p, view=v)
                     if disp is not None:
-                        # Markers (mrk_*) TRANSLATE (round); everything else
-                        # SCALES. Name-based so it works even when the scene
-                        # registry didn't track the marker extractor.
+                        # Markers (mrk_*) TRANSLATE Z (stay round); everything
+                        # else SCALES. Name-based so it works even when the
+                        # scene registry didn't track the marker extractor.
                         if marker_dispatch.is_marker_proxy(p):
                             marker_dispatch.apply_marker_z(disp, p, zs)
                         else:
@@ -275,7 +247,7 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
                 except Exception:
                     pass
             # Markers are SYMBOLIC — TRANSLATE Z (keep the sphere round)
-            # instead of scaling, so a high z-scale doesn't yield an olive.
+            # instead of scaling, so a high z-scale doesn't stretch them.
             for _path, rep in scene.reps():
                 markers = getattr(rep, "_marker_extractors", None)
                 if not markers:
@@ -292,7 +264,7 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
         _push_all_panels(controller)
         return
 
-    # Legacy fallback (Phase 2 — no per-view scenes yet).
+    # Fallback when no per-view scenes exist yet.
     ijk_srcs = []
     for ijk in source_registry.ijk_grids():
         ijk_srcs.extend(ijk._all_slice_sources())
@@ -311,9 +283,9 @@ def _collect_scene_proxies(scene):
     chain + slice/clip outputs, plus the per-view IjkGrid pipeline
     (rep_data + slicer-volume + slice sources + threshold sources).
 
-    Returns an empty list for scenes whose reps all still fall back
-    to the legacy shared source (Phase 2 fallback) — the caller
-    handles those via the legacy iteration."""
+    Returns an empty list for scenes whose reps all fall back to the
+    shared source — the caller handles those via the legacy
+    iteration."""
     out = []
     for _path, rep in scene.reps():
         if rep._extractor is not None:
@@ -353,10 +325,9 @@ def _collect_scene_proxies(scene):
 
 
 def _collect_legacy_proxies(source_registry):
-    """Legacy shared proxies (pre-Phase-3a fallback): sources +
-    thresholds + IjkGrid pipeline. Used in scenes where the per-view
-    extractor wasn't created (Phase 2 fallback) and as a backstop for
-    proxies that still render via the shared pipeline."""
+    """Shared proxies: sources + thresholds + IjkGrid pipeline. Used
+    in scenes where the per-view extractor wasn't created, and as a
+    backstop for proxies that still render via the shared pipeline."""
     out = []
     try:
         out.extend(source_registry.all_sources())
@@ -380,27 +351,24 @@ def _collect_legacy_proxies(source_registry):
 
 
 def propagate_representation(source_registry, scene_registry, controller, representation_active):
-    """ptc.RepresentBy only sets `Representation` on a single display
-    (active source × active view). With per-(rep, view) pipelines from
-    Phase 3a, the visible displays live on the scene's per-view
-    extractor / chain / slice / clip / per-view IjkGrid proxies, not
-    on the legacy shared sources — so the ptc write lands on hidden
-    displays and the view stays in its old Representation.
+    """Push the active representation type onto every visible proxy.
 
-    Fan the new value out across **every scene's** visible proxies in
-    that scene's `pv_view`, plus the legacy fallbacks for reps that
-    still render through the shared source (Phase 2 fallback).
+    ptc.RepresentBy only sets `Representation` on a single display
+    (active source × active view), but with per-(rep, view) pipelines
+    the visible displays live on the scene's per-view extractor /
+    chain / slice / clip / per-view IjkGrid proxies, not on the shared
+    sources — so the ptc write would land on hidden displays. Fan the
+    new value out across every scene's visible proxies in that scene's
+    `pv_view`, plus the shared fallbacks.
 
-    `controller` is used to push a fresh vtk.js frame to every panel
-    AFTER the per-view writes + Render. ptc.RepresentBy already calls
-    `on_data_change` (which triggers `view_update_all`) but it fires
-    *before* this handler — so the client receives a frame that
-    still shows the old representation. Re-push at the end so the
-    new state actually reaches the browser without a camera reset."""
+    `controller` re-pushes a fresh vtk.js frame to every panel AFTER
+    the per-view writes + Render: ptc.RepresentBy's own
+    `on_data_change` fires *before* this handler, so the client would
+    otherwise keep the old representation. Re-pushing avoids a camera
+    reset."""
     if not representation_active:
         return
     if scene_registry is None or not hasattr(scene_registry, "all_scenes"):
-        # Legacy fallback (shouldn't happen post Phase 3a wiring)
         view = pvsimple.GetActiveView()
         if view is None:
             return
@@ -415,10 +383,9 @@ def propagate_representation(source_registry, scene_registry, controller, repres
         _push_all_panels(controller)
         return
     # Per-scene fan-out: each scene gets its per-view proxies + the
-    # legacy ones (legacy stay hidden in non-fallback scenes, but a
-    # hidden display still accepts the property write at zero render
-    # cost — keeps the behavior consistent if a rep ever switches
-    # back to fallback).
+    # shared ones. The shared proxies stay hidden in non-fallback
+    # scenes, but a hidden display still accepts the property write at
+    # zero render cost.
     legacy = _collect_legacy_proxies(source_registry)
     for scene in scene_registry.all_scenes():
         view = scene.pv_view

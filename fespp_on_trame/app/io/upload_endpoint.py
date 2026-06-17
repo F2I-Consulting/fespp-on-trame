@@ -56,8 +56,6 @@ def register_upload_route(server) -> bool:
             state.flush()
             return aiohttp_web.json_response({"status": "ok", "epc_paths": epc_paths})
         except Exception as exc:
-            import traceback
-            traceback.print_exc()
             state.upload_uploading = False
             state.upload_progress = 0
             return aiohttp_web.json_response({"status": "error", "message": str(exc)}, status=500)
@@ -67,7 +65,6 @@ def register_upload_route(server) -> bool:
 
     @aiohttp_web.middleware
     async def upload_middleware(request: aiohttp_web.Request, handler):
-        print(f"[Upload-MW] {request.method} {request.path} app_id={id(request.app)}", flush=True)
         if request.method == "POST" and request.path in ("/upload", "/paraview/upload"):
             return await handle_upload(request)
         return await handler(request)
@@ -83,11 +80,9 @@ def register_upload_route(server) -> bool:
             middlewares.insert(0, upload_middleware)
             kwargs["middlewares"] = middlewares
             _orig_app_init(self, *args, **kwargs)
-            print(f"[Upload] Application created id={id(self)}", flush=True)
 
         aiohttp_web.Application.__init__ = _patched_app_init
         aiohttp_web.Application._fespp_orig_init = _orig_app_init
-        print("[Upload] Patch Application.__init__ installed.", flush=True)
 
     # Patch 2: AppRunner.setup() runs just before the app starts
     # serving requests. Intercepting it lets us inject the middleware
@@ -102,7 +97,6 @@ def register_upload_route(server) -> bool:
 
             async def _patched_runner_setup(self_runner, *args, **kwargs):
                 app = self_runner.app
-                print(f"[Upload] AppRunner.setup() app_id={id(app)} type={type(app).__name__}", flush=True)
                 mw_list = list(app.middlewares)
                 if upload_middleware not in mw_list:
                     # Insert via _middlewares (the public list is
@@ -110,9 +104,8 @@ def register_upload_route(server) -> bool:
                     # the only way in).
                     try:
                         app._middlewares = (upload_middleware,) + tuple(mw_list)
-                        print("[Upload] Middleware injected into serving app.", flush=True)
                     except Exception as exc:
-                        print(f"[Upload] Middleware injection failed: {exc}", flush=True)
+                        pass
                 # Belt-and-suspenders: also register the route on the
                 # router (some configurations bypass middleware).
                 try:
@@ -123,20 +116,18 @@ def register_upload_route(server) -> bool:
                     for path in ("/upload", "/paraview/upload"):
                         try:
                             router.add_post(path, _registered_handler)
-                            print(f"[Upload] Route {path} injected into serving app.", flush=True)
                         except Exception as e:
-                            print(f"[Upload] Failed to inject route {path}: {e}", flush=True)
+                            pass
                     if was_frozen:
                         router._frozen = was_frozen
                 except Exception as exc:
-                    print(f"[Upload] Route injection failed: {exc}", flush=True)
+                    pass
                 return await _orig_runner_setup(self_runner, *args, **kwargs)
 
             _AppRunner.setup = _patched_runner_setup
             _AppRunner._fespp_orig_setup = _orig_runner_setup
-            print("[Upload] Patch AppRunner.setup() installed.", flush=True)
     except Exception as exc:
-        print(f"[Upload] Unable to patch AppRunner: {exc}", flush=True)
+        pass
 
     return True
 

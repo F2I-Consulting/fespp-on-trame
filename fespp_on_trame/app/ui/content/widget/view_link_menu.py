@@ -101,12 +101,10 @@ class ViewLinkMenu:
                     # One VCheckbox per OTHER render panel.
                     # `fespp_render_panels` is published by
                     # FesppMultiView._publish_panels_state on every
-                    # add / close / rename. v_for sits on an outer
-                    # `html.Div` (not the VCheckbox directly) so the
-                    # loop variable `p` is reactive when Vue
-                    # re-evaluates the model_value binding on every
-                    # view_links mutation — same pattern as the
-                    # categorical color editor in drawer/panel.
+                    # add / close / rename. The v_for sits on an outer
+                    # html.Div (not the VCheckbox) so the loop variable
+                    # `p` stays reactive when Vue re-evaluates the
+                    # model_value binding on each view_links mutation.
                     with html.Div(
                         v_for=(
                             f"p in (fespp_render_panels || [])"

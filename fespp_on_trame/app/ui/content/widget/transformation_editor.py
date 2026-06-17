@@ -5,9 +5,9 @@ Reads its scope dynamically from `state[scope_var]`:
   - "global" → apply to every render view in the multi-view;
   - any other value (a panel id) → apply only to that panel.
 
-Wraps ptc.TransformEditor with the FESPP custom Apply that
-preserves rep ColorArrayName / LookupTable around the Scale write
-(observed previously to clobber the active coloring otherwise)."""
+Wraps ptc.TransformEditor with a custom Apply that preserves each
+rep's ColorArrayName / LookupTable around the Scale write (the Scale
+write otherwise clobbers the active coloring)."""
 from paraview import simple as pvsimple
 from trame.app import get_server
 from trame.widgets import html
@@ -66,7 +66,7 @@ class TransformationEditor:
             return
         if scope == SCOPE_GLOBAL:
             kinds = getattr(mv, "_panel_kinds", {}) or {}
-            for pid, view in (mv._pv_internal or {}).items():
+            for pid, view in mv.panel_pv_views().items():
                 if kinds.get(pid, "render") != "render":
                     continue
                 yield view
@@ -93,11 +93,11 @@ class TransformationEditor:
 
     @classmethod
     def _rep_is_marker(cls, rep, marker_ids):
-        """True when this raw PV representation is a marker glyph — so it
-        must TRANSLATE, not scale. Robust detection: either the input proxy's
-        GlobalID is in the scene-registry marker set, OR its registration
-        name carries the ``mrk_`` prefix (works even when the scene registry
-        hasn't tracked it)."""
+        """True when this raw PV representation is a marker glyph (so
+        it must TRANSLATE, not scale). Detected by either the input
+        proxy's GlobalID being in the scene-registry marker set, OR its
+        registration name carrying the ``mrk_`` prefix (the latter
+        works even when the scene registry hasn't tracked it)."""
         try:
             inp = rep.Input
         except Exception:
@@ -112,18 +112,17 @@ class TransformationEditor:
 
     def _apply_z_scale(self):
         """Apply the editor's Scale to every visible rep on every
-        target view. Save / restore ColorArrayName + LookupTable
-        around the Scale write so a side-effect on rep state doesn't
-        clobber the active coloring.
+        target view, saving / restoring ColorArrayName + LookupTable
+        around the Scale write so the active coloring isn't clobbered.
 
-        Two extra responsibilities beyond the raw rep loop:
-          - PERSIST the Z exaggeration to ``state.ui_scale_z`` so a source
-            created LATER (a freshly-loaded clone / IjkGrid / extractor)
-            picks it up at build time (its creation hook reads ui_scale_z)
-            and the on-load re-apply scales it too. The Z-scale is GLOBAL,
-            so a single state var is the source of truth.
-          - MARKERS are symbolic: scaling their rep turns the sphere/disk
-            into an "olive". They are TRANSLATED in Z instead (handled by
+        Two responsibilities beyond the raw rep loop:
+          - PERSIST the Z exaggeration to ``state.ui_scale_z`` so a
+            source created LATER (a clone / IjkGrid / extractor) picks
+            it up at build time (its creation hook reads ui_scale_z)
+            and the on-load re-apply scales it too. The Z-scale is
+            GLOBAL, so this single state var is the source of truth.
+          - MARKERS are symbolic: scaling their rep deforms the
+            sphere/disk, so they are TRANSLATED in Z instead (via
             marker_dispatch.apply_marker_z), never scaled."""
         try:
             scale_data = self._te.typed_state.data.scale
@@ -131,17 +130,14 @@ class TransformationEditor:
         except Exception:
             return
         zs = scale[2]
-        # Persist the GLOBAL exaggeration (the missing link: nothing wrote
-        # ui_scale_z before, so the creation hooks + on-load re-apply always
-        # read 1.0 and a later-loaded object stayed flat). The Z-scale is
-        # conceptually global, so a single state var is the source of truth
-        # that creation hooks + on-load re-apply read.
+        # Persist the GLOBAL exaggeration so creation hooks + the
+        # on-load re-apply can read it (a single state var is the
+        # source of truth).
         try:
             self._state.ui_scale_z = zs
         except Exception:
             pass
-        # Recognise marker glyphs so they translate (round) rather than
-        # scale (olive).
+        # Recognise marker glyphs so they translate rather than scale.
         from fespp_on_trame.app.core.engine import marker_dispatch
         scene_registry = getattr(self._server.context, "scene_registry", None)
         marker_ids = marker_dispatch.marker_proxy_ids(scene_registry)
@@ -194,9 +190,8 @@ class TransformationEditor:
                 pvsimple.Render(view=view)
             except Exception:
                 pass
-        # Push to clients. In single-scope we could target the panel's
-        # html_view only, but view_update_all is a no-op for already-
-        # up-to-date panels and keeps the code branch-free.
+        # Push to clients. view_update_all is a no-op for already-up-
+        # to-date panels, so broadcasting keeps the code branch-free.
         update_all = getattr(self._controller, "view_update_all", None)
         if update_all is not None:
             try:

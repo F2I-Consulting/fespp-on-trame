@@ -8,8 +8,7 @@ DISK — by its RESQML dip angle + dip direction — vs a plain SPHERE) and
 The marker GEOMETRY is built by the collector and cloned per-view, so
 changing either property re-extracts the geometry through every per-view
 clone + per-marker extractor, then re-renders. Per-marker / per-view
-variants would need C++ work (the clone doesn't rebuild markers); this is
-the global Phase 1.
+variants would need C++ work (the clone doesn't rebuild markers).
 """
 from paraview import simple as pvsimple
 
@@ -18,8 +17,8 @@ def marker_proxy_ids(scene_registry):
     """Global-IDs of every per-(marker, view) extractor proxy known to the
     scene registry, so a RAW ParaView representation (iterated straight off
     ``view.Representations``) can be recognised as a marker glyph and
-    TRANSLATED in Z instead of scaled (a sphere/disk must not turn into an
-    olive). Returns a set of ints; empty on any failure."""
+    TRANSLATED in Z instead of scaled (a sphere/disk must not stretch).
+    Returns a set of ints; empty on any failure."""
     ids = set()
     if scene_registry is None:
         return ids
@@ -48,9 +47,9 @@ def marker_proxy_ids(scene_registry):
 
 def is_marker_proxy(proxy):
     """True when `proxy` is a per-(marker, view) extractor — recognised by
-    its ``mrk_`` registration-name prefix. Robust and scene-registry-free,
-    so the z-scale fan-out can translate markers (round) instead of scaling
-    them (olive) wherever they surface (scene proxies OR legacy)."""
+    its ``mrk_`` registration-name prefix. Scene-registry-free, so the
+    z-scale fan-out can translate markers (round) instead of scaling them
+    wherever they surface (scene proxies OR legacy)."""
     if proxy is None:
         return False
     try:
@@ -68,7 +67,7 @@ def is_marker_proxy(proxy):
 
 def apply_marker_z(disp, source, zs):
     """Place a marker glyph (sphere / oriented disk) at its Z-SCALED depth
-    WITHOUT stretching it into an "olive".
+    WITHOUT stretching its shape.
 
     A marker is SYMBOLIC geometry, not the real subsurface — scaling its
     display's Z (``disp.Scale = [1, 1, zs]``, as every other rep does) turns
@@ -140,7 +139,6 @@ def apply_marker_options(collector, scene_registry, controller, orientation, siz
         src.UpdatePipelineInformation()
         src.UpdatePipeline()
     except Exception as exc:
-        print(f"[marker_dispatch] set collector marker options: {exc}")
         return
 
     scenes = []
@@ -179,7 +177,7 @@ def apply_marker_options(collector, scene_registry, controller, orientation, siz
             except Exception:
                 pass
 
-    # PUSH a fresh frame to EVERY panel's browser (global change → all views).
+    # PUSH a fresh frame to every panel's browser (global change → all views).
     pushed = False
     update_for = getattr(controller, "view_update_for", None) if controller is not None else None
     if update_for is not None and scene_registry is not None:

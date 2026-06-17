@@ -34,7 +34,7 @@ def cleanup_temp_dir():
             shutil.rmtree(temp_dir, ignore_errors=True)
             print(f"[Cleanup] Temp directory removed: {temp_dir}", flush=True)
         except Exception as e:
-            print(f"[Cleanup] Failed to remove {temp_dir}: {e}", flush=True)
+            pass
 
 
 def _signal_handler(sig, frame):
@@ -55,7 +55,7 @@ def _setup_for_large_files():
         if hard == resource.RLIM_INFINITY or hard > new_soft:
             resource.setrlimit(resource.RLIMIT_AS, (new_soft, hard))
     except Exception as e:
-        print(f"ERROR change mem limit: {e}")
+        pass
 
     gc.set_threshold(50, 5, 5)
     gc.enable()

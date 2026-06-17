@@ -132,7 +132,7 @@ def compute_diff(state, controller, server, source_registry):
 
         # Defensive: ensure the calc is not displayed in any non-diff
         # view (pvsimple may still touch other views in edge cases).
-        for pid, view in mv._pv_internal.items():
+        for pid, view in mv.panel_pv_views().items():
             if pid == diff_panel_id:
                 continue
             try:
@@ -164,7 +164,7 @@ def compute_diff(state, controller, server, source_registry):
         except Exception:
             pass
         pvsimple.Render(view=diff_view)
-        html_view = mv._html_views.get(diff_panel_id)
+        html_view = mv.get_html_view(diff_panel_id)
         if html_view is not None:
             html_view.update()
         state.fespp_diff_ready = True

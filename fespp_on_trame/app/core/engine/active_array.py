@@ -26,9 +26,8 @@ from fespp_on_trame.app.core import element_type
 
 
 def _is_channel_rep(element_type_obj) -> bool:
-    """A wellbore-frame CHANNEL container = a rep whose visibility policy is
-    ONE_AT_A_TIME (only ChannelFrameRep). Replaces the `kind == 'Frame'`
-    check — the single source of truth is element_type now."""
+    """A wellbore-frame CHANNEL container = a rep whose visibility policy
+    is ONE_AT_A_TIME (only ChannelFrameRep)."""
     return element_type_obj.visibility_policy() == element_type.VisibilityPolicy.ONE_AT_A_TIME
 
 
@@ -107,13 +106,12 @@ def on_active_array_change(state, controller, source_registry, tree,
                         sm.UpdateVTKObjects()
                 except Exception:
                     pass
-        # Re-assert slice / clip visibility — ColorBy doesn't touch
-        # the rep's Show/Hide, but a freshly-coloured clip needs its
-        # `_apply` to re-Show (the clip's display might have been
-        # implicitly recreated by `displays_for_rep_path`), and the
-        # rep source must stay hidden when slice / clip is enabled.
-        # Phase 1.b.1: slice/clip moved from the per-rep wrappers to
-        # per-(rep, view) RepInScene; iterate scenes instead.
+        # Re-assert slice / clip visibility — ColorBy doesn't touch the
+        # rep's Show/Hide, but a freshly-coloured clip needs its `_apply`
+        # to re-Show (its display might have been implicitly recreated by
+        # `displays_for_rep_path`), and the rep source must stay hidden
+        # when slice / clip is enabled. Slice/clip live on per-(rep, view)
+        # RepInScene, so iterate scenes.
         try:
             from trame.app import get_server
             scenes = getattr(get_server().context, "scene_registry", None)
@@ -125,9 +123,9 @@ def on_active_array_change(state, controller, source_registry, tree,
                     try:
                         rep_in_scene.refresh_planes_after_property_change()
                     except Exception as exc:
-                        print(f"[WARNING] refresh_planes {scene.view_id}/{rep_path}: {exc}")
+                        pass
         except Exception as exc:
-            print(f"[WARNING] active_array scene refresh: {exc}")
+            pass
     if view is not None:
         pvsimple.Render(view=view)
     controller.view_update()
@@ -187,16 +185,14 @@ def apply_panel_coloring(state, source_registry, tree, panel_id, view):
             if lut is not None:
                 bar = pvsimple.GetScalarBar(lut, view)
                 if bar is not None:
-                    # NOTE: do NOT raw-write bar.Visibility = 1 here.
-                    # apply_color_array above invoked
-                    # display.SetScalarBarVisibility(view, True) which goes through
-                    # vtkSMTransferFunctionManager. Raw writes bypass the manager's
-                    # bookkeeping and desync from the view's representation list
-                    # under per-view LUT scope, surfacing a duplicate bar on other
-                    # views. The bug was visible when opening Stats / Distribution
-                    # panels triggered apply_panel_coloring via the panel-state
-                    # publish chain.
-                    # (any Title / format writes BELOW stay — they are appearance.)
+                    # Do NOT raw-write bar.Visibility = 1 here: visibility
+                    # must go through display.SetScalarBarVisibility (done
+                    # by apply_color_array above) so the
+                    # vtkSMTransferFunctionManager keeps its bookkeeping;
+                    # a raw write desyncs from the view's representation
+                    # list under per-view LUT scope and surfaces a
+                    # duplicate bar on other views. The Title / format
+                    # writes below are appearance-only and safe.
                     bar.Title = name
                     bar.RangeLabelFormat = '%-#6.3g'
                     bar.Resizable = 1
@@ -273,9 +269,9 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     # Wellbore-frame channel detection: the toggled node is a channel iff
     # its rep ancestor is a ONE_AT_A_TIME frame (ChannelFrameRep) AND the
     # ancestor is not the node itself (a channel walks UP past its own
-    # property kind to the Frame). MarkerFrame (MULTI) / SeismicWellboreFrame
-    # are different policies so they never false-positive. The channel leaf
-    # path == array_path; showing one channel exclusively shows that log.
+    # property kind to the Frame). MarkerFrame (MULTI) /
+    # SeismicWellboreFrame have different policies so they never
+    # false-positive. The channel leaf path == array_path.
     rep_kind = tree.find_type(r_id) if r_id is not None else None
     is_channel = _is_channel_rep(element_type.for_kind(rep_kind)) and r_id != node_id
 
@@ -371,18 +367,17 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
                         except Exception:
                             pass
 
-    # Apply ColorBy on the target view's displays. Do this
-    # explicitly here (rather than relying on @state.change of the
-    # global map) because the per-view map mutation alone wouldn't
-    # trigger the legacy active-view-only handler for a non-active
-    # panel. For MR properties, the per-view realization choice
-    # threads through so the resolver picks the suffixed VTK array
-    # name (`<title>_real_<idx>`).
-    # Re-point the FRAME's per-view extractor at the chosen channel
-    # (one log at a time) BEFORE coloring — apply_color_array re-reads
-    # the channel's OWN extractor arrays via resolve_array_for_path, so
-    # the SHOW (which materialises + exclusively shows that channel's
-    # extractor) MUST happen first. Toggling the channel OFF (new_value
+    # Apply ColorBy on the target view's displays explicitly here
+    # (rather than relying on @state.change of the global map) because
+    # the per-view map mutation alone wouldn't trigger the active-view-
+    # only handler for a non-active panel. For MR properties the per-view
+    # realization choice threads through so the resolver picks the
+    # suffixed VTK array name (`<title>_real_<idx>`).
+    # Re-point the FRAME's per-view extractor at the chosen channel (one
+    # log at a time) BEFORE coloring — apply_color_array re-reads the
+    # channel's OWN extractor arrays via resolve_array_for_path, so the
+    # SHOW (which materialises + exclusively shows that channel's
+    # extractor) must happen first. Toggling the channel OFF (new_value
     # is None) just Hides that channel's extractor.
     if is_channel:
         try:
@@ -399,10 +394,9 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     )
     # Make the COE follow the channel actually VIEWED. The editor is
     # driven by `active_color_array_name` (set by the activator's
-    # active-NODE path), which an eye click does NOT update — so on a
-    # frame that shows one log at a time, viewing a 2nd channel left the
-    # COE pointing at the 1st. Publish the viewed channel as the COE's
-    # active array + path (the COE reads the channel's OWN extractor via
+    # active-NODE path), which an eye click does NOT update. Publish the
+    # viewed channel as the COE's active array + path (the COE reads the
+    # channel's OWN extractor via
     # `channel_extractor_for(active_color_array_path)`).
     if is_channel:
         if new_value is not None:
@@ -433,7 +427,7 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     if new_value is not None and resolved is False:
         title = tree.find_title(node_id) or ""
         state.empty_color_snackbar_text = (
-            f"« {title} » : aucune donnée à afficher sur cette représentation"
+            f"“{title}”: no data to display on this representation"
         )
         # Reset then set so re-toggling the SAME property re-fires the
         # snackbar (the var change is what triggers it).

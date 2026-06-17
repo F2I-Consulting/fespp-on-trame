@@ -4,15 +4,13 @@ in the source layer (owns the clone + render anchor; children render via
 their OWN per-(child, view) extractors, so the frame's PRIMARY extractor
 stays hidden). C++ side = ``MapperType::MapperSet``.
 
-These classes also OWN the per-type child behaviour (the strategy pattern,
-Option A): `RepInScene` keeps the per-(rep, view) state (the
-`_channel_extractors` / `_marker_extractors` dicts, the scene), and passes
-itself (`ris`) to these methods. The ONLY behavioural difference between a
-log frame and a marker frame — EXCLUSIVE one-at-a-time vs MULTI — is the
-`set_child_visible` override below; everything else (building a child
-extractor, listing the shown ones) is shared on `FrameRep`. That override
-boundary is the whole point of the hierarchy: change "one log at a time"
-here and grids/surfaces/markers cannot be affected.
+These classes also OWN the per-type child behaviour: `RepInScene` keeps the
+per-(rep, view) state (the `_channel_extractors` / `_marker_extractors`
+dicts, the scene), and passes itself (`ris`) to these methods. The ONLY
+behavioural difference between a log frame and a marker frame — EXCLUSIVE
+one-at-a-time vs MULTI — is the `set_child_visible` override below;
+everything else (building a child extractor, listing the shown ones) is
+shared on `FrameRep`.
 
 All ``paraview`` / ``trame`` / ``sources.*`` imports are LOCAL to the
 methods so this package stays a leaf (no import cycle with the source
@@ -133,8 +131,8 @@ class FrameRep(Representation):
     def _apply_child_z(self, ris, disp, source, zs):
         """Apply the global Z exaggeration to a child's display. Default
         (CHANNELS = real log-tube geometry following the well): scale Z.
-        MarkerFrameRep overrides — markers TRANSLATE Z instead, so a sphere
-        stays a sphere (not an olive)."""
+        MarkerFrameRep overrides — markers TRANSLATE Z instead, so the
+        sphere keeps its shape."""
         disp.Scale = [1.0, 1.0, zs]
 
     def _create_child_extractor(self, ris, child_path):
@@ -142,8 +140,8 @@ class FrameRep(Representation):
         child partition (ExtractPath = the child leaf) so only that child's
         geometry + array surfaces. Clone-rooted, hidden in other views,
         representation + z-scale + tint applied. Returns None when the scene
-        has no real clone (Phase 2 fallback) or the plugin proxy can't be
-        built. The caller does the Show in the owning view."""
+        has no real clone or the plugin proxy can't be built. The caller
+        does the Show in the owning view."""
         scene = ris.scene
         clone = getattr(scene, "clone", None)
         if clone is None:
@@ -167,7 +165,6 @@ class FrameRep(Representation):
                 inputs={"Input": clone},
             )
             if ext is None:
-                print(f"{tag} EnergisticsExtractor not creatable — plugin missing?")
                 return None
             vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(child_path)
             ext.SMProxy.UpdateVTKObjects()
@@ -186,8 +183,7 @@ class FrameRep(Representation):
                     self._apply_child_z(ris, disp, ext, ris._current_z_scale())
                     _apply_default_tint(disp, self._child_tint(ris, child_path, state))
             return ext
-        except Exception as exc:
-            print(f"{tag} create child extractor {child_path}: {exc}")
+        except Exception:
             return None
 
 
@@ -231,15 +227,15 @@ class ChannelFrameRep(FrameRep):
                             pass
                 try:
                     pvsimple.Show(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"{tag} channel show {channel_path}: {exc}")
+                except Exception:
+                    pass
         else:
             ext = store.get(channel_path)
             if ext is not None and view is not None:
                 try:
                     pvsimple.Hide(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"{tag} channel hide {channel_path}: {exc}")
+                except Exception:
+                    pass
 
     def rendered_sources(self, ris):
         """The frame renders only the VISIBLE channel's own extractor (the
@@ -291,14 +287,14 @@ class MarkerFrameRep(FrameRep):
             if view is not None:
                 try:
                     pvsimple.Show(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"{tag} marker show {marker_path}: {exc}")
+                except Exception:
+                    pass
         else:
             if ext is not None and view is not None:
                 try:
                     pvsimple.Hide(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"{tag} marker hide {marker_path}: {exc}")
+                except Exception:
+                    pass
 
     def _child_tint(self, ris, marker_path, state):
         """PER-marker colour first (so a marker shown later keeps its own
@@ -328,6 +324,5 @@ class MarkerFrameRep(FrameRep):
             d = pvsimple.GetDisplayProperties(ext, view=view)
             if d is not None and getattr(d, "Visibility", 0):
                 _apply_default_tint(d, color_hex)
-        except Exception as exc:
-            print(f"[MarkerFrameRep {ris.scene.view_id}/{ris.rep_path}]"
-                  f" set_marker_color {marker_path}: {exc}")
+        except Exception:
+            pass

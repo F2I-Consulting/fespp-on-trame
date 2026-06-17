@@ -1,4 +1,4 @@
-"""Descriptive statistics dispatch — multi-property table (Brique B).
+"""Descriptive statistics dispatch — multi-property table.
 
 The singleton stats dockview tab (created lazily on first pin by
 `multi_view._add_stats_panel`) renders one card per property pinned
@@ -250,7 +250,7 @@ def _compute_one_variable(input_source, array_name):
                 row["Median"] = med
                 row["Q3"] = q3
         except Exception as exc:
-            print(f"[stats] percentile compute failed for {array_name}: {exc}")
+            pass
         # Surface the variable name in a deterministic key the UI
         # binds to — vtkDescriptiveStatistics emits "Variable" but
         # we lowercase / underscore for consistency with our state
@@ -265,7 +265,6 @@ def _compute_one_variable(input_source, array_name):
             row["NaN_count"] = None
         return row
     except Exception as exc:
-        print(f"[stats] _compute_one_variable({array_name}): {exc}")
         return None
     finally:
         for proxy in (stats_proxy, threshold_proxy):
@@ -295,7 +294,6 @@ def _append_if_multiple(sources):
         merged.UpdatePipeline()
         return merged, True
     except Exception as exc:
-        print(f"[stats] AppendDatasets failed: {exc}")
         return sources[0], False
 
 
@@ -308,8 +306,8 @@ def _append_if_multiple(sources):
 
 def _rep_path_for_array_path(tree, array_path):
     """Walk the tree from `array_path` up to the enclosing rep node
-    and return its path. Used by Brique B to anchor stats compute
-    on the property's parent representation."""
+    and return its path. Anchors stats compute on the property's
+    parent representation."""
     if tree is None or not array_path:
         return ""
     try:
@@ -404,15 +402,11 @@ def _unit_for_array_path(tree, array_path):
     """Return the unit-of-measure string for `array_path` if the
     tree exposes one, else "".
 
-    TODO(uom): the tree currently carries no "uom" attribute. The
-    FESPP plugin must call AbstractValuesProperty::getUom() and
-    SetAttribute(nodeId, "uom", ...) in
-    ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx around
-    the same blocks that already set "propKind" (lines ~1295-1309,
-    1551-1602, 1665-1712). Same pattern for "resqmlKind" via
-    prop->getPropertyKind()->getTitle(). Until that lands this helper
-    always returns "" — the distribution panel falls back to the
-    property name alone on the x-axis."""
+    The tree carries no "uom" attribute yet: the FESPP plugin would
+    need to call AbstractValuesProperty::getUom() and set it as a node
+    attribute (same pattern as "propKind"). Until then this returns ""
+    and the distribution panel uses the property name alone on the
+    x-axis."""
     if not tree or not array_path:
         return ""
     try:
@@ -486,14 +480,14 @@ def _original_source_and_name(state, source_registry, tree,
     """Resolve the source + REAL VTK array name for an Original row,
     returning `(source, name, restore)`.
 
-    Wellbore-frame CHANNELS are the special case: the legacy frame
-    source (`source_registry.get(rep_path)`) does NOT carry the
-    channel's array — it lives only on the channel's OWN per-channel
+    Wellbore-frame CHANNELS are the special case: the frame source
+    (`source_registry.get(rep_path)`) does NOT carry the channel's
+    array — it lives only on the channel's OWN per-channel
     EnergisticsExtractor (created on demand even when hidden). We read it
-    DIRECTLY (no retarget, no restore — each channel owns a persistent
-    source), picking the real name off it. Non-channels: the legacy
-    source + sanitized name. `restore` is always a no-op now (kept in the
-    signature so callers stay unchanged)."""
+    DIRECTLY (each channel owns a persistent source), picking the real
+    name off it. Non-channels: the frame source + sanitized name.
+    `restore` is always a no-op (kept in the signature so callers stay
+    unchanged)."""
     legacy = source_registry.get(rep_path) if source_registry is not None else None
     noop = (lambda: None)
     try:
@@ -511,9 +505,8 @@ def _original_source_and_name(state, source_registry, tree,
         ext = source_resolver.channel_source_for(array_path)
         if ext is None:
             return legacy, vtk_name, noop
-        # Real name: prefer the sanitized name (channels are sanitized
-        # since the C++ MakeValidNodeName fix); fall back to the raw title
-        # defensively (un-rebuilt plugin).
+        # Real name: prefer the sanitized name (channel arrays are
+        # sanitized); fall back to the raw title defensively.
         real_name = vtk_name
         for cand in (vtk_name, title):
             if cand and _resolve_assoc(ext, cand) is not None:
@@ -556,13 +549,10 @@ def _build_original_row(state, source_registry, tree,
         return None
     is_ts_kind = kind in ("TimeSeries", "MultiRealizationTimeSeries")
     ts_idx = original_entry.get("ts_idx")
-    # Auto-resolve TS like we do for real_idx: when the entry hasn't
-    # picked a specific timestep, fall back to the current global
-    # `state.time_index` (= "follow the time slider"). Keeps the
-    # selector visually populated and the label informative — the
-    # earlier behaviour left ts_idx=None forever, so the strip's TS
-    # dropdown stayed blank and the label hid the timestep entirely
-    # even when the rep IS time-series.
+    # Auto-resolve TS like real_idx: when the entry hasn't picked a
+    # specific timestep, fall back to the global `state.time_index`
+    # (= "follow the time slider") so the selector and label stay
+    # populated.
     if is_ts_kind and ts_idx is None:
         try:
             ti = getattr(state, "time_index", None)
@@ -597,10 +587,10 @@ def _build_original_row(state, source_registry, tree,
     if row is None:
         return None
     ts_label = _ts_label_for_idx(tree, ts_idx) if is_ts_kind else ""
-    # Source label = property title; Realization Index and Time
-    # Step now live in dedicated columns (kind-gated). Custom
-    # pinned rows share the same label as default — the user
-    # disambiguates them visually by the (real, ts) cell values.
+    # Source label = property title; Realization Index and Time Step
+    # live in dedicated kind-gated columns. Custom pinned rows share
+    # the default row's label — the user disambiguates them by the
+    # (real, ts) cell values.
     row.update({
         "kind": "original",
         "id": original_entry.get("id", "default"),
@@ -718,7 +708,7 @@ def _build_view_row(state, scene_registry, source_registry, tree,
 # ---------------------------------------------------------------------------
 # Publish — assemble `ui_stats_tables` from the pinned set + the
 # user's `ui_stats_panel_state` + the current render-panel list.
-# Entrypoint wired by `boot._refresh_descriptive_stats`.
+# Entry point wired by `boot._refresh_descriptive_stats`.
 # ---------------------------------------------------------------------------
 
 
@@ -836,23 +826,23 @@ def publish_descriptive_stats(state, scene_registry, source_registry, tree,
     `state.ui_stats_pinned_paths`. Empty dict when no property is
     pinned.
 
-    `view_id` is ignored — the Brique B model is property-driven,
-    not active-view-driven. The argument is kept to preserve the
-    Brique A call sites in boot.py without forcing edits there.
+    `view_id` is ignored — the model is property-driven, not
+    active-view-driven. The argument is kept so boot.py call sites
+    don't need editing.
 
     Active-source preservation: each transient filter chain
     (`Threshold` + `DescriptiveStatistics` + `AppendDatasets`)
     calls `SetActiveSource(self)` on the new proxy; deleting them
     at the end leaves the active source pointing at a destroyed
-    proxy and `pvsimple.GetActiveSource()` returns None elsewhere.
+    proxy so `pvsimple.GetActiveSource()` returns None elsewhere.
     Snapshot on entry, restore before returning so the transient
     chain stays invisible to the rest of the engine."""
     pinned = list(getattr(state, "ui_stats_pinned_paths", []) or [])
     if not pinned:
         if state.ui_stats_tables:
             state.ui_stats_tables = {}
-        # Brique A legacy state — keep cleared so the (now-removed)
-        # single-table panel doesn't show stale rows.
+        # Legacy single-table state — keep cleared so it never shows
+        # stale rows.
         if getattr(state, "ui_descriptive_stats", None):
             state.ui_descriptive_stats = []
         return
@@ -902,9 +892,8 @@ def publish_descriptive_stats(state, scene_registry, source_registry, tree,
         prev_version = int(getattr(state, "ui_stats_publish_version", 0) or 0)
         state.ui_stats_publish_version = prev_version + 1
         state.ui_stats_tables = tables
-        # Clear the Brique A legacy single-row var so nothing stale
-        # leaks through to a DescriptiveStatsPanel build that still
-        # binds to it.
+        # Clear the legacy single-row var so nothing stale leaks into a
+        # DescriptiveStatsPanel build that still binds to it.
         if getattr(state, "ui_descriptive_stats", None):
             state.ui_descriptive_stats = []
     finally:
@@ -1165,12 +1154,9 @@ def publish_compare_items(state, tree, scene_registry, source_registry, array_pa
             ts_label = match.get("ts_label") or ""
             if ts_label:
                 parts.append(ts_label)
-            # The rep parent label used to be prepended here so two
-            # reps with the same property name could be told apart.
-            # Per user feedback that put redundant rep prefix on
-            # every item header; the panel toolbar chip now carries
-            # the rep prefix once instead (see ui_stats_compare_panel
-            # render — chip reads "<rep_title> / <property> - N rows").
+            # The rep prefix is carried once by the panel toolbar chip
+            # ("<rep_title> / <property> - N rows"), not repeated on
+            # every item header.
             column_label = (
                 ", ".join(parts) if parts
                 else (match.get("label") or row_id)

@@ -2,19 +2,12 @@
 
 Shown in each render panel's top overlay when the panel has at least
 one MR property active in its ColorBy. Lets the user switch which
-realization is displayed for each active MR property — independently
+realization is displayed for each active MR property, independently
 per view, so different panels can show different realizations of the
 same property side by side.
 
-UI style matches the per-view TimeControl: one row per active MR
-property with skip-prev / prev / next / skip-last buttons, a compact
-dropdown that doubles as the active-value readout and a direct-jump
-selector, and a horizontal slider. Same button sizing / spacing as
-the TC so both controls feel like the same widget family in the
-panel overlay.
-
 Buttons / slider / dropdown all drive `trigger('set_view_realization',
-[panel_id, array_path, idx])` → boot.set_view_realization which
+[panel_id, array_path, idx])` → boot.set_view_realization, which
 updates the per-view realization map and re-applies ColorBy with the
 right suffixed VTK array.
 
@@ -26,11 +19,10 @@ State binding:
 
 The realization domain isn't necessarily contiguous (e.g. {23, 24}
 without 0..22), so the slider value is the POSITION in
-spec.available_indices, not the actual idx. The actual idx is looked
-up via `spec.available_indices[position]` before the trigger fires —
-keeps the slider movement linear regardless of the underlying index
-gaps. The dropdown bypasses the position layer entirely (items are
-the raw indices).
+spec.available_indices, not the actual idx; the actual idx is looked
+up via `spec.available_indices[position]` before the trigger fires,
+keeping slider movement linear regardless of index gaps. The dropdown
+bypasses the position layer entirely (items are the raw indices).
 """
 from trame.widgets import html, vuetify3
 
@@ -62,8 +54,8 @@ class PerViewRealizationPicker:
                     key=("spec.array_path",),
                     classes="d-flex align-center",
                 ):
-                    # Property title — short, left-aligned, ellipsis on
-                    # overflow so the controls keep their footprint.
+                    # Property title — ellipsis on overflow so the
+                    # controls keep their footprint.
                     html.Span(
                         "{{ spec.title }}",
                         classes="text-caption font-weight-medium mr-1",
@@ -73,17 +65,11 @@ class PerViewRealizationPicker:
                             " white-space: nowrap;"
                         ),
                     )
-                    # Position helper — used by every button's enable
-                    # state and click handler; pulling the indexOf into
-                    # each callsite is shorter than wrapping the row in
-                    # a renderless component to expose `pos`.
+                    # Position of the current idx within the available
+                    # set — drives each button's disabled state and the
+                    # click handlers below.
                     pos_expr = "spec.available_indices.indexOf(spec.current_idx)"
                     n_expr = "spec.available_indices.length"
-                    # Buttons mirror the TimeControl exactly: density
-                    # compact, flat, no explicit size (default), mr-1
-                    # spacing. The disabled hint at extremes keeps the
-                    # affordance honest — clicking ⏮ on the first index
-                    # would be a no-op.
                     vuetify3.VBtn(
                         icon="mdi-skip-previous",
                         density="compact",
@@ -132,12 +118,9 @@ class PerViewRealizationPicker:
                             f" spec.available_indices[{n_expr} - 1]])"
                         ),
                     )
-                    # Direct-jump dropdown — sits where the TimeControl
-                    # readout sits (mx-2, ~10rem wide) so both controls
-                    # have the same shape. Clicking the dropdown shows
-                    # every available realization; picking one fires the
-                    # trigger directly with that idx (no slider step
-                    # through).
+                    # Direct-jump dropdown: lists every available
+                    # realization; picking one fires the trigger
+                    # directly with that idx (no stepping through).
                     vuetify3.VSelect(
                         model_value=("spec.current_idx",),
                         items=("spec.available_indices",),
@@ -153,10 +136,9 @@ class PerViewRealizationPicker:
                         ),
                     )
                     # Slider value is the POSITION in available_indices
-                    # (0..N-1), so movement is linear even when the
-                    # underlying index set has gaps. @end fires on
-                    # release with the new position; we look up the
-                    # actual idx before the trigger.
+                    # (0..N-1), so movement stays linear despite index
+                    # gaps. @end fires on release; the actual idx is
+                    # looked up before the trigger.
                     vuetify3.VSlider(
                         model_value=(pos_expr,),
                         min=0,
@@ -181,14 +163,13 @@ class GlobalRealizationPicker:
       [property ▼]  ⏮ ◀ ▶ ⏭  [index ▼]  ━━━●━━━
 
     The property dropdown lists every MR currently active across the
-    scene (`ui_global_mr_specs`); its `current` value is the user pick
+    scene (`ui_global_mr_specs`); its value is the user pick
     `ui_global_mr_selected_path` (server-side clamped so it can't go
-    stale). Items render in orange when panels disagree on the active
-    index — `spec.mixed === true`. The selection itself uses the same
-    orange highlight, so the closed dropdown also surfaces the
-    divergence at a glance.
+    stale). Items (and the selection) render in orange when panels
+    disagree on the active index — `spec.mixed === true` — so the
+    closed dropdown surfaces the divergence at a glance.
 
-    The rest of the row binds to `ui_global_mr_selected_spec` — the
+    The rest of the row binds to `ui_global_mr_selected_spec`, the
     server-resolved spec for the selected path. Buttons / index
     dropdown / slider fire `set_global_realization` which fans out to
     every panel that has the property active."""
@@ -206,10 +187,9 @@ class GlobalRealizationPicker:
             with html.Div(
                 classes="d-flex align-center",
             ):
-                # Property selector — orange items / orange selection
-                # when the spec is mixed (panels diverge). Items map
-                # spec.array_path → title; the mixed flag travels with
-                # the item so the slot can read it.
+                # Property selector — orange when the spec is mixed
+                # (panels diverge). The mixed flag travels with each
+                # item so the slot can read it.
                 with vuetify3.VSelect(
                     v_model=("ui_global_mr_selected_path",),
                     items=(
@@ -228,7 +208,7 @@ class GlobalRealizationPicker:
                     classes="mr-1",
                     style="width: 9rem; flex: 0 0 auto;",
                 ):
-                    # Closed-state display: text colored when mixed.
+                    # Closed-state display: coloured when mixed.
                     with vuetify3.Template(v_slot_selection="{ item }"):
                         html.Span(
                             "{{ item.raw.title }}",
@@ -252,9 +232,10 @@ class GlobalRealizationPicker:
                                 )
 
                 # The rest of the row reads from the resolved selected
-                # spec. `spec` is captured via a v-for of length 1 so
-                # every nested expression can reference it (and the
-                # whole row collapses when there is no selected spec).
+                # spec, aliased to `spec` via a one-element v-for (the
+                # lightest way to introduce a local name without a Vue
+                # computed). The whole row collapses when no spec is
+                # selected.
                 spec_expr = "ui_global_mr_selected_spec"
                 pos_expr = "spec.available_indices.indexOf(spec.current_idx)"
                 n_expr = "spec.available_indices.length"
@@ -263,9 +244,6 @@ class GlobalRealizationPicker:
                     classes="d-flex align-center",
                     style="flex: 1; min-width: 0;",
                 ):
-                    # `spec` alias for child expressions — Vue v-for of
-                    # one element is the lightest way to introduce a
-                    # local name without a Vue computed.
                     with html.Div(
                         v_for=f"spec in [{spec_expr}]",
                         key="spec.array_path",

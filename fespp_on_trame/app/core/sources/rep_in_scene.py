@@ -1,31 +1,22 @@
 """RepInScene — one RESQML representation as seen from a single view.
 
-See `doc/REFACTOR_VIEW_SCENES.md` and `doc/REFACTOR_PER_VIEW_PHASE_3.md`
-for the full design rationale.
-
-Phase status (this module):
-  - Phase 1.b — `SlicePlane` and `ClipPlane` are per-(rep, view), each
-    aware of its owning `view_id` / `pv_view`. Validated.
-  - Phase 2 — `vtkEPCCollectorClone` is the per-view structural
-    anchor; `ViewScene._create_clone` plumbs it.
-  - Phase 3a (this commit) — non-IjkGrid reps gain a per-(rep, view)
-    `EnergisticsExtractor` chained on the clone, plus a per-view
-    threshold chain owned here. Slice / Clip now chain on the per-view
-    extractor instead of the legacy shared source. IjkGrid reps still
-    delegate slice / clip / threshold to the legacy shared pipeline
-    (managed by `SourceRegistry`); Phase 3b will move them over.
+Each rep owns its per-(rep, view) state: a `SlicePlane` / `ClipPlane` aware of
+its `view_id` / `pv_view`, an `EnergisticsExtractor` chained on the scene's
+`vtkEPCCollectorClone`, and a per-view threshold chain. Slice / Clip chain on
+the per-view extractor. IjkGrid reps delegate the per-view pipeline to a
+per-view `IjkGrid` instance (`_per_view_ijk`), keeping the legacy shared
+IjkGrid only for property selection driven by `SourceRegistry`.
 
 Naming:
-  - `_extractor` — per-(rep, view) `EnergisticsExtractor` filter. None
-    for IjkGrid reps (legacy stays in charge) and for non-IjkGrid reps
-    until the first slice/clip/threshold/ColorBy resolves its upstream.
+  - `_extractor` — per-(rep, view) `EnergisticsExtractor` filter. None for
+    IjkGrid reps and for non-IjkGrid reps until the first
+    slice/clip/threshold/ColorBy resolves its upstream.
   - `_chain` — per-view list of `ChainEntry` (reused from
     `ExtractBlockRepresentation`). Empty for IjkGrid reps.
 
-The "parent rep visibility" rule from Phase 1.b is preserved: enabling
-slice OR clip on a rep Hides the rep's display IN THIS SCENE'S
-pv_view only, so the cross-section / clipped chunk is visible. Other
-scenes keep the rep visible.
+Parent-rep visibility rule: enabling slice OR clip on a rep hides the rep's
+display IN THIS SCENE'S pv_view only, so the cross-section / clipped chunk is
+visible; other scenes keep the rep visible.
 """
 from typing import Optional
 
@@ -33,6 +24,7 @@ from fespp_on_trame.app.core import element_type as _element_type
 from fespp_on_trame.app.core.element_type import (
     IjkGridRep, ChannelFrameRep, MarkerFrameRep,
 )
+from fespp_on_trame.app.core.sources import threshold_chain
 
 
 class RepInScene:
@@ -46,76 +38,65 @@ class RepInScene:
         self.scene = scene
         self.rep_path = rep_path
 
-        # Phase 3a — per-(rep, view) EnergisticsExtractor chained on the
-        # scene's clone. None for IjkGrid reps (handled by
-        # `_per_view_ijk` below). Created lazily on first upstream
-        # resolution so a rep that's never sliced/clipped/colored
-        # doesn't pay the proxy creation cost.
+        # Per-(rep, view) EnergisticsExtractor chained on the scene's clone.
+        # None for IjkGrid reps (handled by `_per_view_ijk` below). Created
+        # lazily on first upstream resolution so a rep that's never
+        # sliced/clipped/colored doesn't pay the proxy creation cost.
         self._extractor = None
 
-        # Wellbore-frame CHANNELS (logs) — like markers, each channel gets
-        # its OWN EnergisticsExtractor (ExtractPath = the channel leaf
-        # node, tube + point array embedded), keyed here by the channel's
-        # assembly path. Lazily created on first show / first COE-stats
-        # read, then Show/Hide-toggled. UNLIKE markers, the display is
-        # EXCLUSIVE (one log at a time per frame): showing one hides the
-        # others (see `set_channel_visible`). The source PERSISTS once
-        # created so its scoped LUT / COE / stats read it directly with no
-        # retarget. The frame's primary `_extractor` is never rendered for
-        # a frame (see `_channelless_frame`).
+        # Wellbore-frame CHANNELS (logs): each channel gets its OWN
+        # EnergisticsExtractor (ExtractPath = the channel leaf node),
+        # keyed by the channel's assembly path. Lazily created, then
+        # Show/Hide-toggled. The display is EXCLUSIVE (one log at a time per
+        # frame): showing one hides the others (see `set_channel_visible`).
+        # The source persists once created so its scoped LUT / COE / stats
+        # read it directly with no retarget. The frame's primary `_extractor`
+        # is never rendered for a frame (see `_channelless_frame`).
         self._channel_extractors: dict = {}
 
-        # Wellbore MARKER frames — unlike single-select log channels,
-        # markers display MULTIPLE at a time. Each VISIBLE marker gets
-        # its OWN EnergisticsExtractor (ExtractPath = the marker's
-        # assembly node) chained on the scene clone, keyed here by the
-        # marker's assembly path. Lazily created on first show, then
-        # Show/Hide-toggled. The frame's primary `_extractor` is never
-        # rendered for a marker frame (see `_channelless_frame`).
+        # Wellbore MARKER frames: unlike single-select log channels, markers
+        # display MULTIPLE at a time. Each VISIBLE marker gets its OWN
+        # EnergisticsExtractor (ExtractPath = the marker's assembly node)
+        # chained on the scene clone, keyed by the marker's assembly path.
+        # Lazily created, then Show/Hide-toggled. The frame's primary
+        # `_extractor` is never rendered for a marker frame.
         self._marker_extractors: dict = {}
 
-        # Phase 3b — per-(rep, view) IjkGrid pipeline (rep_data +
-        # slicers + volume crop + threshold chain), all anchored on
-        # `scene.clone`. Created lazily for IJK reps the first time
-        # `source()` / slice / clip / threshold resolves an upstream.
-        # The legacy shared IjkGrid (owned by `SourceRegistry`) stays
-        # around to drive the property selection through the engine —
-        # `_ensure_per_view_ijk` mirrors its `_node_id` to keep the
-        # two in sync. We then hide the legacy IjkGrid's sources in
-        # this scene's pv_view so only the per-view pipeline renders.
+        # Per-(rep, view) IjkGrid pipeline (rep_data + slicers + volume crop +
+        # threshold chain), all anchored on `scene.clone`. Created lazily for
+        # IJK reps. The legacy shared IjkGrid (owned by `SourceRegistry`)
+        # drives property selection through the engine; `_ensure_per_view_ijk`
+        # mirrors its `_node_id` to keep the two in sync, then hides the
+        # legacy IjkGrid's sources in this scene's pv_view so only the
+        # per-view pipeline renders.
         self._per_view_ijk = None
 
         # Per-view threshold chain (non-IJK reps only — IJK reps use
-        # `_per_view_ijk._chain` instead). Each entry is an
+        # `_per_view_ijk._chain`). Each entry is an
         # `ExtractBlockRepresentation.ChainEntry`.
         self._chain: list = []
 
-        # Per-(rep, view) slice + clip filters. Created lazily on the
-        # first `slice_set` / `clip_set` call.
+        # Per-(rep, view) slice + clip filters. Created lazily on the first
+        # `slice_set` / `clip_set` call.
         self._slice_plane = None
         self._clip_plane = None
 
-        # `element_type` resolution cache — lazy: resolved on first access
-        # by the `element_type` property below, then the per-kind
-        # predicates delegate to it (same "compute on first use" timing the
-        # old per-predicate caches had).
+        # `element_type` resolution cache — resolved on first access by the
+        # `element_type` property; the per-kind predicates delegate to it.
         self._element_type_cache = None
 
     # ------------------------------------------------------------------
     # Rep type — delegated to the ElementType hierarchy
     #
-    # The per-kind predicates below are the SINGLE consumers of the kind
-    # string on the source side; they delegate to `element_type` (the
-    # `ElementType` refactor — Step 3) instead of re-testing kind strings,
-    # so a behaviour shared by a family lives in one class, not scattered.
+    # The per-kind predicates below delegate to `element_type` instead of
+    # re-testing kind strings, so a behaviour shared by a family lives in one
+    # class rather than being scattered.
 
     @property
     def element_type(self):
         """The `ElementType` for this rep — single source of truth for the
-        per-kind predicates (lazy + cached). Resolves the same
-        find_node_id→find_type lookup the predicates used to run, wrapped
-        in the same try/except→fallback (a not-yet-resolvable path yields a
-        generic standard Representation, matching the old except→False)."""
+        per-kind predicates (lazy + cached). A not-yet-resolvable path yields
+        a generic standard Representation."""
         if self._element_type_cache is None:
             self._element_type_cache = _element_type.for_path(
                 self.scene.tree, self.rep_path
@@ -148,7 +129,7 @@ class RepInScene:
         """Head proxy used by ColorBy and the display layer — DELEGATED to
         the ElementType: IjkGridRep → the per-view IjkGrid's rep_data
         extractor, other reps → the per-view EnergisticsExtractor, with the
-        legacy shared source as the Phase-2 fallback."""
+        legacy shared source as the fallback."""
         return self.element_type.ensure_source(self)
 
     def _ensure_per_view_ijk(self):
@@ -201,36 +182,30 @@ class RepInScene:
             return
         try:
             self._per_view_ijk.set_node_id(prop_node_id)
-            # The engine's parallel call to the LEGACY IjkGrid's
-            # `set_node_id` also fires `self.show()` which resets
-            # every legacy slicer's `Visibility=1` in the active
-            # view (= our `pv_view`). Without re-hiding it here, the
-            # per-view slicer and the legacy slicer paint the same
-            # geometry on top of each other in `pv_view` (observed
-            # as a visible Z-fight / overlay each time the user
-            # picks a new property on the IjkGrid). `_eager_setup`
-            # only hides on FIRST creation; this property-swap path
-            # has to re-hide on every refresh.
+            # The engine's parallel call to the LEGACY IjkGrid's `set_node_id`
+            # also fires `self.show()`, which resets every legacy slicer's
+            # `Visibility=1` in the active view (= our `pv_view`). Re-hide the
+            # legacy sources here so the per-view slicer and the legacy slicer
+            # don't paint the same geometry on top of each other in `pv_view`
+            # (`_eager_setup` only hides on first creation).
             try:
                 legacy = self._legacy_instance()
                 if legacy is not None:
                     self._hide_legacy_ijk_in_scene_view(legacy)
             except Exception:
                 pass
-            # `set_node_id` re-shows the per-view slicers via its own
-            # `show()`. If the engine flagged this rep hidden in THIS
-            # view's bucket (a non-active panel), re-hide it so a
-            # property change on the active panel doesn't leak the grid
-            # back into the other views (the "shows on all views" bug).
+            # `set_node_id` re-shows the per-view slicers via its own `show()`.
+            # If the engine flagged this rep hidden in THIS view's bucket (a
+            # non-active panel), re-hide it so a property change on the active
+            # panel doesn't leak the grid into the other views.
             if self._hidden_in_scene():
                 self.hide_in_scene_view()
         except Exception as exc:
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" per-view IjkGrid refresh failed: {exc}")
+            pass
 
     def _ensure_extractor(self):
         """The per-(rep, view) EnergisticsExtractor (standard reps), or None
-        (IjkGrid / Phase-2 fallback). DELEGATED to the ElementType
+        (IjkGrid). DELEGATED to the ElementType
         (Representation.ensure_extractor builds + caches it on
         self._extractor; IjkGridRep returns None)."""
         return self.element_type.ensure_extractor(self)
@@ -241,9 +216,9 @@ class RepInScene:
     # The per-(rep, view) STATE (the `_channel_extractors` /
     # `_marker_extractors` dicts) lives HERE; the per-type BEHAVIOUR
     # (exclusive log vs multi marker, build / tint a child extractor) lives
-    # in ChannelFrameRep / MarkerFrameRep, which receive `self` as `ris`
-    # (the strategy pattern, Option A). No-op for non-frame reps (the base
-    # ElementType child methods return None / []).
+    # in ChannelFrameRep / MarkerFrameRep, which receive `self` as `ris`.
+    # No-op for non-frame reps (the base ElementType child methods return
+    # None / []).
 
     def set_channel_visible(self, channel_path, visible):
         """Show/hide one log channel (EXCLUSIVE — one log at a time)."""
@@ -271,16 +246,14 @@ class RepInScene:
 
     def _channelless_frame(self) -> bool:
         """True iff this rep's PRIMARY extractor must stay hidden: ANY
-        wellbore frame (logs) or marker frame. Both now render their
-        children via dedicated per-(child, view) extractors
-        (`_channel_extractors` / `_marker_extractors`), never the primary
-        — so the frame's own `_extractor` is always unused/hidden. The
-        generic visibility refreshers (`_refresh_parent_rep_visibility`,
-        `_refresh_chain_visibility`) would otherwise `Show` it, which the
-        C++ side resolves to the frame's first child partition,
-        re-surfacing a log / marker the user never picked. Delegates to the
-        hierarchy: `primary_hidden()` is True exactly on FrameRep subclasses
-        (Channel + Marker), i.e. the old `_is_marker_frame or _is_wellbore_frame`."""
+        wellbore frame (logs) or marker frame. Both render their children via
+        dedicated per-(child, view) extractors (`_channel_extractors` /
+        `_marker_extractors`), never the primary, so the frame's own
+        `_extractor` is always unused/hidden. The generic visibility
+        refreshers would otherwise `Show` it, which the C++ side resolves to
+        the frame's first child partition (surfacing a log / marker the user
+        never picked). Delegates to `primary_hidden()`, True exactly on
+        FrameRep subclasses (Channel + Marker)."""
         return self.element_type.primary_hidden()
 
     def _hidden_in_scene(self) -> bool:
@@ -321,10 +294,9 @@ class RepInScene:
         self.element_type.hide_in_view(self)
 
     def _fallback_legacy_source(self):
-        """Locate the legacy per-rep source via the engine's existing
-        registry. Phase 3a uses this for IjkGrid reps unconditionally
-        and for non-IjkGrid reps when the per-view extractor can't be
-        built."""
+        """Locate the legacy per-rep source via the engine's registry. Used
+        for IjkGrid reps, and for non-IjkGrid reps when the per-view extractor
+        can't be built."""
         try:
             from trame.app import get_server
             ctx = get_server().context
@@ -357,13 +329,13 @@ class RepInScene:
             try:
                 self._slice_plane.delete()
             except Exception as exc:
-                print(f"[RepInScene {self.scene.view_id}/{self.rep_path}] slice delete: {exc}")
+                pass
             self._slice_plane = None
         if self._clip_plane is not None:
             try:
                 self._clip_plane.delete()
             except Exception as exc:
-                print(f"[RepInScene {self.scene.view_id}/{self.rep_path}] clip delete: {exc}")
+                pass
             self._clip_plane = None
 
         if self._per_view_ijk is not None:
@@ -372,10 +344,7 @@ class RepInScene:
             try:
                 self._per_view_ijk.set_node_id(None)
             except Exception as exc:
-                print(
-                    f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                    f" per-view IjkGrid teardown: {exc}"
-                )
+                pass
             self._per_view_ijk = None
 
         if self._extractor is not None:
@@ -385,10 +354,7 @@ class RepInScene:
                     pvsimple.Hide(proxy=self._extractor, view=self.scene.pv_view)
                 pvsimple.Delete(self._extractor)
             except Exception as exc:
-                print(
-                    f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                    f" extractor delete: {exc}"
-                )
+                pass
             self._extractor = None
 
         # Per-child extractors (marker frames + channel frames).
@@ -550,22 +516,21 @@ class RepInScene:
     # ==================================================================
     # Threshold chain — per-(rep, view), non-IjkGrid only.
     #
-    # Mirrors `ExtractBlockRepresentation`'s chain implementation
-    # (same `ChainEntry` dataclass, same effective-input resolution,
-    # same visibility rules) but:
+    # Mirrors `ExtractBlockRepresentation`'s chain implementation (same
+    # `ChainEntry` dataclass, same effective-input resolution, same
+    # visibility rules) but:
     #   - upstream is `self._extractor` (per-view) instead of a shared
     #     `ExtractBlock`;
-    #   - registration name suffixes `_v{view_id}` so chains from
-    #     different views don't collide on PV's proxy registry;
+    #   - registration name suffixes `_v{view_id}` so chains from different
+    #     views don't collide on PV's proxy registry;
     #   - Show/Hide targets `self.scene.pv_view`, not the active view.
     #
-    # IjkGrid reps delegate to the legacy instance through the
-    # `_legacy_instance()` accessor below — Phase 3b changes that.
+    # IjkGrid reps forward to the IjkGrid instance via `_ijk_provider()`.
 
     def _ijk_provider(self):
-        """Resolve the IjkGrid instance to forward threshold ops to:
-        the per-view one when available (Phase 3b), legacy fallback
-        otherwise. Returns None for non-IJK reps."""
+        """Resolve the IjkGrid instance to forward threshold ops to: the
+        per-view one when available, legacy fallback otherwise. Returns None
+        for non-IJK reps."""
         if not self._is_ijk_grid():
             return None
         ijk = self._ensure_per_view_ijk()
@@ -612,7 +577,7 @@ class RepInScene:
                     e.proxy.UpperThreshold = e.high
                     e.proxy.UpdatePipeline()
                 except Exception as exc:
-                    print(f"[RepInScene {self.scene.view_id}/{self.rep_path}] set_range({name}): {exc}")
+                    pass
                 return
 
     def set_visible(self, name, visible):
@@ -635,8 +600,9 @@ class RepInScene:
             if ijk is None or not hasattr(ijk, "available_arrays"):
                 return []
             return ijk.available_arrays()
+        from .representation import arrays_from_source
         src = self._ensure_extractor() or self._fallback_legacy_source()
-        return _arrays_from_source(src)
+        return arrays_from_source(src)
 
     def array_data_range(self, array_name):
         if self._is_ijk_grid():
@@ -644,8 +610,9 @@ class RepInScene:
             if ijk is None or not hasattr(ijk, "array_data_range"):
                 return None
             return ijk.array_data_range(array_name)
+        from .representation import array_range_from_source
         src = self._ensure_extractor() or self._fallback_legacy_source()
-        return _array_range_from_source(src, array_name)
+        return array_range_from_source(src, array_name)
 
     def all_visible_thresholds(self):
         """Visible threshold proxies in chain order — used by callers
@@ -676,8 +643,6 @@ class RepInScene:
         if upstream_root is None:
             return None
         if parent_name is not None and not any(e.name == parent_name for e in self._chain):
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" add_threshold: unknown parent {parent_name!r}")
             return None
         assoc = self._resolve_assoc(array)
         if not assoc:
@@ -714,8 +679,6 @@ class RepInScene:
             proxy.UpperThreshold = float(rng[1])
             proxy.UpdatePipeline()
         except Exception as exc:
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" Threshold create {base_name}: {exc}")
             return None
 
         # Resolve property kind (Continuous / Discrete / Categorical)
@@ -797,31 +760,19 @@ class RepInScene:
         return None
 
     def _entry_by_name(self, name):
-        for e in self._chain:
-            if e.name == name:
-                return e
-        return None
+        return threshold_chain.entry_by_name(self._chain, name)
 
     def _effective_input_for_parent(self, parent_name):
         """Resolve the upstream a new/refreshed child reads from.
         parent_name=None → the per-view extractor (or legacy fallback).
-        Otherwise walk up skipping hidden ancestors."""
-        if parent_name is None:
-            return self._ensure_extractor() or self._fallback_legacy_source()
-        cursor = self._entry_by_name(parent_name)
-        while cursor is not None and not cursor.visible:
-            cursor = self._entry_by_name(cursor.parent_name)
-        if cursor is None:
-            return self._ensure_extractor() or self._fallback_legacy_source()
-        return cursor.proxy
+        Otherwise walk up skipping hidden ancestors. Graph logic shared
+        via threshold_chain; the ROOT here is the per-view extractor."""
+        root = self._ensure_extractor() or self._fallback_legacy_source()
+        return threshold_chain.effective_input_for_parent(
+            self._chain, parent_name, root)
 
     def _has_visible_descendant(self, name):
-        for child in (e for e in self._chain if e.parent_name == name):
-            if child.visible:
-                return True
-            if self._has_visible_descendant(child.name):
-                return True
-        return False
+        return threshold_chain.has_visible_descendant(self._chain, name)
 
     def _refresh_chain_visibility(self):
         """Recompute Input wiring + Visibility for every chain entry.
@@ -837,110 +788,47 @@ class RepInScene:
         view = self.scene.pv_view
         if view is None:
             return
-        try:
-            from paraview import simple as pvsimple
-        except Exception:
-            return
-
+        # Per-view policy: rep hidden if the per-view eye chip barred it OR a
+        # slice/clip "replaces" it. The chain head + the primary to hide/show
+        # is the per-view extractor (or legacy fallback). A channel-less
+        # wellbore frame never shows its primary.
         try:
             from trame.app import get_server
             hidden_by_view = get_server().state.ui_hidden_rep_paths_by_view or {}
             panel_hidden = hidden_by_view.get(self.scene.view_id, []) or []
         except Exception:
             panel_hidden = []
-        rep_hidden_by_user = self.rep_path in panel_hidden
-        rep_hidden_by_slice = self._slice_plane is not None and self._slice_plane.enabled
-        rep_hidden_by_clip = self._clip_plane is not None and self._clip_plane.enabled
-        rep_hidden = (rep_hidden_by_user or rep_hidden_by_slice or rep_hidden_by_clip)
-
-        any_shown = False
-        for entry in self._chain:
-            upstream = self._effective_input_for_parent(entry.parent_name)
-            try:
-                if entry.proxy.Input is not upstream:
-                    entry.proxy.Input = upstream
-                    entry.proxy.UpdatePipeline()
-            except Exception as exc:
-                print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                      f" chain rewire {entry.name}: {exc}")
-            try:
-                tip = entry.visible and not self._has_visible_descendant(entry.name)
-                show = tip and not rep_hidden
-                if show:
-                    pvsimple.Show(proxy=entry.proxy, view=view)
-                    any_shown = True
-                else:
-                    pvsimple.Hide(proxy=entry.proxy, view=view)
-            except Exception:
-                pass
-
-        # Re-assert primary source visibility now that we know whether
-        # a chain tip is shown.
+        rep_hidden = (
+            self.rep_path in panel_hidden
+            or (self._slice_plane is not None and self._slice_plane.enabled)
+            or (self._clip_plane is not None and self._clip_plane.enabled)
+        )
         primary = self._ensure_extractor() or self._fallback_legacy_source()
-        if primary is None:
-            return
-        # A channel-less wellbore frame never shows its primary (see
-        # `_channelless_frame`): force Hide regardless of chain state.
-        force_hide_primary = self._channelless_frame()
-        try:
-            if rep_hidden or any_shown or force_hide_primary:
-                pvsimple.Hide(proxy=primary, view=view)
-            else:
-                pvsimple.Show(proxy=primary, view=view)
-        except Exception:
-            pass
+        threshold_chain.refresh_chain_visibility(
+            self._chain, view, primary, primary, rep_hidden,
+            force_hide_source=self._channelless_frame(),
+        )
 
     def _inherit_display(self, thr_proxy, upstream):
-        """Copy Representation / Scale / ColorArrayName / LookupTable /
-        DiffuseColor / Opacity from upstream's display in this scene's
-        view onto the new threshold proxy's display. Mirrors the same
-        helper in `ExtractBlockRepresentation`."""
-        view = self.scene.pv_view
-        if view is None:
-            return
-        try:
-            from paraview import simple as pvsimple
-            src_disp = pvsimple.GetDisplayProperties(upstream, view=view)
-            thr_disp = pvsimple.GetRepresentation(proxy=thr_proxy, view=view)
-            if src_disp is None or thr_disp is None:
-                return
-            for attr, as_list in (
-                ("Representation", False),
-                ("Scale", True),
-                ("ColorArrayName", True),
-                ("LookupTable", False),
-                ("DiffuseColor", True),
-                ("AmbientColor", True),
-                ("Opacity", False),
-            ):
-                try:
-                    val = getattr(src_disp, attr)
-                    if as_list:
-                        val = list(val)
-                    setattr(thr_disp, attr, val)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        """Copy the parent's display look onto the new threshold proxy in this
+        scene's view. Delegates to the shared `inherit_display` helper."""
+        from .representation import inherit_display
+        inherit_display(upstream, thr_proxy, self.scene.pv_view)
 
     # ==================================================================
-    # Phase 3c — snapshot / apply primitives per concern
+    # Snapshot / apply primitives per concern
     #
     # Each concern (threshold chain, slice, clip) exposes a pair:
     #   - `snapshot_*()  → dict`   — serialise the current state
     #   - `apply_*(snap)`          — restore state from a snapshot
     #
-    # Snapshots are plain json-safe dicts (lists, strings, floats,
-    # bools). Roundtrip invariant: `apply(snapshot(x)) ≈ x` visually
-    # — chain entry names will differ across views (suffixed with
-    # view_id) so name-equality is NOT preserved but parent-child
-    # structure IS.
+    # Snapshots are plain json-safe dicts. Roundtrip invariant:
+    # `apply(snapshot(x)) ≈ x` visually — chain entry names differ across
+    # views (suffixed with view_id), so name-equality is NOT preserved but
+    # parent-child structure IS.
     #
     # Used by `SceneRegistry.replicate_view(src, dst)` for view-split
-    # inheritance (decision D2) and by future per-concern "Copy from
-    # View X" buttons (decision D1). IjkGrid reps return / accept
-    # empty snapshots in Phase 3a (legacy IjkGrid stays in charge
-    # until Phase 3b).
+    # inheritance and by the per-concern "Copy from View X" buttons.
 
     def snapshot_threshold_chain(self) -> dict:
         """Serialise the threshold chain in DFS / insertion order so
@@ -1013,8 +901,6 @@ class RepInScene:
                 try:
                     new_name = ijk.add_threshold(new_parent, entry.get("array"))
                 except Exception as exc:
-                    print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                          f" ijk apply add_threshold: {exc}")
                     continue
                 if new_name is None:
                     continue
@@ -1087,17 +973,15 @@ class RepInScene:
         )
 
     def snapshot_ijk_slicers(self) -> dict:
-        """Phase 3b — snapshot the per-view IjkGrid's slicer / volume /
-        mode / visibility state. Reuses `IjkGrid.to_ui_state()` whose
-        shape is the same flat dict the UI state vars consume, which
-        keeps `apply_ijk_slicers` symmetric and removes a serialisation
-        hop.
+        """Snapshot the per-view IjkGrid's slicer / volume / mode /
+        visibility state. Reuses `IjkGrid.to_ui_state()`, whose shape is the
+        same flat dict the UI state vars consume, keeping `apply_ijk_slicers`
+        symmetric.
 
-        Returns `{}` for non-IjkGrid reps and when no per-view IjkGrid
-        has been built yet (no property selected on this view). Reads
-        ONLY from the per-view IjkGrid — never the legacy shared one,
-        whose slicer state goes stale once Phase 3b owns per-view
-        edits and would leak across views if returned here."""
+        Returns `{}` for non-IjkGrid reps and when no per-view IjkGrid has
+        been built yet (no property selected on this view). Reads ONLY from
+        the per-view IjkGrid — never the legacy shared one, whose slicer state
+        would leak across views if returned here."""
         if not self._is_ijk_grid():
             return {}
         ijk = self._ensure_per_view_ijk()
@@ -1156,20 +1040,15 @@ class RepInScene:
             if hasattr(ijk, "show"):
                 ijk.show()
         except Exception as exc:
-            print(
-                f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                f" apply_ijk_slicers: {exc}"
-            )
+            pass
 
     # ------------------------------------------------------------------
     # Helpers
 
     def _legacy_instance(self):
-        """The legacy per-rep wrapper (IjkGrid or
-        ExtractBlockRepresentation) that still owns shared state for
-        IjkGrid reps. For non-IjkGrid reps in Phase 3a this is also
-        used as a fallback when the per-view extractor can't be built
-        (Phase 2 fallback path)."""
+        """The legacy per-rep wrapper (IjkGrid or ExtractBlockRepresentation)
+        that owns shared state for IjkGrid reps, and the fallback for
+        non-IjkGrid reps when the per-view extractor can't be built."""
         try:
             from trame.app import get_server
             ctx = get_server().context
@@ -1188,47 +1067,3 @@ class RepInScene:
         return (
             f"<RepInScene view={self.scene.view_id!r} rep_path={self.rep_path!r}>"
         )
-
-
-# ------------------------------------------------------------------
-# Array introspection helpers — duplicated from ExtractBlockRepresentation
-# so this module doesn't import from the soon-to-be-deprecated one.
-
-def _arrays_from_source(src):
-    """Return [(assoc, name), ...] for a PV proxy's CellData /
-    PointData. Same shape as ExtractBlockRepresentation.available_arrays."""
-    if src is None:
-        return []
-    out, seen = [], set()
-    for store_attr, assoc in (("CellData", "CELLS"), ("PointData", "POINTS")):
-        try:
-            store = getattr(src, store_attr)
-            for i in range(store.GetNumberOfArrays()):
-                a = store.GetArray(i)
-                if a is None:
-                    continue
-                name = a.Name
-                key = (assoc, name)
-                if name and key not in seen:
-                    seen.add(key)
-                    out.append(key)
-        except Exception:
-            pass
-    return out
-
-
-def _array_range_from_source(src, array_name):
-    """Return (min, max) for the named array on a PV proxy, or None."""
-    if src is None or not array_name:
-        return None
-    for store_attr in ("CellData", "PointData"):
-        try:
-            store = getattr(src, store_attr)
-            for i in range(store.GetNumberOfArrays()):
-                a = store.GetArray(i)
-                if a is not None and a.Name == array_name:
-                    rng = a.GetRange()
-                    return (float(rng[0]), float(rng[1]))
-        except Exception:
-            pass
-    return None

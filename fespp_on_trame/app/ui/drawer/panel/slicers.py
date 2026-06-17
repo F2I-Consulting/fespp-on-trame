@@ -12,29 +12,27 @@ state = server.state
 vuetify3.enable_lab()
 
 
-# v_if expression for the IJK tab visibility — only IjkGrid here.
-# Threshold + realization moved out (ThresholdPanel + ToolsBand).
+# v_if expression for the IJK tab visibility — only IjkGrid qualifies.
 IJK_TAB_VISIBLE = "ui_active_node_reservoir_type_rep === 'IjkGrid'"
 
 
 class SlicerControls:
     """IJK slicer body — axis crop (range mode) and per-axis multi-
     position cuts (slice mode). Rendered inside the SlicersPanel's IJK
-    tab. Threshold lives in its own home (`ThresholdPanel` in the
-    attributes drawer) because it's a per-rep value-based filter, not
-    a cut. Realization is now per-view: each render panel's overlay
-    carries a `PerViewRealizationPicker` populated from the per-view
-    MR specs computed by `realization_dispatch.recompute_panel_mr_specs`.
+    tab. Threshold lives in `ThresholdPanel` (attributes drawer) because
+    it's a per-rep value-based filter, not a cut. Realization is per-view:
+    each render panel's overlay carries a `PerViewRealizationPicker`
+    populated from the per-view MR specs computed by
+    `realization_dispatch.recompute_panel_mr_specs`.
     """
 
     _mode_var = "ui_slices_range_mode"
 
     def render_body(self):
         with html.Div(v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'"):
-            # Phase 3b: header row hosts the Copy-from-view menu so the
-            # user can snapshot another panel's IJK slicer / volume /
-            # mode state onto the active panel. Sits flush with the
-            # mode switch to keep the IJK tab body compact.
+            # Header row hosts the Copy-from-view menu so the user can
+            # snapshot another panel's IJK slicer / volume / mode state
+            # onto the active panel.
             with html.Div(classes="d-flex align-center"):
                 vuetify3.VSwitch(
                     v_model=(self._mode_var, "range",),
@@ -101,8 +99,8 @@ class SlicerControls:
 
                     vuetify3.VTextField(
                         model_value=(f"{slices_range_var}[0]",),
-                        blur=f"console.log('blur {index} min:', $event.target.value); {slices_range_var} = [parseInt($event.target.value), {slices_range_var}[1]]",
-                        keydown=f"$event.key === 'Enter' && (console.log('enter {index} min:', $event.target.value), {slices_range_var} = [parseInt($event.target.value), {slices_range_var}[1]])",
+                        blur=f"{slices_range_var} = [parseInt($event.target.value), {slices_range_var}[1]]",
+                        keydown=f"$event.key === 'Enter' && ({slices_range_var} = [parseInt($event.target.value), {slices_range_var}[1]])",
                         density="compact",
                         variant="outlined",
                         hide_details=True,
@@ -114,8 +112,8 @@ class SlicerControls:
             with html.Template(v_slot_append=""):
                 vuetify3.VTextField(
                     model_value=(f"{slices_range_var}[1]",),
-                    blur=f"console.log('blur {index} max:', $event.target.value); {slices_range_var} = [{slices_range_var}[0], parseInt($event.target.value)]",
-                    keydown=f"$event.key === 'Enter' && (console.log('enter {index} max:', $event.target.value), {slices_range_var} = [{slices_range_var}[0], parseInt($event.target.value)])",
+                    blur=f"{slices_range_var} = [{slices_range_var}[0], parseInt($event.target.value)]",
+                    keydown=f"$event.key === 'Enter' && ({slices_range_var} = [{slices_range_var}[0], parseInt($event.target.value)])",
                     density="compact",
                     variant="outlined",
                     hide_details=True,

@@ -5,7 +5,8 @@ from paraview.servermanager import vtkSMPropertyHelper
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.tree import Tree
 from fespp_on_trame.app.core.sources.representation import (
-    _apply_default_tint, _find_registered_proxy, _sanitize,
+    _apply_default_tint, _find_registered_proxy, _sanitize, inherit_display,
+    arrays_from_source, array_range_from_source, resolve_assoc,
 )
 
 
@@ -85,21 +86,18 @@ class IjkGrid:
     def __init__(self, collector: Collector, tree: Tree, *,
                  view_id=None, clone=None, pv_view=None):
         """
-        collector / tree : engine globals — same as before.
-        view_id / clone / pv_view (Phase 3b, all optional, all-or-none):
-            When provided, this IjkGrid operates in **per-view mode**:
-            rep_data extractor is created via `EnergisticsExtractor`
-            chained on `clone` (not via `EPCCollector.ExtractRepPath`
-            which is shared across views), and every Show/Hide
-            defaults to `pv_view` instead of `pvsimple.GetActiveView()`.
-            Slicers and chain proxies follow naturally because they
-            chain on rep_data and use `_target_view()`.
+        collector / tree : engine globals.
+        view_id / clone / pv_view (all optional, all-or-none):
+            When provided, this IjkGrid runs in per-view mode: rep_data is
+            created via `EnergisticsExtractor` chained on `clone` (not via the
+            shared `EPCCollector.ExtractRepPath`), and every Show/Hide defaults
+            to `pv_view` instead of `pvsimple.GetActiveView()`. Slicers and
+            chain proxies follow because they chain on rep_data and use
+            `_target_view()`.
 
-            When all three are None, the legacy shared-instance
-            behaviour kicks in: rep_data is created on the shared
-            collector and Show/Hide tracks `GetActiveView()`. Used by
-            `SourceRegistry` for backwards compat until Phase 4
-            removes the legacy path.
+            When all three are None, the legacy shared-instance behaviour
+            applies: rep_data is created on the shared collector and Show/Hide
+            tracks `GetActiveView()`. Used by `SourceRegistry`.
         """
         self._collector = collector
         self._tree = tree
@@ -375,12 +373,11 @@ class IjkGrid:
                 else base_token
             )
             if self._view_id is not None and self._clone is not None:
-                # Phase 3b per-view path: create rep_data via
-                # EnergisticsExtractor chained on the view's clone.
-                # Same data as the legacy collector-anchored extractor
-                # (ShallowCopy passthrough) but isolated per view, so
-                # downstream slicers / chain proxies don't collide on
-                # id() across views.
+                # Per-view path: create rep_data via EnergisticsExtractor
+                # chained on the view's clone. Same data as the
+                # collector-anchored extractor (ShallowCopy passthrough) but
+                # isolated per view, so downstream slicers / chain proxies
+                # don't collide on id() across views.
                 from fespp_on_trame.app.core.sources.representation import (
                     _create_plugin_filter_proxy,
                 )
@@ -391,8 +388,6 @@ class IjkGrid:
                     inputs={"Input": self._clone},
                 )
                 if ext is None:
-                    print(f"[IjkGrid v={self._view_id}] EnergisticsExtractor"
-                          f" create failed for {ijkgrid_rep_path}")
                     self._node_id = None
                     return
                 vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(ijkgrid_rep_path)
@@ -581,16 +576,12 @@ class IjkGrid:
                     pass
             return
 
-        # `set_node_id` set Representation + tint (DiffuseColor /
-        # AmbientColor / Opacity from state.solid_color_by_rep) on each
-        # of this grid's sources, but only in the view that was active
-        # at the time. For OTHER views (multi-view copies, empty
-        # panels promoted via eye toggle), the display was created
-        # later with PV's default Representation='Outline' and default
-        # grey color — so the slicers rendered as bare outlines once
-        # shown, ignoring the user-picked color. Re-assert
-        # Representation + tint on every managed source's display in
-        # `view`.
+        # `set_node_id` set Representation + tint (DiffuseColor / AmbientColor
+        # / Opacity from state.solid_color_by_rep) only in the view active at
+        # the time. In OTHER views (multi-view copies, panels promoted via eye
+        # toggle) the display is created later with PV's default
+        # Representation='Outline' and grey colour, so re-assert
+        # Representation + tint on every managed source's display in `view`.
         rep_type = state.representation_active or 'Surface'
         grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
         zs = self._current_z_scale()
@@ -715,50 +706,15 @@ class IjkGrid:
     def available_arrays(self):
         """Return [(assoc, name), ...] for the active grid's data arrays.
         Used by the engine to populate the threshold UI."""
-        src = self._src_extract_init
-        if src is None:
-            return []
-        out = []
-        seen = set()
-        for store_attr, assoc in (("CellData", "CELLS"), ("PointData", "POINTS")):
-            try:
-                store = getattr(src, store_attr)
-                for i in range(store.GetNumberOfArrays()):
-                    a = store.GetArray(i)
-                    if a is None:
-                        continue
-                    name = a.Name
-                    key = (assoc, name)
-                    if name and key not in seen:
-                        seen.add(key)
-                        out.append(key)
-            except Exception:
-                pass
-        return out
+        return arrays_from_source(self._src_extract_init)
 
     def array_data_range(self, array_name):
         """Return (min, max) for the named array on the active grid, or
         None if the array isn't found."""
-        src = self._src_extract_init
-        if src is None or not array_name:
-            return None
-        for store_attr in ("CellData", "PointData"):
-            try:
-                store = getattr(src, store_attr)
-                for i in range(store.GetNumberOfArrays()):
-                    a = store.GetArray(i)
-                    if a is not None and a.Name == array_name:
-                        rng = a.GetRange()
-                        return (float(rng[0]), float(rng[1]))
-            except Exception:
-                pass
-        return None
+        return array_range_from_source(self._src_extract_init, array_name)
 
     def _resolve_assoc(self, array_name):
-        for a, n in self.available_arrays():
-            if n == array_name:
-                return a
-        return None
+        return resolve_assoc(self._src_extract_init, array_name)
 
     # ------------------------------------------------------------------
     # Chain — public API
@@ -775,7 +731,6 @@ class IjkGrid:
         if self._src_extract_init is None or not array:
             return None
         if parent_name is not None and not any(e.name == parent_name for e in self._chain):
-            print(f"[WARNING] add_threshold: unknown parent {parent_name!r}")
             return None
         assoc = self._resolve_assoc(array)
         if not assoc:
@@ -869,7 +824,7 @@ class IjkGrid:
                         proxy.UpperThreshold = e.high
                         proxy.UpdatePipeline()
                     except Exception as exc:
-                        print(f"[WARNING] set_range({name}): {exc}")
+                        pass
                 return
 
     def set_visible(self, name, visible):
@@ -907,21 +862,14 @@ class IjkGrid:
     # ------------------------------------------------------------------
     # Slice / clip plane — DEPRECATED legacy path.
     #
-    # Phase 1.b moved slice / clip ownership onto `RepInScene`
-    # (per-(rep, view)). Both the per-view and the legacy IjkGrid mode
-    # rely on `RepInScene._slice_plane` / `_clip_plane` for the
-    # actual rendering — the `_slice` / `_clip` fields here stay None
-    # in normal use. The methods below are only reachable via
-    # `SourceRegistry.slice_set/state/clip_set/state` compat shims,
-    # which are themselves deprecated and have no remaining callers.
-    # Kept here as a safety net during the migration window.
+    # Slice / clip ownership lives on `RepInScene` (per-(rep, view)); the
+    # `_slice` / `_clip` fields here stay None in normal use. The methods
+    # below are only reachable via the deprecated `SourceRegistry`
+    # slice/clip compat shims. Kept as a safety net.
 
     def _ensure_slice(self):
-        """Lazily build a `SlicePlane` once the rep_data extractor
-        exists. Called by the public slice_state / slice_set entry
-        points so the slice's upstream is always the un-cropped
-        grid.
-
+        """Lazily build a `SlicePlane` once the rep_data extractor exists, so
+        the slice's upstream is always the un-cropped grid.
         DEPRECATED: per-(rep, view) slice lives on `RepInScene`."""
         if self._slice is not None or self._src_extract_init is None:
             return
@@ -1068,7 +1016,6 @@ class IjkGrid:
                             Input=effective,
                         )
                     except Exception as exc:
-                        print(f"[WARNING] Threshold create {entry.name}: {exc}")
                         continue
                     entry.pv_proxies[id(src)] = proxy
                     self._inherit_display(proxy, src)
@@ -1077,7 +1024,7 @@ class IjkGrid:
                         if proxy.Input is not effective:
                             proxy.Input = effective
                     except Exception as exc:
-                        print(f"[WARNING] Threshold rewire {entry.name}: {exc}")
+                        pass
                 # Push current Scalars + bounds.
                 try:
                     proxy.Scalars = [entry.assoc, entry.array]
@@ -1085,42 +1032,14 @@ class IjkGrid:
                     proxy.UpperThreshold = float(entry.high)
                     proxy.UpdatePipeline()
                 except Exception as exc:
-                    print(f"[WARNING] Threshold props {entry.name}: {exc}")
+                    pass
 
     def _inherit_display(self, thr_proxy, src):
-        """Copy Representation / Scale / ColorArrayName / LookupTable /
-        DiffuseColor / Opacity from src's display onto thr_proxy's
-        display so the threshold output mirrors its parent visually
-        (both in property-color mode and SolidColor mode) from the
-        moment it appears."""
-        view = self._target_view()
-        if view is None:
-            return
-        try:
-            src_disp = pvsimple.GetDisplayProperties(src, view=view)
-            thr_disp = pvsimple.GetRepresentation(proxy=thr_proxy, view=view)
-            if src_disp is None or thr_disp is None:
-                return
-            for attr, as_list in (
-                ("Representation", False),
-                ("Scale", True),
-                ("ColorArrayName", True),
-                ("LookupTable", False),
-                ("DiffuseColor", True),
-                ("AmbientColor", True),
-                ("Opacity", False),
-            ):
-                try:
-                    val = getattr(src_disp, attr)
-                    if as_list:
-                        val = list(val)
-                    setattr(thr_disp, attr, val)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        """Copy the parent's display look onto the threshold output in this
+        grid's target view. Delegates to the shared `inherit_display`."""
+        inherit_display(src, thr_proxy, self._target_view())
 
-    # Mode-flip / slicer-add hook. Kept for engine compatibility.
+    # Mode-flip / slicer-add hook used by the engine.
     def refresh_threshold_pipeline(self):
         self._refresh_chain_pipeline()
 

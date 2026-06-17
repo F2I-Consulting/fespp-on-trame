@@ -238,7 +238,6 @@ class SlicePlane:
                 registrationName=name,
             )
         except Exception as exc:
-            print(f"[WARNING] SlicePlane create {self._rep_path}: {exc}")
             return
         # Bright red tint so the cross-section stands out against the
         # rep beneath (without an explicit tint the slice picks up the
@@ -279,7 +278,6 @@ class SlicePlane:
             self._proxy.SliceType.Normal = list(self._normal)
             self._proxy.UpdatePipeline()
         except Exception as exc:
-            print(f"[WARNING] SlicePlane apply {self._rep_path}: {exc}")
             return
         view = self._resolve_view()
         if view is None:

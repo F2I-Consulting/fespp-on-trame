@@ -151,11 +151,10 @@ class NewViewContentDialog:
                         classes="mb-2 text-none justify-start",
                     ):
                         html.Span("Empty scene")
-                    # 3. Diff scene — reuses the singleton diff
-                    # panel when present, otherwise creates it.
-                    # Disable when not enough props are loaded for a
-                    # meaningful A/B pick (same gate as the legacy
-                    # AddViewDialog).
+                    # 3. Diff scene — reuses the singleton diff panel
+                    # when present, otherwise creates it. Disabled when
+                    # fewer than two props are loaded (no meaningful
+                    # A/B pick).
                     with vuetify3.VBtn(
                         block=True,
                         variant="tonal",

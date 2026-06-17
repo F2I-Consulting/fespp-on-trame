@@ -31,7 +31,6 @@ def push_tree_hierarchy_mode(collector, mode_name) -> bool:
         proxy.UpdateVTKObjects()
         return True
     except Exception as _e:
-        print(f"[WARNING] Could not set TreeHierarchyMode on FESPP collector: {_e}")
         return False
 
 
@@ -76,9 +75,9 @@ def on_tree_hierarchy_mode_change(state, controller, collector, tree_hierarchy_m
         try:
             collector.get_source().UpdatePipeline()
         except Exception as _e:
-            print(f"[WARNING] UpdatePipeline after mode change failed: {_e}")
+            pass
         try:
             controller.update_data_information()
         except Exception as _e:
-            print(f"[WARNING] tree refresh after mode change failed: {_e}")
+            pass
     print(f"[INFO] Tree hierarchy mode set to {tree_hierarchy_mode!r}.")

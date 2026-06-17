@@ -1,11 +1,9 @@
 """Bottom progress strip rendered inside the multi-view area.
 
-Two indeterminate progress lines + an info alert with the
-`view_loading_message` from state. Acts as the lighter complement of
-`BusyOverlay` (in `busy_overlay.py`): both react to
-`state.trame__busy`, but this one only takes a few pixels at the
-bottom of the multi-view, so the user can keep looking at the 3D
-view while a flush is in flight."""
+Two indeterminate progress lines + an info alert showing
+`view_loading_message`. Lighter complement of `BusyOverlay`: both
+react to `state.trame__busy`, but this one only takes a few pixels at
+the bottom so the user can keep watching the 3D view during a flush."""
 import ptc
 from trame.widgets import html
 

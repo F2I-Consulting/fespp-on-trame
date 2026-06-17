@@ -44,9 +44,8 @@ class Representation(ElementType):
                 pvsimple.Hide(proxy=upstream, view=view)
             else:
                 pvsimple.Show(proxy=upstream, view=view)
-        except Exception as exc:
-            print(f"[{type(self).__name__} {ris.scene.view_id}/{ris.rep_path}]"
-                  f" parent visibility refresh: {exc}")
+        except Exception:
+            pass
 
     def hide_in_view(self, ris):
         """Hide the per-view primary extractor."""
@@ -63,16 +62,16 @@ class Representation(ElementType):
     # --- source construction --------------------------------------------
 
     def ensure_source(self, ris):
-        """Head proxy = the per-view EnergisticsExtractor, or the legacy
-        shared source as a Phase-2 fallback."""
+        """Head proxy = the per-view EnergisticsExtractor, or the shared
+        fallback source when no per-view extractor exists."""
         ext = self.ensure_extractor(ris)
         return ext if ext is not None else ris._fallback_legacy_source()
 
     def ensure_extractor(self, ris):
         """Lazily build the per-(rep, view) EnergisticsExtractor (the
         standard rep source), store it on `ris._extractor`, and return it.
-        Returns None when the scene has only the shared collector (Phase 2
-        fallback). A frame keeps its freshly-built primary HIDDEN
+        Returns None when the scene has only the shared collector (no real
+        clone). A frame keeps its freshly-built primary HIDDEN
         (``primary_hidden()``); other reps Show it unless the engine flagged
         the rep hidden in this view."""
         if ris._extractor is not None:
@@ -83,8 +82,8 @@ class Representation(ElementType):
             return None
         collector = getattr(scene, "collector", None)
         if collector is not None and clone is collector.get_source():
-            # Phase 2 fallback — no real clone; don't chain on the shared
-            # collector (id() would collide across views). Stay on legacy.
+            # No real clone — don't chain on the shared collector (id() would
+            # collide across views). Fall back to the shared source.
             return None
         tag = f"[{type(self).__name__} {scene.view_id}/{ris.rep_path}]"
         try:
@@ -102,7 +101,6 @@ class Representation(ElementType):
                 inputs={"Input": clone},
             )
             if ext is None:
-                print(f"{tag} EnergisticsExtractor not creatable — plugin missing?")
                 return None
             # ExtractPath = the rep node (frames keep this primary hidden;
             # their children render via their own per-child extractors).
@@ -132,9 +130,9 @@ class Representation(ElementType):
                     pvsimple.Hide(proxy=ext, view=target_view)
                 else:
                     pvsimple.Show(proxy=ext, view=target_view)
-                # Hide the legacy ExtractBlock's display in THIS view so it
+                # Hide the shared fallback source's display in THIS view so it
                 # doesn't Z-fight the per-view extractor (it Shows itself at
-                # creation; other views never get a legacy Show).
+                # creation; other views never get a fallback Show).
                 legacy = ris._fallback_legacy_source()
                 if legacy is not None and legacy is not ext:
                     try:
@@ -142,8 +140,7 @@ class Representation(ElementType):
                     except Exception:
                         pass
             ris._extractor = ext
-        except Exception as exc:
-            print(f"{tag} extractor create failed: {exc}")
+        except Exception:
             ris._extractor = None
         return ris._extractor
 
@@ -151,8 +148,8 @@ class Representation(ElementType):
 
     def rendered_sources(self, ris):
         """The per-view extractor, with the deepest visible threshold-chain
-        leaf substituted when a chain is active. None → fall through to
-        legacy (no per-view extractor / Phase 2)."""
+        leaf substituted when a chain is active. None → fall through to the
+        shared-source lookup (no per-view extractor)."""
         ext = ris._ensure_extractor()
         if ext is None:
             return None
@@ -201,16 +198,15 @@ class IjkGridRep(GridRep):
         """Defer to the per-view IjkGrid's own show() — it is the authority
         on which sources render for the current range/slice mode. Calling
         Show on the rep_data extractor here would clobber that and rasterise
-        the un-cropped full grid (the red SolidColor Z-fight bug)."""
+        the un-cropped full grid."""
         view = ris.scene.pv_view
         per_view_ijk = ris._per_view_ijk
         if view is None or per_view_ijk is None:
             return
         try:
             per_view_ijk.show(view=view)
-        except Exception as exc:
-            print(f"[IjkGridRep {ris.scene.view_id}/{ris.rep_path}]"
-                  f" per-view IjkGrid show: {exc}")
+        except Exception:
+            pass
 
     def hide_in_view(self, ris):
         """Hide every IJK source (slicers + volume + rep_data + thresholds)."""
@@ -265,9 +261,9 @@ class IjkGridRep(GridRep):
             return None
         collector = getattr(scene, "collector", None)
         if collector is not None and clone is collector.get_source():
-            # Phase 2 fallback (no real EPCCollectorClone) — stay on legacy.
+            # No real EPCCollectorClone — fall back to the shared IjkGrid.
             return None
-        # Read the legacy IjkGrid's current property node id to drive
+        # Read the shared IjkGrid's current property node id to drive
         # set_node_id on the per-view instance.
         legacy = None
         try:
@@ -313,9 +309,7 @@ class IjkGridRep(GridRep):
             # Hide the legacy IjkGrid's rendered sources in THIS view so the
             # per-view pipeline doesn't double-render with the legacy ones.
             ris._hide_legacy_ijk_in_scene_view(legacy)
-        except Exception as exc:
-            print(f"[IjkGridRep {scene.view_id}/{ris.rep_path}]"
-                  f" per-view IjkGrid create failed: {exc}")
+        except Exception:
             ris._per_view_ijk = None
         return ris._per_view_ijk
 
@@ -374,7 +368,6 @@ class WellboreGeometryRep(Representation):
 
 class SeismicFrameRep(Representation):
     """SeismicWellboreFrame — treated as a real eye-bearing rep (NOT a folder
-    like the log/marker frames). ⚠ Behaviour to be confirmed; kept on
-    standard defaults for now (see TYPES_PARTICULARITES debt)."""
+    like the log/marker frames). Currently on standard rep defaults."""
 
     KINDS = ("SeismicWellboreFrame",)

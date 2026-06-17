@@ -1,10 +1,9 @@
-"""Descriptive statistics panel — multi-property tables (Brique B).
+"""Descriptive statistics panel — multi-property tables.
 
 Rendered as the body of the singleton `kind="stats"` dockview tab
-(`multi_view._add_stats_panel`) so it has the full main-area width
-to breathe — no drawer-width squeezing. One card per property
-pinned in `state.ui_stats_pinned_paths` (toggled via the tree's
-"Display stats" icon), each card holding:
+(`multi_view._add_stats_panel`) so it has the full main-area width.
+One card per property pinned in `state.ui_stats_pinned_paths`
+(toggled via the tree's "Display stats" icon), each card holding:
 
   - A header with the property title, MR/TS kind chip, row count
     chip, and a `×` to unpin the property.
@@ -177,10 +176,8 @@ class DescriptiveStatsPanel:
     # Render helpers — each builds one independent block of the panel.
 
     def _render_empty_state(self):
-        """Friendly hint when nothing has been pinned yet. Stays in
-        the DOM unconditionally; toggled on the `ui_stats_pinned_paths`
-        length so the "real" content can also be present without v-if
-        wrangling."""
+        """Hint shown when nothing is pinned yet (gated on the
+        `ui_stats_pinned_paths` length)."""
         with html.Div(
             v_if="!ui_stats_pinned_paths || ui_stats_pinned_paths.length === 0",
             classes="text-medium-emphasis pa-6 text-center",

@@ -1,19 +1,18 @@
 """Multi-view-aware TimeControl widget.
 
-Subclasses ptc.TimeControl so that callers think of "the time control",
-but rebuilds its UI in __init__ so that every state binding can be
-namespaced — multiple instances coexist without sharing time_index,
-time_play, speed_scale or time_nb.
+Subclasses ptc.TimeControl but rebuilds its UI in __init__ so every
+state binding can be namespaced — multiple instances coexist without
+sharing time_index, time_play, speed_scale or time_nb.
 
 Two scopes:
   - scope="global" → writes pvsimple.GetTimeKeeper().Time. Every view
-    that is linked to the keeper (i.e. every view by default) follows
-    along. Used by the top tools band.
+    linked to the keeper (i.e. every view by default) follows along.
+    Used by the top tools band.
   - scope="view"   → writes target_view.ViewTime + Render(view=target_view)
-    on one specific PV view, without touching the TimeKeeper. The
-    target view diverges from the global time until either the global
-    TC writes again or the user clicks the resync button on the
-    global TC. Used inside each multi-view panel.
+    on one specific PV view, without touching the TimeKeeper. That
+    view diverges from the global time until the global TC writes
+    again or the user clicks its resync button. Used inside each
+    multi-view panel.
 
 Available timesteps come from GetTimeKeeper().TimestepValues in both
 modes — fespp registers every TS source on the global keeper, so its
@@ -29,28 +28,26 @@ import ptc
 
 
 def _suffix(namespace: str) -> str:
-    """Build the state-var suffix from a namespace label.
+    """State-var suffix for a namespace label.
 
-    namespace="" → no suffix, state vars are time_index / time_play /
-    time_nb / time_value / speed_scale (ptc defaults — back-compat with
-    any code that reads them directly).
+    namespace="" → no suffix; state vars are the ptc defaults
+    (time_index / time_play / time_nb / time_value / speed_scale), so
+    code reading them directly still works.
 
-    namespace="panel_2" → suffix "_panel_2", state vars are time_index_panel_2
-    etc. Used by the per-view TCs so they don't collide with each other
-    nor with the global one.
+    namespace="panel_2" → "_panel_2"; state vars become
+    time_index_panel_2 etc. Used by per-view TCs so they don't collide
+    with each other or the global one.
     """
     return f"_{namespace}" if namespace else ""
 
 
 class FesppTimeControl(ptc.TimeControl):
-    # Registry of every live FesppTimeControl instance. Used by the
-    # global TC to push its new index into every per-view sibling so the
-    # per-view sliders reflect the post-sync state (their underlying
-    # view.ViewTime was already updated by TimeKeeper's property link —
-    # this just keeps the slider state coherent with what's on screen).
-    # Entries are not actively cleaned up on panel close; iterating
-    # over a stale instance only writes to a no-longer-rendered state
-    # var, which is harmless.
+    # Registry of every live FesppTimeControl instance. The global TC
+    # pushes its new index into every per-view sibling so their
+    # sliders reflect the post-sync state (the underlying view.ViewTime
+    # is already updated via TimeKeeper's property link). Stale entries
+    # after a panel close are harmless — a write just lands on a
+    # no-longer-rendered state var.
     _instances: "list[FesppTimeControl]" = []
 
     def __init__(
@@ -74,30 +71,28 @@ class FesppTimeControl(ptc.TimeControl):
         self._namespace = namespace
         sfx = _suffix(namespace)
 
-        # Per-instance state-var names. ptc's defaults (no suffix) are
-        # preserved only for the namespace="" global instance, so any
-        # legacy reader (e.g. changeTimeLabel in fespp_engine) keeps
-        # working.
+        # Per-instance state-var names. The ptc defaults (no suffix)
+        # are kept for the namespace="" global instance so code that
+        # reads them directly (e.g. changeTimeLabel) keeps working.
         self._sv_index = f"time_index{sfx}"
         self._sv_nb = f"time_nb{sfx}"
         self._sv_value = f"time_value{sfx}"
         self._sv_play = f"time_play{sfx}"
         self._sv_speed = f"speed_scale{sfx}"
         # Adapt the default time_expression to the namespaced vars so a
-        # caller that doesn't pass time_expression still gets a coherent
-        # readout per instance. The parens around (idx + 1) are
-        # important: without them JS evaluates left-to-right and the
+        # caller that omits time_expression still gets a coherent
+        # per-instance readout. The parens around (idx + 1) are
+        # required: without them JS evaluates left-to-right and the
         # leading 'time_value.toFixed(4) + " - "' coerces the rest to
         # string, so 'idx + 1' becomes string concat (e.g. "5" + 1 →
-        # "51" instead of 6). ptc.TimeControl's default has this same
-        # bug — we fix it locally without touching ptc.
+        # "51" instead of 6).
         if time_expression == "time_value.toFixed(4)  + ' - ' + time_index + 1 + ' / ' + time_nb":
             time_expression = (
                 f"{self._sv_value}.toFixed(4) + ' - ' + ({self._sv_index} + 1) + ' / ' + {self._sv_nb}"
             )
 
-        # Skip ptc.TimeControl.__init__ entirely — it builds the UI with
-        # hardcoded state names. Call the grandparent (VCard) directly.
+        # Skip ptc.TimeControl.__init__ (it builds the UI with
+        # hardcoded state names) and call the grandparent (VCard).
         vuetify3.VCard.__init__(
             self,
             v_show=f"({show_var}) && {self._sv_nb} > 0",
@@ -119,12 +114,11 @@ class FesppTimeControl(ptc.TimeControl):
         # the global TC.
         self.state.setdefault("ptc_global_mixed", False)
 
-        # A newly-created per-view TC inherits the global current time
-        # — the target view's ViewTime is already at tk.Time via the
-        # property link, so we just align the slider state so the
-        # widget doesn't lie about its position. setdefault above won't
-        # overwrite a pre-existing value (e.g. after panel close/reopen
-        # of the same id), so this initial alignment is best-effort.
+        # A new per-view TC inherits the global current time: the
+        # target view's ViewTime is already at tk.Time via the property
+        # link, so we just align the slider so the widget doesn't
+        # misreport its position. Best-effort — setdefault above won't
+        # overwrite a value left from a same-id close/reopen.
         if scope == "view":
             global_idx = int(getattr(self.server.state, "time_index", 0) or 0)
             if global_idx != getattr(self.state, self._sv_index, 0):
@@ -217,8 +211,7 @@ class FesppTimeControl(ptc.TimeControl):
 
             # Mixed indicator + resync button — only on the global TC.
             # Visible when at least one view's ViewTime diverges from
-            # TimeKeeper.Time (set by per-view writes, cleared by
-            # global writes or by clicking resync here).
+            # TimeKeeper.Time.
             if scope == "global":
                 with vuetify3.VTooltip(location="bottom"):
                     with vuetify3.Template(v_slot_activator="{ props }"):
@@ -236,9 +229,9 @@ class FesppTimeControl(ptc.TimeControl):
                         "Views diverge — click to resync every view to the global time"
                     )
 
-        # Bind change handlers to the namespaced state — TrameApp's
-        # decorator-based wiring on ptc.TimeControl is tied to the
-        # default state names, so we register our own here.
+        # Bind change handlers to the namespaced state ourselves —
+        # ptc.TimeControl's decorator wiring is tied to the default
+        # state names.
         self.server.state.change(self._sv_index)(self._on_index_change)
         # Refresh on data load so newly-loaded TS sources expand the
         # slider range.
@@ -253,19 +246,17 @@ class FesppTimeControl(ptc.TimeControl):
         return list(pvsimple.GetTimeKeeper().TimestepValues)
 
     def update(self, **_):
-        """Override ptc.TimeControl.update — its @change('time_index')
-        and @controller.add('on_data_loaded') decorators would otherwise
-        re-fire on every FesppTimeControl instance (including per-view
-        ones whose namespaced state is unrelated to 'time_index'),
-        writing TimeKeeper.Time from the wrong scope. We register our
-        own per-instance handlers against the namespaced state in
+        """No-op override of ptc.TimeControl.update. Its decorators
+        bind to the default 'time_index' / 'on_data_loaded', which
+        would re-fire on every instance (including per-view ones) and
+        write TimeKeeper.Time from the wrong scope. Per-instance
+        handlers are registered against the namespaced state in
         __init__ instead."""
         pass
 
     def _on_index_change(self, **_):
-        """Apply the new index: write the appropriate time target and
-        update the readout. The actual destination (TimeKeeper vs single
-        view.ViewTime) is what makes the two scopes differ."""
+        """Apply the new index: write the scope's time target
+        (TimeKeeper vs single view.ViewTime) and update the readout."""
         self.refresh_from_keeper(apply=True)
 
     def refresh_from_keeper(self, apply: bool = False, **_):
@@ -290,34 +281,30 @@ class FesppTimeControl(ptc.TimeControl):
 
         if apply:
             self._write_time(t)
-            # on_data_change keeps the rest of the app (color bars,
-            # labels, etc.) in sync with the active time.
+            # Keep the rest of the app (colour bars, labels, …) in
+            # sync with the active time.
             self.server.controller.on_data_change()
 
     def _write_time(self, t: float):
         """Push `t` to the right target depending on scope.
 
         global: TimeKeeper.Time → every linked view's ViewTime updates
-                via property link, then broadcast a fresh client-side
-                frame to ALL panels (not just the active one — without
-                this the non-active views keep showing the previous
-                timestep until the user clicks on them). After the
-                broadcast, also mirror the new index into every per-view
-                TC's state so its slider reflects the resynced position.
+                via property link. Broadcast a fresh frame to ALL
+                panels (not just the active one, else non-active views
+                keep showing the previous timestep), then mirror the
+                new index into every per-view TC's slider state.
         view:   target view only. Skip if the view is already at this
-                time (case where a global write just propagated through
-                TimeKeeper → here we'd just be re-rendering the same
-                frame). Otherwise set ViewTime, render server-side, then
-                push the fresh image to THAT view's vtk.js client (not
-                the active one — view_update would target the wrong
-                view here)."""
+                time (a global write may have just propagated here).
+                Otherwise set ViewTime, render, and push the fresh
+                image to THAT view's vtk.js client (view_update would
+                target the wrong view)."""
         if self._scope == "global":
             tk = pvsimple.GetTimeKeeper()
             tk.Time = t
-            # Broadcast image push to every panel. Falls back to
-            # view_update (active-only) if the multi-view doesn't expose
-            # the all-views variant — should not happen post-wiring but
-            # keeps the TC usable in isolation.
+            # Broadcast the image push to every panel; fall back to
+            # view_update (active-only) when the multi-view doesn't
+            # expose the all-views variant, so the TC still works in
+            # isolation.
             ctrl = self.server.controller
             update_all = getattr(ctrl, "view_update_all", None)
             if update_all is not None:
@@ -331,20 +318,18 @@ class FesppTimeControl(ptc.TimeControl):
                 except Exception:
                     pass
             self._sync_peer_indices(int(getattr(self.state, self._sv_index, 0) or 0))
-            # A global write resyncs everything by definition — clear
-            # the mixed flag. _sync_peer_indices above pushed the new
-            # index into per-view sliders too, and their short-circuit
-            # in _write_time keeps them from re-flipping the flag.
+            # A global write resyncs everything, so clear the mixed
+            # flag. The per-view sliders just synced; their short-
+            # circuit below keeps them from re-flipping it.
             self.server.state.ptc_global_mixed = False
             return
         view = self._target_pv_view
         if view is None:
             return
-        # Skip the write if the view is already at this time — happens
-        # right after a global write where TimeKeeper.Time propagated to
-        # this view, and the per-view slider sync below this code path
-        # triggered _on_index_change with the same value the view
-        # already has.
+        # Skip if the view is already at this time — happens right
+        # after a global write whose TimeKeeper.Time propagated here
+        # and triggered _on_index_change with the value the view
+        # already holds.
         try:
             current = float(view.ViewTime)
             if abs(current - t) < 1e-12:
@@ -356,29 +341,24 @@ class FesppTimeControl(ptc.TimeControl):
             view.SMProxy.UpdateVTKObjects()
             pvsimple.Render(view=view)
         except Exception as e:
-            print(f"[FesppTimeControl] failed to set ViewTime on {view}: {e}")
             return
-        # Push the freshly-rendered frame to this view's vtk.js client.
-        # Without it, the divergent time stays server-side and the
-        # browser keeps showing the previous frame.
+        # Push the freshly-rendered frame to this view's vtk.js client,
+        # else the divergent time stays server-side and the browser
+        # keeps showing the previous frame.
         if self._target_html_view is not None:
             try:
                 self._target_html_view.update()
             except Exception:
                 pass
-        # This view just diverged from TimeKeeper.Time — surface that
-        # so the global TC shows its mixed badge / resync button.
-        # Recompute by inspecting peers instead of trusting a sticky
-        # flag: lets us turn the flag back off when a per-view scrub
-        # happens to land back on the global time.
+        # This view may now diverge from TimeKeeper.Time — recompute
+        # the mixed flag from peers (rather than setting it sticky-true)
+        # so it can flip back off when a scrub lands on the global time.
         self.server.state.ptc_global_mixed = self._compute_mixed()
 
     def _compute_mixed(self) -> bool:
         """True iff at least one per-view TC's target view sits at a
-        different ViewTime than the global TimeKeeper. Used to drive
-        the mixed badge — recomputed after every per-view write so it
-        can flip back to false when the user happens to scrub back to
-        the global time."""
+        different ViewTime than the global TimeKeeper. Drives the
+        mixed badge."""
         try:
             tk_t = float(pvsimple.GetTimeKeeper().Time)
         except Exception:
@@ -397,21 +377,19 @@ class FesppTimeControl(ptc.TimeControl):
         return False
 
     def resync_all(self):
-        """Re-broadcast the global TC's current index to every view.
-        Bound to the mixed-badge button — gives the user a one-click
-        way to undo per-view divergence and bring every panel back to
-        the global timestep."""
+        """Re-broadcast the global TC's current index to every view,
+        undoing per-view divergence. Bound to the mixed-badge
+        button."""
         if self._scope != "global":
             return
         self.refresh_from_keeper(apply=True)
 
     def _sync_peer_indices(self, index: int):
         """Push `index` into every per-view TC's slider state so each
-        per-view slider reflects the global resync. The peer's
-        _on_index_change will fire as a side effect — but its
-        _write_time short-circuits when the target view's ViewTime is
-        already at the new time (which is the case here, since the
-        TimeKeeper.Time write above already propagated)."""
+        reflects the global resync. The peer's _on_index_change fires
+        as a side effect, but its _write_time short-circuits since the
+        target view's ViewTime already matches (the TimeKeeper.Time
+        write above propagated)."""
         for inst in FesppTimeControl._instances:
             if inst is self or inst._scope != "view":
                 continue
@@ -420,8 +398,8 @@ class FesppTimeControl(ptc.TimeControl):
             except Exception:
                 pass
 
-    # Navigation helpers — same semantics as ptc.TimeControl but talk
-    # to our namespaced state.
+    # Navigation helpers — ptc.TimeControl semantics against the
+    # namespaced state.
     def first(self):
         setattr(self.state, self._sv_index, 0)
 

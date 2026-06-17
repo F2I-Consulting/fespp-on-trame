@@ -1,15 +1,11 @@
 """Drawer-scoped Display Options dialog.
 
-Modal triggered from the drawer tools band's cog. Hosts the toggles
-that used to live in the drawer-bottom "General Display Settings"
-card:
+Modal triggered from the drawer tools band's cog. Hosts:
   - **Load Mode** — `auto` (push selectors on every checkbox toggle)
     vs `manual` (batched, triggered by the band's Load button).
   - **Tree Hierarchy** — `flat` / `by_interpretation` /
     `by_feature_and_interpretation`. Changing it rebuilds the C++
-    assembly and resets every selection / visibility / coloring
-    state — the snackbar at the bottom of the layout follows up to
-    confirm to the user."""
+    assembly and resets every selection / visibility / coloring state."""
 from trame.app import get_server
 from trame.widgets import html, vuetify3
 
@@ -21,8 +17,7 @@ class DisplayOptionsDialog:
         self._controller = self._server.controller
 
         self._state.setdefault("drawer_options_dialog_visible", False)
-        # Expose the open hook so the drawer tools band can bind its
-        # cog click straight to it.
+        # Expose the open hook so the drawer tools band can bind its cog click.
         self._controller.drawer_options_open = self.open
 
     def open(self):

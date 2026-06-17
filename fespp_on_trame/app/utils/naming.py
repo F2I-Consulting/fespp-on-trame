@@ -20,8 +20,7 @@ lookup or proxy registration time, much later.
   the replace form keeps the result human-readable
   (`rep_data__31eddead-...` vs the stripped `repdata31eddead...`).
 
-Don't centralize a third "compatibility" variant — when in doubt about
-which to use, prefer `make_valid_vtk_name` for ANYTHING that needs to
+When in doubt: use `make_valid_vtk_name` for ANYTHING that needs to
 round-trip with a C++-produced name, and `sanitize_proxy_name` ONLY for
 generating fresh proxy registration names that you own."""
 import re

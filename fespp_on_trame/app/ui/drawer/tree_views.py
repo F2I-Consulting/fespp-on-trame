@@ -16,15 +16,7 @@ _state = _server.state
 # still own a per-view source (the rendering anchor) — see tree.py
 # is_grouping note — so this list governs only tree selection / tri-state,
 # never source creation (the C++ MapperSet classification is independent).
-_GROUPING_KINDS = (
-    "Collection",
-    "Wellbore",
-    "Partial",
-    "Feature",
-    "Interpretation",
-    "Frame",
-    "MarkerFrame",
-)
+from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 
 # Domain-level dependency: a WellboreChannel or WellboreMarker requires
 # its Wellbore's Trajectory (the geometry that anchors per-depth log
@@ -184,12 +176,11 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
         if not select_changed:
             return
 
-        # Defensive safety net for a Vuetify label-click case where
-        # both `update_activated` and `update_selected` fire and the
-        # newly-activated node would be dropped from select (the
-        # tree's custom checkbox below makes this unreachable in
-        # practice, since label click no longer fires update_selected
-        # — but keeping the guard costs nothing).
+        # Defensive guard for the Vuetify label-click case where both
+        # `update_activated` and `update_selected` fire and the
+        # newly-activated node would be dropped from select. The custom
+        # checkbox below makes this unreachable in practice (label click
+        # no longer fires update_selected), but the guard is cheap.
         if (active_changed and curr_active
             and curr_active[0] in prev_select and curr_active[0] not in curr_select):
             new_curr = list(curr_select) + [curr_active[0]]
@@ -389,8 +380,8 @@ def _eye_slot(controller):
     # `item.eye` is the per-node eye token computed server-side from
     # element_type.eye_descriptor() (tree.py): 'rep' on renderable reps,
     # 'array' on property leaves, 'marker' on marker leaves, absent on the
-    # Frame/MarkerFrame folders + groupings. Gating each block on its eye
-    # token replaces the scattered `item.type !== 'Frame' …` kind checks.
+    # Frame/MarkerFrame folders + groupings. Each block below is gated on
+    # its eye token.
     is_loaded_rep = (
         "ui_loaded_rep_paths && ui_loaded_rep_paths.indexOf(item.path) !== -1"
         " && item.eye === 'rep'"

@@ -196,9 +196,8 @@ class Drawer:
     #
     # Statistics live in their own dockview tab (the singleton
     # `kind="stats"` panel created by `multi_view._add_stats_panel`,
-    # opened on the first chart-icon click in the tree) — they no
-    # longer share this card. The drawer focuses purely on the
-    # per-view edit operations.
+    # opened on the first chart-icon click in the tree), not here —
+    # the drawer focuses purely on per-view edit operations.
 
     def _render_attributes_card(self):
         with vuetify3.VCard(

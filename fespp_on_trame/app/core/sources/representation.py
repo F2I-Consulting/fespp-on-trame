@@ -1,24 +1,9 @@
-"""Shared building blocks for the data-source representations.
-
-Today this module hosts only the helpers that both `ijkgrid.py` and
-`extract_block.py` rely on. As the refactor described in
-REFACTOR_PLAN.md progresses it will also gain:
-
-  - a `Representation` base class encoding the common interface
-    (set_node_id, show, hide, add_threshold, apply_z_scale, …);
-  - a base `ChainEntry` dataclass with the fields shared by every
-    chain implementation (name / parent / array / visibility /
-    bounds), letting each subclass keep its own proxy-storage shape
-    (a single Threshold for ExtractBlock, a per-upstream dict for
-    the multi-slicer IjkGrid case).
-
-For now: keep this module intentionally minimal."""
+"""Shared building blocks for the data-source representations — the helpers
+that `ijkgrid.py` and `extract_block.py` both rely on."""
 from paraview import servermanager as _sm
 
-# Re-export under the legacy name so existing call sites
-# (extract_block, ijkgrid, rep_in_scene, …) keep working without an
-# import churn. The canonical home for both sanitizers is
-# `fespp_on_trame.app.utils.naming`. New code should import from there.
+# Re-export `_sanitize` so existing call sites keep working; the canonical
+# home is `fespp_on_trame.app.utils.naming`, which new code should import from.
 from fespp_on_trame.app.utils.naming import sanitize_proxy_name as _sanitize  # noqa: F401
 
 
@@ -44,33 +29,24 @@ def _find_registered_proxy(reg_name: str):
 def _create_plugin_filter_proxy(proxy_class: str, registration_name: str,
                                  inputs: dict | None = None):
     """Robust plugin-proxy instantiation. Returns a pvsimple-style
-    wrapped proxy, or None when the definition truly doesn't exist
-    server-side.
+    wrapped proxy, or None when the definition doesn't exist server-side.
 
     Resolution order:
 
-      1. `pvsimple.<proxy_class>` — preferred fast path (handles
-         wrapping + registration in one call). Often absent for
-         plugin proxies on session-reuse paths.
+      1. `pvsimple.<proxy_class>` — fast path (wrapping + registration in
+         one call). Often absent for plugin proxies on session-reuse paths.
       2. `paraview.servermanager.filters.<proxy_class>` — lower-level
-         attribute access. Same cache constraint as pvsimple's
-         namespace, but sometimes refreshed differently.
+         attribute access; same cache constraint as pvsimple's namespace.
       3. `vtkSMSessionProxyManager.NewProxy("filters", proxy_class)` —
-         direct ProxyManager creation, bypasses the Python wrapper
-         cache entirely. Always sees freshly-loaded plugin
-         definitions (the underlying ProxyDefinitionManager is
-         updated by LoadPlugin even when the wrapper namespace
-         isn't). Registers the result and wraps it via
-         `_getPyProxy` so callers can use it with the standard
-         pvsimple API (Show/Hide/GetDisplayProperties/etc.).
+         direct ProxyManager creation, bypassing the Python wrapper cache.
+         Always sees freshly-loaded plugin definitions (LoadPlugin updates
+         the ProxyDefinitionManager even when the wrapper namespace isn't
+         refreshed). Registers the result and wraps it via `_getPyProxy`
+         so callers can use the standard pvsimple API.
 
-    `inputs` is an optional dict of property_name → upstream proxy.
-    For the common case `{"Input": upstream}` it wires the input
-    using the SM property API when the direct path is hit. Pass None
-    or an empty dict for proxies that don't need inputs.
-
-    PARAVIEW.md documents why this fallback is necessary
-    ("LoadPlugin doesn't always refresh pvsimple namespace")."""
+    `inputs` is an optional dict of property_name → upstream proxy. For the
+    common case `{"Input": upstream}` it wires the input via the SM property
+    API on the direct path. Pass None / empty for proxies with no inputs."""
     from paraview import simple as pvsimple
     from paraview import servermanager as _sm
 
@@ -84,8 +60,7 @@ def _create_plugin_filter_proxy(proxy_class: str, registration_name: str,
             kwargs.update(inputs)
         return ctor(**kwargs)
 
-    # 3: SMProxyManager direct (most robust — sees definitions the
-    # wrapper namespace missed).
+    # 3: SMProxyManager direct — sees definitions the wrapper namespace missed.
     try:
         spm = _sm.vtkSMProxyManager.GetProxyManager().GetActiveSessionProxyManager()
         sm_proxy = spm.NewProxy("filters", proxy_class)
@@ -101,13 +76,11 @@ def _create_plugin_filter_proxy(proxy_class: str, registration_name: str,
             try:
                 input_prop.SetInputConnection(0, sm_upstream, 0)
             except Exception as exc:
-                print(f"[plugin proxy] SetInputConnection({prop_name}) on"
-                      f" {proxy_class}: {exc}")
+                pass
         sm_proxy.UpdateVTKObjects()
         spm.RegisterProxy("sources", registration_name, sm_proxy)
         return _sm._getPyProxy(sm_proxy)
     except Exception as exc:
-        print(f"[plugin proxy] direct NewProxy({proxy_class!r}) failed: {exc}")
         return None
 
 
@@ -129,5 +102,99 @@ def _apply_default_tint(display, color_hex):
         display.AmbientColor = [r, g, b]
         if len(h) >= 8:
             display.Opacity = int(h[6:8], 16) / 255.0
+    except Exception:
+        pass
+
+
+#: Display attributes copied from a parent onto a derived (threshold) proxy
+#: so it mirrors its parent visually. The bool is "treat as a list/vector".
+_DISPLAY_INHERIT_ATTRS = (
+    ("Representation", False),
+    ("Scale", True),
+    ("ColorArrayName", True),
+    ("LookupTable", False),
+    ("DiffuseColor", True),
+    ("AmbientColor", True),
+    ("Opacity", False),
+)
+
+
+def arrays_from_source(src):
+    """Return ``[(assoc, name), …]`` for a PV proxy's CellData / PointData
+    arrays (deduped, association = ``"CELLS"`` / ``"POINTS"``). Empty when
+    `src` is None. Shared by every threshold/array UI path."""
+    if src is None:
+        return []
+    out, seen = [], set()
+    for store_attr, assoc in (("CellData", "CELLS"), ("PointData", "POINTS")):
+        try:
+            store = getattr(src, store_attr)
+            for i in range(store.GetNumberOfArrays()):
+                a = store.GetArray(i)
+                if a is None:
+                    continue
+                name = a.Name
+                key = (assoc, name)
+                if name and key not in seen:
+                    seen.add(key)
+                    out.append(key)
+        except Exception:
+            pass
+    return out
+
+
+def array_range_from_source(src, array_name):
+    """Return ``(min, max)`` for the named array on a PV proxy, or None."""
+    if src is None or not array_name:
+        return None
+    for store_attr in ("CellData", "PointData"):
+        try:
+            store = getattr(src, store_attr)
+            for i in range(store.GetNumberOfArrays()):
+                a = store.GetArray(i)
+                if a is not None and a.Name == array_name:
+                    rng = a.GetRange()
+                    return (float(rng[0]), float(rng[1]))
+        except Exception:
+            pass
+    return None
+
+
+def resolve_assoc(src, array_name):
+    """Association (``"CELLS"`` / ``"POINTS"``) of the named array on `src`,
+    or None. Convenience over `arrays_from_source`."""
+    for assoc, name in arrays_from_source(src):
+        if name == array_name:
+            return assoc
+    return None
+
+
+def inherit_display(upstream, target_proxy, view):
+    """Copy the display look (Representation / Scale / ColorArrayName /
+    LookupTable / Diffuse+Ambient color / Opacity) from ``upstream``'s display
+    onto ``target_proxy``'s display in ``view``, so a derived proxy (a
+    threshold output) mirrors its parent the moment it appears — in both
+    property-color mode (array + LUT) and SolidColor mode (Diffuse/Ambient).
+
+    Single source of truth shared by the per-view (`RepInScene`), legacy
+    (`ExtractBlockRepresentation`) and `IjkGrid` threshold chains, which differ
+    only in how they resolve ``view``. No-op on any missing piece; never
+    raises."""
+    if view is None:
+        return
+    try:
+        from paraview import simple as pvsimple
+        src_disp = pvsimple.GetDisplayProperties(upstream, view=view)
+        dst_disp = pvsimple.GetRepresentation(proxy=target_proxy, view=view)
+        if src_disp is None or dst_disp is None:
+            return
+        for attr, as_list in _DISPLAY_INHERIT_ATTRS:
+            try:
+                val = getattr(src_disp, attr)
+                if as_list:
+                    val = list(val)
+                setattr(dst_disp, attr, val)
+            except Exception:
+                pass
     except Exception:
         pass

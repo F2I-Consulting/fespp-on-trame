@@ -231,7 +231,6 @@ class ClipPlane:
             except Exception:
                 pass
         except Exception as exc:
-            print(f"[WARNING] ClipPlane create {self._rep_path}: {exc}")
             return
         # Inherit display props from the upstream source so the
         # clipped half looks like the rep (same coloring, same
@@ -290,7 +289,6 @@ class ClipPlane:
                     pass
             self._proxy.UpdatePipeline()
         except Exception as exc:
-            print(f"[WARNING] ClipPlane apply {self._rep_path}: {exc}")
             return
         view = self._resolve_view()
         if view is None:

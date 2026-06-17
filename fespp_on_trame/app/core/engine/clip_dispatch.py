@@ -10,39 +10,22 @@ Three controller entry points:
     "slice" / "clip" / None and nudges both filters so the 3D
     widget rebinds.
 
-Phase 1.b.1: routes through `scene_registry` for per-(rep, view)
-clip ownership. The active rep stays read from
-`state.active_representation_path`.
+Routes through `scene_registry` for per-(rep, view) clip ownership.
+The active rep is read from `state.active_representation_path`.
 """
-from paraview import simple as pvsimple
+from fespp_on_trame.app.core.engine import view_routing
 
 
 _AXIS_INDEX = {"X": 0, "Y": 1, "Z": 2}
 
 
 def _resolve_active_panel_id(state, scene_registry):
-    """Best-effort target panel id for the clip plane edits.
-
-    See `slice_dispatch._resolve_active_panel_id` for the resolution
-    order — `drawer_target_view_id` first (Attributes drawer picker),
-    `fespp_active_panel_id` next (active focus), first scene last."""
-    target = getattr(state, "drawer_target_view_id", "") or ""
-    if target:
-        return target
-    active = getattr(state, "fespp_active_panel_id", "") or ""
-    if active:
-        return active
-    ids = scene_registry.view_ids() if scene_registry is not None else []
-    return ids[0] if ids else None
+    """Target panel id for clip edits."""
+    return view_routing.target_panel_id(state, scene_registry)
 
 
 def _resolve_rep(state, scene_registry, panel_id):
-    if scene_registry is None or not panel_id:
-        return None
-    rep_path = getattr(state, "active_representation_path", "") or ""
-    if not rep_path:
-        return None
-    return scene_registry.get_rep(panel_id, rep_path)
+    return view_routing.resolve_rep(state, scene_registry, panel_id)
 
 
 def publish_clip_state(state, scene_registry, panel_id=None):
@@ -84,26 +67,8 @@ def clip_set(state, controller, scene_registry, view,
             inside_out=inside_out,
         )
     publish_clip_state(state, scene_registry, panel_id=panel_id)
-    target_view = view
-    scene = scene_registry.get_scene(panel_id) if scene_registry is not None else None
-    if scene is not None and scene.pv_view is not None:
-        target_view = scene.pv_view
-    if target_view is not None:
-        try:
-            pvsimple.Render(view=target_view)
-        except Exception:
-            pass
-    # Push the freshly-rendered frame to BOTH the target panel
-    # (pinned-mode safe) and the active panel (legacy). See the
-    # equivalent block in slice_dispatch.slice_set for context.
-    try:
-        controller.view_update_for(panel_id)
-    except Exception:
-        pass
-    try:
-        controller.view_update()
-    except Exception:
-        pass
+    pv_view = view_routing.scene_pv_view(scene_registry, panel_id, fallback_view=view)
+    view_routing.render_and_push(controller, pv_view, panel_id)
 
 
 def set_edit_mode(state, controller, scene_registry, view, mode):
@@ -126,23 +91,5 @@ def set_edit_mode(state, controller, scene_registry, view, mode):
             rep.clip_set()
         except Exception:
             pass
-    target_view = view
-    scene = scene_registry.get_scene(panel_id) if scene_registry is not None else None
-    if scene is not None and scene.pv_view is not None:
-        target_view = scene.pv_view
-    if target_view is not None:
-        try:
-            pvsimple.Render(view=target_view)
-        except Exception:
-            pass
-    # Push the freshly-rendered frame to BOTH the target panel
-    # (pinned-mode safe) and the active panel (legacy). See the
-    # equivalent block in slice_dispatch.slice_set for context.
-    try:
-        controller.view_update_for(panel_id)
-    except Exception:
-        pass
-    try:
-        controller.view_update()
-    except Exception:
-        pass
+    pv_view = view_routing.scene_pv_view(scene_registry, panel_id, fallback_view=view)
+    view_routing.render_and_push(controller, pv_view, panel_id)

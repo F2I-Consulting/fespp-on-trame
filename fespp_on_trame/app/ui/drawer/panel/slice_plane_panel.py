@@ -1,4 +1,4 @@
-"""Plane slice panel — MVP single plane per rep.
+"""Plane slice panel — single plane per rep.
 
 Binds to:
   - `ui_slice_enabled` (bool) — toggle the slice on/off
@@ -55,8 +55,8 @@ class SlicePlanePanel:
                 ),
             )
             vuetify3.VSpacer()
-            # Phase 3c: one-shot snapshot/apply from a peer view. Only
-            # visible when there are 2+ render panels.
+            # One-shot snapshot/apply from a peer view. Only visible
+            # when there are 2+ render panels.
             render_copy_menu("slice")
 
         html.Div(

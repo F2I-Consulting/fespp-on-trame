@@ -28,10 +28,7 @@
      the trame UI vars.
  11. Single final Render.
 
-Heavily commented because the order of operations matters — see the
-per-step rationale below."""
-import time as _time
-
+The order of operations matters — see the per-step rationale below."""
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.utils.color_palette import color_for_index
@@ -41,11 +38,6 @@ from fespp_on_trame.app.core import element_type
 def run(state, controller, server, view, tree, collector, etp_connector,
         source_registry, activator,
         refresh_threshold_ui, push_active_ijk_state):
-    _t_total_start = _time.perf_counter()
-
-    def _ms(t0):
-        return int((_time.perf_counter() - t0) * 1000)
-
     print("FESPP data selectors changed:", state.fespp_data_selectors)
     active_source = etp_connector if etp_connector.is_connected else collector
     if active_source is None:
@@ -56,23 +48,18 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # to avoid N full pipeline executions per add. We trigger the
     # actual RequestData ONCE here so downstream code (set_node_id,
     # source_registry.sync) sees the freshly-loaded multiblock output.
-    _t = _time.perf_counter()
     active_source.get_source().SetPropertyWithName('Selectors', state.fespp_data_selectors)
     active_source.get_source().UpdatePipeline()
     active_source.show()
-    print(f"[PERF py] SetSelectors+UpdatePipeline+show: {_ms(_t)}ms")
 
     # Hide the parent multiblock representation BEFORE any render.
     # Each loaded rep is rendered through its own ExtractBlock proxy
-    # below; leaving the parent visible would cause a Render() that
-    # processes all N blocks via the parent rep, scaling O(N) per
-    # add (~1100ms per extra grid in the original code).
-    _t = _time.perf_counter()
+    # below; leaving the parent visible would make Render() process all
+    # N blocks via the parent rep, scaling O(N) per add.
     representation = active_source.get_representation()
     representation.Assembly = 'Assembly'
     representation.BlockSelectors = ['/data']
     representation.Visibility = 0
-    print(f"[PERF py] representation.Assembly+BlockSelectors+Visibility=0: {_ms(_t)}ms")
 
     # Reserve a distinct chip color for every newly-loaded rep.
     # Cache (selector → rep_path) to avoid re-walking the tree each
@@ -80,7 +67,6 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # sources can read their assigned color from solid_color_by_rep
     # and tint their display straight away (both ExtractBlock and
     # IjkGrid read this state var during creation).
-    _t = _time.perf_counter()
     sel_cache = dict(getattr(state, "_selector_rep_cache", {}) or {})
     colors = dict(state.solid_color_by_rep or {})
     next_idx = int(state.solid_color_next_idx or 0)
@@ -106,13 +92,11 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     state._selector_rep_cache = sel_cache
     state.solid_color_by_rep = colors
     state.solid_color_next_idx = next_idx
-    print(f"[PERF py] color assignment loop: {_ms(_t)}ms")
 
     # Unified sync: drives BOTH the IjkGrid side (rep_path resolved
     # from each reservoir node id) and the ExtractBlock side
     # (rep_path resolved from each selector). Tears down anything
     # no longer in the selection; creates anything new.
-    _t = _time.perf_counter()
     source_registry.sync(
         state.fespp_data_selectors,
         state.ui_select_node_reservoir or [],
@@ -123,7 +107,6 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # IjkGrid's slicers).
     for ijk in source_registry.ijk_grids():
         ijk.update_block_visibility()
-    print(f"[PERF py] source_registry.sync: {_ms(_t)}ms")
 
     # The C++ side modifies partition data in place (addDataArray
     # for new property selectors, array swap for realization/time
@@ -131,33 +114,23 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # level — without a Modified() bump, GetCellDataInformation
     # returns a stale array list and the active handler can't
     # find a freshly-added property like "SOIL".
-    _t = _time.perf_counter()
     for src in source_registry.all_sources():
         try:
             src.GetClientSideObject().Modified()
             src.UpdatePipelineInformation()
         except Exception:
             pass
-    # IjkGrid slicers + volume crops need the same bump (they
-    # aren't in all_sources(); the canonical source is the
-    # rep_data extractor only).
+    # IjkGrid slicers + volume crops need the same bump (they aren't in
+    # all_sources(); the canonical source is the rep_data extractor only).
     #
-    # Critical: the rep_data extractor AND each slicer need a full
+    # The rep_data extractor AND each slicer need a full
     # `UpdatePipeline()` (data pass) here, not just
-    # `UpdatePipelineInformation()` (metadata pass). Without the
-    # data pass, the slicer keeps the output it cached at creation
-    # time (set_node_id's Show() triggers a Render which pipelines
-    # the slicer BEFORE `OutputWholeExtent` is set) — a structurally
-    # valid `vtkExplicitStructuredGrid` with the right number of
-    # cells but **no `CellData` arrays**. The activator's later
-    # `_find_array_in_store` call then misses the property array
-    # even though it's present upstream on `rep_data`. Observed on
-    # TimeSeries IjkGrid (`dynamicDiscreteProp.epc`) since the
-    # `refactor(view-scenes): per-view scene ownership` commit
-    # (3fb95016): per-view IjkGrid creation invalidates the
-    # collector's MTime which makes the issue surface — pre-refactor
-    # the legacy IjkGrid alone never hit this code path.
-    _t_ijk = _time.perf_counter()
+    # `UpdatePipelineInformation()` (metadata pass). Without the data
+    # pass the slicer keeps the output it cached at creation time — a
+    # structurally valid `vtkExplicitStructuredGrid` with the right cell
+    # count but no `CellData` arrays — so the activator's later
+    # `_find_array_in_store` misses the property array even though it's
+    # present upstream on `rep_data`.
     ijk_paths_in_selection = []
     for ijk in source_registry.ijk_grids():
         ijk_path = ijk.rep_path
@@ -170,9 +143,8 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         if not ijk_in_selection:
             continue
         try:
-            # First pipeline the rep_data extractor so its output
-            # type and CellData arrays settle before slicers pull
-            # from it.
+            # Pipeline the rep_data extractor first so its output type
+            # and CellData arrays settle before slicers pull from it.
             try:
                 if ijk._src_extract_init is not None:
                     ijk._src_extract_init.GetClientSideObject().Modified()
@@ -192,8 +164,6 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                     pass
         except Exception:
             pass
-    print(f"[PERF py] ijk slicer bumps: {_ms(_t_ijk)}ms (grids_in_selection={len(ijk_paths_in_selection)})")
-    print(f"[PERF py] source bumps: {_ms(_t)}ms")
 
     # Tell the activator which reps are still actively displayed so
     # it hides stale color bars (e.g. switching between two IJK
@@ -203,8 +173,8 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     if activator is not None:
         try:
             activator.notify_active_reps(present_paths)
-        except Exception as _e:
-            print(f"[WARNING] notify_active_reps failed: {_e}")
+        except Exception:
+            pass
 
     _update_visibility_tracking(state, present_paths)
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
@@ -218,37 +188,31 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # IjkGrid: per-view slicers) is still Shown on the scene clone, but
     # the C++ `UpdatePipeline()` at the top of run() already rebuilt the
     # collector output WITHOUT that rep's partition. The normal teardown
-    # (scene_registry.sync_loaded_reps via @state.change("ui_loaded_rep_paths"),
-    # boot.py) is DEFERRED until AFTER run() returns — i.e. AFTER the
-    # activator render (refresh_active -> Render) below. Rendering that
-    # stale, still-visible source against a clone whose upstream
-    # partition is gone segfaults natively ("Connection Closed", no
-    # traceback). Hide+Delete the deselected reps' per-view pipelines
-    # NOW, before any render. REMOVE-ONLY: the add/eager-setup half
-    # stays on the deferred handler (idempotent once this has run). The
-    # clone is already consistent (UpdatePipeline'd above) so we do not
-    # touch it.
+    # (scene_registry.sync_loaded_reps via @state.change("ui_loaded_rep_paths"))
+    # is deferred until after run() returns, i.e. after the activator
+    # render below. Rendering a stale, still-visible source against a
+    # clone whose upstream partition is gone crashes natively, so
+    # hide+delete the deselected reps' per-view pipelines NOW, before any
+    # render. Remove-only: the add/eager-setup half stays on the deferred
+    # handler. The clone is already consistent (UpdatePipeline'd above).
     try:
         scene_reg = getattr(server.context, "scene_registry", None)
         if scene_reg is not None:
             for scene in scene_reg.all_scenes():
                 for r_path in (set(scene._reps.keys()) - present_paths):
                     scene.remove_rep(r_path)
-    except Exception as _e:
-        print(f"[WARNING] eager teardown of deselected reps failed: {_e}")
+    except Exception:
+        pass
 
-    controller.view_replace
     state.view_update = True
 
     # Set the FESPP source as active for ParaView dialogs that look
     # at it. We do NOT call active_source.show() here — that would
     # re-set the parent rep's Visibility to 1 and undo the early
     # hide above.
-    _t = _time.perf_counter()
     pvsimple.SetActiveSource(active_source.get_source())
     server.controller.on_data_loaded()
     server.controller.on_active_proxy_change()
-    print(f"[PERF py] setActive+notify: {_ms(_t)}ms")
 
     if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
         state.view_reset_camera = True
@@ -258,27 +222,19 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         activator.refresh_active()
     try:
         refresh_threshold_ui()
-    except Exception as _e:
-        print(f"[WARNING] threshold UI refresh after load failed: {_e}")
+    except Exception:
+        pass
     try:
         push_active_ijk_state()
-    except Exception as _e:
-        print(f"[WARNING] push active ijk state failed: {_e}")
+    except Exception:
+        pass
 
-    # Single Render at the very end. The parent multiblock was
-    # hidden earlier, so this only paints the new ExtractBlock reps
-    # + IJK slicers. Skipped when the selection is empty: rendering
-    # an empty pipeline after source_registry.sync tore everything
-    # down used to crash inside vtkPVRenderView until the threshold
-    # UI refresh got its early-return guard, but the Render skip
-    # remains as belt-and-braces (cheap no-op when there is
-    # nothing to paint anyway).
-    _t = _time.perf_counter()
+    # Single Render at the very end. The parent multiblock was hidden
+    # earlier, so this only paints the new ExtractBlock reps + IJK
+    # slicers. Skipped on an empty selection (nothing to paint).
     state.view_update = True
     if state.fespp_data_selectors:
         pvsimple.Render(view=view)
-    print(f"[PERF py] final Render: {_ms(_t)}ms")
-    print(f"[PERF py] >>> TOTAL on_change_fespp_data_selectors: {_ms(_t_total_start)}ms <<<")
 
 
 def _update_visibility_tracking(state, present_paths):

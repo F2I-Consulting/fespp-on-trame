@@ -40,12 +40,25 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
+# Personal host-side wrappers that just invoke `docker build` — local only.
+# NOT the actual build: `build.bash` (baked into the ParaView image by
+# Dockerfile.paraview) and `fespp/build_scripts/*.sh` (run inside Dockerfile)
+# stay tracked. The two-step manual build is documented in README.md.
+/build.sh
+/build.ps1
+/build2.ps1
+
 # FESPP local source (for local build mode)
 /fespp-src-local/
 # ParaView Trame Components reference sources (not part of the project)
 /paraview-trame-components/
 # Private docs (Elba deployment, etc.) — local only, excluded from git
 doc/private/
+# Bilingual user/dev guides — local only (the committed handoff doc is doc/wiki, EN)
+doc/EN/
+doc/FR/
+# French mirror of the developer wiki — local only (the committed wiki is EN)
+doc/wiki-fr/
 .claude/
 
 # Personal reference notes — accumulated knowledge about ParaView /

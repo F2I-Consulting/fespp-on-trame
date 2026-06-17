@@ -29,13 +29,10 @@ class Selector:
     def optimize_tree_selection(self, selected_items):
         """Identity in explicit-selection mode.
 
-        Historically this collapsed groups of all-children-selected
-        leaves to their parent path, assuming the parent path covers
-        all descendants on the C++ side. With ExplicitSelection=1
-        (set at boot in engine.py) that assumption no longer
-        holds for non-grouping nodes — sending the parent path would
-        only load the parent's geometry and silently drop the user's
-        checked properties.
+        With ExplicitSelection=1 (set at boot in engine.py) the C++ side
+        does not auto-load descendants of a parent path, so each checked
+        node must be forwarded verbatim — collapsing to a parent path
+        would silently drop the user's checked properties.
 
         UI-side dependency expansion (auto-check Trajectory when a
         Channel/Marker is checked, auto-check descendants of a

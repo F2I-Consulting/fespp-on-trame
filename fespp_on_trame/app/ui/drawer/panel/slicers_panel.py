@@ -2,17 +2,14 @@
 
 The three tabs are all "cut the rep geometry" variants; grouping
 them under one VExpansionPanel + internal VTabs keeps the drawer
-compact while letting only the relevant set of controls be visible
-at a time.
+compact while showing only the relevant controls at a time.
 
-Phase 1.b.1 status: the backend is per-(rep, view) — each render
-view has its own SlicePlane / ClipPlane filter. The UI here still
-binds to the GLOBAL `ui_slice_*` / `ui_clip_*` state vars; those
-reflect the ACTIVE panel's filter state via the publish hooks in
-`slice_dispatch` / `clip_dispatch`. UX limitation: when switching
-panel, the slider values shown reflect the last edit (no auto-
-refresh from the newly-active panel yet). Phase 1.b.2 will add
-per-view state vars + per-panel UI to fix that.
+The backend is per-(rep, view) — each render view has its own
+SlicePlane / ClipPlane filter. The UI binds to the GLOBAL
+`ui_slice_*` / `ui_clip_*` state vars, which reflect the ACTIVE
+panel's filter state via the publish hooks in `slice_dispatch` /
+`clip_dispatch`. Switching panel shows the slider values from the
+last edit (no auto-refresh from the newly-active panel).
 
 Tab body sources:
   - IJK   → `SlicerControls().render_body()` (IJK + threshold).
@@ -21,9 +18,9 @@ Tab body sources:
   - Slice → `SlicePlanePanel().render_body()`
   - Clip  → `ClipPlanePanel().render_body()`
 
-Active inner tab is persisted in `state.ui_slicers_tab` (single
-state var across all main tabs — VTabs `mandatory` mode falls back
-to the first available tab when the value doesn't match)."""
+Active inner tab is persisted in `state.ui_slicers_tab` (single state
+var across all main tabs — VTabs `mandatory` mode falls back to the
+first available tab when the value doesn't match)."""
 from trame.widgets import html, vuetify3
 
 from fespp_on_trame.app.ui.drawer.panel.slicers import (

@@ -23,10 +23,9 @@ When any toolbar control mutates its scoped state var, a
 fresh options and pushes a new figure through the panel's update
 controller method.
 
-The wrapper around the Plotly widget is the Kitware-verified minimum
-(VContainer / VRow / VCol — never raw html.Div with flex + min-height,
-which collapses Plotly to 0×0 in a dockview floating shell whose
-layout settles asynchronously).
+The Plotly widget must be wrapped in VContainer / VRow / VCol — a raw
+html.Div with flex + min-height collapses Plotly to 0×0 in a dockview
+floating shell whose layout settles asynchronously.
 """
 from trame.app import get_server
 from trame.widgets import html, plotly, vuetify3
@@ -36,11 +35,10 @@ class DistributionPanel:
     """Renders one Plotly Figure tied to a specific dockview panel id,
     plus a per-panel options toolbar.
 
-    The owning `_add_distribution_panel` passes the dockview panel id
-    in so every state binding + the captured `.update` method are
-    scoped per-instance. Without that scoping every Distribution panel
-    would clobber the same vars and Plotly would only ever show
-    whichever instance was last updated.
+    `_add_distribution_panel` passes the panel id in so every state
+    binding and the captured `.update` method are scoped per-instance;
+    without that scoping all Distribution panels would clobber the same
+    vars and only the last-updated one would render.
     """
 
     def __init__(self, panel_id: str):
