@@ -165,16 +165,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         except Exception:
             pass
 
-    # Tell the activator which reps are still actively displayed so
-    # it hides stale color bars (e.g. switching between two IJK
-    # grids — without this, the previous grid's color bar stays
-    # alongside the new grid's bar).
     present_paths = set(p for p, _ in source_registry.items())
-    if activator is not None:
-        try:
-            activator.notify_active_reps(present_paths)
-        except Exception:
-            pass
 
     _update_visibility_tracking(state, present_paths)
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
@@ -201,6 +192,14 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             for scene in scene_reg.all_scenes():
                 for r_path in (set(scene._reps.keys()) - present_paths):
                     scene.remove_rep(r_path)
+            # A deselected rep's display is gone, so its LUT is now
+            # unreferenced — sweep each scene view to drop the orphaned
+            # color bar. (Coloring + bar ownership live on the eye path;
+            # the activator no longer tracks per-rep bars.)
+            from fespp_on_trame.app.core.engine import source_resolver
+            for scene in scene_reg.all_scenes():
+                if scene.pv_view is not None:
+                    source_resolver.hide_unused_scalar_bars(scene.pv_view)
     except Exception:
         pass
 

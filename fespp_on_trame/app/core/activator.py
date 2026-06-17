@@ -36,86 +36,6 @@ controller = server.controller
 from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 
 
-def _nan_opacity_from_state():
-    """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.0
-    (NaN cells fully transparent unless the user dials in an alpha)."""
-    try:
-        hex_val = (state.nan_color or "").lstrip("#")
-        if len(hex_val) >= 8:
-            return int(hex_val[6:8], 16) / 255
-    except (ValueError, IndexError):
-        pass
-    return 0.0
-
-
-def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None,
-                          source_registry=None, ijk_lookup=None):
-    """Every display proxy that renders rep_block_path. Used to fan-out
-    ColorBy so chain proxies stay in sync with their parent source even
-    when one of them is hidden.
-
-    Source resolution:
-      * UG: rep<sanitized_path> filter + every chain proxy registered
-        for the rep (via source_registry.all_chain_proxies).
-      * IJK: every source owned by the matching IjkGrid instance
-        (rep_data + slicers + volume + chain proxies), resolved via
-        ijk_lookup(rep_block_path). This is per-grid so we never grab
-        sources from a different IJK grid that happens to be loaded
-        in parallel."""
-    if view is None:
-        return []
-    sanitized = (rep_block_path or "").replace('/', '_')
-    expected_rep_filter = "rep" + sanitized
-    is_ijk = rep_type == 'IjkGrid'
-    sources = []
-    # Pull non-IjkGrid chain proxies directly from source_registry — name
-    # patterns can collide once chains are nested (thr_grid_a vs
-    # thr_grid_a_b), so the authoritative list is the data layer's.
-    chain_set = set()
-    if not is_ijk and source_registry is not None:
-        try:
-            chain_proxies = source_registry.all_chain_proxies(rep_block_path)
-        except AttributeError:
-            chain_proxies = []
-        for p in chain_proxies:
-            sources.append(p)
-            chain_set.add(id(p))
-    elif is_ijk and ijk_lookup is not None:
-        ijk = ijk_lookup(rep_block_path)
-        if ijk is not None:
-            try:
-                for s in ijk.all_render_sources():
-                    sources.append(s)
-                    chain_set.add(id(s))
-            except Exception:
-                pass
-    # rep<sanitized_path> filter — for UG it's the ExtractBlock; for
-    # IJK it's the rep_data extractor which the lookup above may have
-    # already added (chain_set dedupes).
-    for source_id, source in pvsimple.GetSources().items():
-        if id(source) in chain_set:
-            continue
-        if source_id[0] == expected_rep_filter:
-            sources.append(source)
-            chain_set.add(id(source))
-    out = []
-    seen_displays = set()
-    if target_display is not None:
-        seen_displays.add(id(target_display))
-        out.append(target_display)
-    for s in sources:
-        if s is target_source:
-            continue
-        try:
-            d = pvsimple.GetDisplayProperties(s, view=view)
-        except Exception:
-            continue
-        if d is not None and id(d) not in seen_displays:
-            seen_displays.add(id(d))
-            out.append(d)
-    return out
-
-
 def _drill_to_inner(vtk_out):
     """If vtk_out is a vtkPartitionedDataSetCollection, return its first
     inner partition; otherwise return as-is."""
@@ -132,10 +52,11 @@ def _drill_to_inner(vtk_out):
 
 
 class Activator:
-    """Reacts to active-node changes in the three trees and updates the
-    Attributes panel + LUT/PWF for the active node. ColorBy itself is
-    owned by ui_active_array_by_rep (the eye state) — this class just
-    refreshes the panel and re-applies ColorBy when the eye is open."""
+    """Reacts to active-node changes in the three trees and refreshes the
+    Attributes panel (color editor + active proxy) for the active node.
+    ColorBy is owned by `ui_active_array_by_rep` (the eye state) via
+    `source_resolver.apply_color_array` — activating a node never colors
+    the 3D view."""
 
     def __init__(self, tree: Tree, source_registry=None, ijk_lookup=None):
         self._tree = tree
@@ -144,13 +65,6 @@ class Activator:
         # Lets us enumerate a specific grid's sources without globbing
         # registration names across the global proxy manager.
         self._ijk_lookup = ijk_lookup
-
-        # Array currently colorized per rep. ParaView keys color bars by
-        # LUT (one per array name globally), so when a rep switches
-        # property A → B we hide A's bar to stop it stacking on B's bar —
-        # but only if NO other rep is still colored by A (reps can share
-        # a LUT/bar).
-        self._current_array_by_rep = {}
 
         state.setdefault("ui_active_node_reservoir", [])
         state.setdefault("ui_active_node_surface", [])
@@ -309,8 +223,8 @@ class Activator:
                 array_name = prop_title
         if is_property and array_name:
             try:
-                self._apply_color_for_active_property(
-                    node_id, rep_block_path, rep_type, rep_source,
+                self._refresh_active_property_editor(
+                    rep_block_path, rep_type, rep_source,
                     array_name, is_ts_property,
                 )
             except Exception:
@@ -405,192 +319,54 @@ class Activator:
             target_source = _pick_visible([ijk._src_slicer_volume])
         return target_source
 
-    def _apply_color_for_active_property(self, node_id, rep_block_path, rep_type,
-                                         rep_source, array_name, is_ts_property):
-        """Heavy ColorBy / LUT / scalar-bar configuration for a property
-        activation.
+    def _refresh_active_property_editor(self, rep_block_path, rep_type,
+                                        rep_source, array_name, is_ts_property):
+        """Activation plumbing for a property node: set the PV active source,
+        fire the active-proxy / TimeControl hooks and refresh the
+        Attributes-panel color editor. Does NOT color the 3D view — coloring
+        is owned by the eye / active-array path
+        (`source_resolver.apply_color_array`). Per the activation contract,
+        activating a node only highlights it; it never changes the view.
 
-        The proxy info cache is unreliable for arrays added in place by
-        the C++ pipeline, so several steps go through the client-side VTK
-        object directly: querying Cell/Point data, and force-rescaling the
-        LUT range LAST (every other caller's internal
-        RescaleTransferFunctionToDataRange reads the stale cache and falls
-        back to [0,1]). ColorBy / scalar-bar are applied to every display
-        rendering the rep (fan-out across chain / slicer proxies) only
-        when the eye is open for this exact array."""
+        The proxy info cache is unreliable for arrays the C++ pipeline added
+        in place, so the actual (cell/point) VTK array name handed to the
+        color editor is read from the client-side object directly."""
         active_view = pvsimple.GetActiveView()
         target_source = self._resolve_color_target_source(
             rep_block_path, rep_type, rep_source, active_view,
         )
-        if not (target_source and active_view):
+        if target_source is None:
             return
 
         pvsimple.SetActiveSource(target_source)
-        # Force the producer's MTime to advance so the proxy info cache
-        # (sticky on TrivialProducer when its output is mutated externally
-        # by the C++ side) is invalidated, then re-run RequestInformation.
+        # Invalidate the sticky proxy info cache, then resolve the real VTK
+        # array name (the sanitized variant) so the color editor binds to the
+        # right array. No ColorBy / LUT / Render here — the view is untouched.
         try:
             target_source.GetClientSideObject().Modified()
         except Exception:
             pass
         target_source.UpdatePipelineInformation()
         target_source.UpdatePipeline()
-        display = pvsimple.GetDisplayProperties(target_source, view=active_view)
-
-        if not display:
-            return
-
-        # Query the underlying VTK object directly — the client-side
-        # object is always fresh, unlike the proxy info cache.
-        vtk_out = target_source.GetClientSideObject().GetOutputDataObject(0)
-        vtk_inner = _drill_to_inner(vtk_out)
-        vtk_cd = vtk_inner.GetCellData() if vtk_inner is not None and hasattr(vtk_inner, 'GetCellData') else None
-        vtk_pd = vtk_inner.GetPointData() if vtk_inner is not None and hasattr(vtk_inner, 'GetPointData') else None
-        cell_arr = _find_array_in_store(vtk_cd, array_name)
-        pt_arr = _find_array_in_store(vtk_pd, array_name)
-        has_cell = cell_arr is not None
-        has_pt = pt_arr is not None
-        # If the array was found via the sanitized name (specials
-        # stripped), use that form for ColorBy / GetColorTransferFunction.
-        if has_cell or has_pt:
-            found_arr = cell_arr if has_cell else pt_arr
+        try:
+            vtk_out = target_source.GetClientSideObject().GetOutputDataObject(0)
+            vtk_inner = _drill_to_inner(vtk_out)
+            vtk_cd = vtk_inner.GetCellData() if vtk_inner is not None and hasattr(vtk_inner, 'GetCellData') else None
+            vtk_pd = vtk_inner.GetPointData() if vtk_inner is not None and hasattr(vtk_inner, 'GetPointData') else None
+            found_arr = _find_array_in_store(vtk_cd, array_name) or _find_array_in_store(vtk_pd, array_name)
             if found_arr is not None:
                 actual_name = found_arr.GetName()
-                if actual_name and actual_name != array_name:
+                if actual_name:
                     array_name = actual_name
-
-        # ColorBy is owned by the eye state (ui_active_array_by_rep),
-        # not by activation. We re-apply ColorBy here only when the eye
-        # is open for this exact array — harmless if it's already
-        # applied.
-        array_node_path = self._tree.find_path(node_id)
-        eye_open_for_this = (
-            array_node_path is not None
-            and (state.ui_active_array_by_rep or {}).get(rep_block_path) == array_node_path
-        )
-        array_type = None
-        if has_cell:
-            array_type = "CELLS"
-        elif has_pt:
-            array_type = "POINTS"
-        color_displays = []
-        if array_type and eye_open_for_this:
-            # Apply ColorBy to every display rendering this rep (source +
-            # downstream Threshold filter, IJK slicers + their thresholds,
-            # etc.) so they stay in sync on a property switch.
-            color_displays = _all_displays_for_rep(
-                rep_block_path, rep_type, active_view,
-                target_source, display,
-                source_registry=self._source_registry,
-                ijk_lookup=self._ijk_lookup,
-            )
-            for d in color_displays:
-                try:
-                    pvsimple.ColorBy(d, (array_type, array_name))
-                except Exception:
-                    pass
-        lut = None
-        if array_type:
-            prev_array = self._current_array_by_rep.get(rep_block_path)
-            if eye_open_for_this and prev_array and prev_array != array_name:
-                still_used = any(
-                    arr == prev_array
-                    for r, arr in self._current_array_by_rep.items()
-                    if r != rep_block_path
-                )
-                if not still_used:
-                    try:
-                        # Hide the previous bar — prefer the scene-
-                        # scoped LUT for `prev_array` (we likely
-                        # created one earlier), fall back to the
-                        # global singleton.
-                        prev_lut = source_resolver.scene_lut_for_view(
-                            active_view, prev_array,
-                        )
-                        if prev_lut:
-                            prev_bar = pvsimple.GetScalarBar(prev_lut, active_view)
-                            if prev_bar:
-                                # Do NOT raw-write prev_bar.Visibility = 0 here:
-                                # source_resolver.apply_color_array's
-                                # hide_unused_scalar_bars sweep hides previous bars
-                                # through vtkSMTransferFunctionManager. Raw writes
-                                # bypass its bookkeeping and, under per-view LUT
-                                # scope, leave stale bars visible on OTHER views.
-                                pass
-                    except Exception:
-                        pass
-            if eye_open_for_this:
-                self._current_array_by_rep[rep_block_path] = array_name
-
-            # Per-view LUT / PWF: swap each display from the global
-            # singleton to the active view's scene-scoped pair so a
-            # COE edit in this view doesn't bleed across other views
-            # showing the same array. Returns the scoped LUT so the
-            # bar binding below targets the same proxy.
-            if color_displays:
-                lut, _scene_pwf = source_resolver.swap_to_scene_tfs(
-                    color_displays, active_view, array_name,
-                )
-            if lut is None:
-                lut = pvsimple.GetColorTransferFunction(array_name)
-            if lut:
-                lut.NanOpacity = _nan_opacity_from_state()
-                color_bar = pvsimple.GetScalarBar(lut, active_view)
-                if color_bar:
-                    color_bar.Title = array_name
-                    # Do NOT raw-write color_bar.Visibility = 1 here:
-                    # apply_color_array already toggled it through
-                    # vtkSMTransferFunctionManager via
-                    # display.SetScalarBarVisibility. Raw writes desync from
-                    # the view's representation list under per-view LUT scope
-                    # and cause duplicate bars. (Title / format / Resizable
-                    # below are appearance, not the visibility toggle.)
-                    color_bar.RangeLabelFormat = '%-#6.3g'
-                    color_bar.Resizable = 1
-
-            # Retire any scalar bar attached to a now-orphaned LUT on this
-            # view. The manager keys bars by (lut, view); when
-            # `swap_to_scene_tfs` returns a different scoped-LUT proxy than
-            # the prior activation used, the prior bar lingers in
-            # `view.Representations`. Mirror source_resolver's
-            # hide_unused_scalar_bars call.
-            try:
-                if active_view is not None:
-                    from paraview.servermanager import vtkSMTransferFunctionManager
-                    vtkSMTransferFunctionManager().UpdateScalarBars(
-                        active_view.SMProxy, 1,
-                    )
-            except Exception:
-                pass
-
-        target_source.UpdatePipeline()
+        except Exception:
+            pass
 
         controller.on_active_proxy_change()
-        # on_data_loaded is ParaView-Trame TimeControl's refresh hook —
-        # only useful for time-series properties (the time slider needs
-        # to reset its range). For non-TS activations it does heavy Vue
-        # work for nothing (~50-100ms).
+        # on_data_loaded is the TimeControl refresh hook — only needed for
+        # time-series properties (the time slider resets its range).
         if is_ts_property:
             controller.on_data_loaded()
         controller.update_color_editor(array_name)
-
-        # Force the LUT range LAST, after every other caller (ColorBy
-        # internal, on_active_proxy_change, update_color_editor) has had a
-        # chance to touch it. Their RescaleTransferFunctionToDataRange
-        # reads the stale proxy info cache and falls back to [0,1] for
-        # arrays added in place by C++; computing the range from the VTK
-        # array and pushing it last guarantees nothing overrides it.
-        if array_type and lut is not None:
-            try:
-                vtk_arr = vtk_cd.GetArray(array_name) if has_cell else vtk_pd.GetArray(array_name)
-                if vtk_arr is not None:
-                    rng = vtk_arr.GetRange()
-                    if rng[0] < rng[1]:
-                        lut.RescaleTransferFunction(float(rng[0]), float(rng[1]))
-            except Exception:
-                pass
-
-        pvsimple.Render(view=active_view)
 
     def _publish_active_color_state(self, node_id):
         """Publish the COE-mode state (`active_color_array_name` /
@@ -678,38 +454,6 @@ class Activator:
             state.active_representation_has_properties = False
             state.active_color_array_name = ""
             state.active_property_kind = ""
-
-    def notify_active_reps(self, current_rep_paths):
-        """Hide stale color bars left behind when a rep is no longer in
-        the active selection. Only hides a bar if NO other still-present
-        rep references the same array (multiple reps can share a
-        LUT/bar)."""
-        if not self._current_array_by_rep:
-            return
-        view = pvsimple.GetActiveView()
-        if view is None:
-            return
-        present = set(current_rep_paths or [])
-        gone = [r for r in list(self._current_array_by_rep.keys()) if r not in present]
-        for rep_path in gone:
-            arr_name = self._current_array_by_rep.pop(rep_path, None)
-            if not arr_name:
-                continue
-            still_used = any(
-                a == arr_name
-                for r, a in self._current_array_by_rep.items()
-                if r in present
-            )
-            if still_used:
-                continue
-            try:
-                lut = pvsimple.GetColorTransferFunction(arr_name)
-                if lut is not None:
-                    bar = pvsimple.GetScalarBar(lut, view)
-                    if bar is not None:
-                        bar.Visibility = 0
-            except Exception:
-                pass
 
     def refresh_active(self):
         """Re-run the active-node handlers for whatever is currently
