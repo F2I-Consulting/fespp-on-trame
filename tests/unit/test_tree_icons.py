@@ -1,6 +1,6 @@
-"""Tests unitaires pour fespp_on_trame.app.ui.config.tree_icons"""
+"""Tests unitaires pour fespp_on_trame.app.ui.drawer.config.tree_icons"""
 import pytest
-from fespp_on_trame.app.ui.config.tree_icons import get_icon_for_type, TREE_ICONS
+from fespp_on_trame.app.ui.drawer.config.tree_icons import get_icon_for_type, TREE_ICONS
 
 
 class TestGetIconForType:

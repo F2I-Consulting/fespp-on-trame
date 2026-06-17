@@ -46,4 +46,4 @@ __pycache__/
 /paraview-trame-components/
 doc/elba.md
 doc/elba.pdf
-.claude/settings.local.json
+.claude/

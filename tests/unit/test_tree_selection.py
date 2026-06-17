@@ -1,6 +1,6 @@
-"""Tests unitaires pour fespp_on_trame.app.ui.config.tree_selection"""
+"""Tests unitaires pour fespp_on_trame.app.ui.drawer.config.tree_selection"""
 import pytest
-from fespp_on_trame.app.ui.config.tree_selection import get_item_props_js, SELECTABLE_TYPES
+from fespp_on_trame.app.ui.drawer.config.tree_selection import get_item_props_js, SELECTABLE_TYPES
 
 
 class TestGetItemPropsJs:

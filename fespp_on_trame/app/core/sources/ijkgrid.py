@@ -3,8 +3,8 @@ from paraview import simple as pvsimple
 from paraview.servermanager import vtkSMPropertyHelper
 
 from fespp_on_trame.app.core.sources.collector import Collector
-from fespp_on_trame.app.core.fespp_tree import Tree
-from fespp_on_trame.app.core.sources.rep_sources import (
+from fespp_on_trame.app.core.tree import Tree
+from fespp_on_trame.app.core.sources.representation import (
     _apply_default_tint, _find_registered_proxy, _sanitize,
 )
 
@@ -17,7 +17,7 @@ ctrl = server.controller
 class _IjkChainEntry:
     """One node in the IjkGrid threshold chain.
 
-    Unlike RepSources where each chain entry has a single PV proxy,
+    Unlike ExtractBlockRepresentation where each chain entry has a single PV proxy,
     an IjkGrid entry must attach to *every* currently-active upstream
     (rep_data + slicers in slice mode, rep_data + slicervolume in
     range mode). `pv_proxies` is keyed by id(upstream_source) and
@@ -107,6 +107,28 @@ class IjkGrid:
         self._range_k = None
         self._range_mode = "slice"
         self._volume_visible = True
+
+    # ------------------------------------------------------------------
+    # Symmetry with ExtractBlockRepresentation: both classes expose a
+    # `source` property (the upstream filter used as ColorBy anchor /
+    # display-resolver target) and a `rep_path` property (this grid's
+    # path in the assembly). `SourceRegistry` reads these uniformly
+    # without caring about the underlying type.
+
+    @property
+    def source(self):
+        """The rep_data extractor filter — same role as
+        ExtractBlockRepresentation.source: the canonical upstream
+        proxy for the ColorBy fan-out / displays-for-rep lookup."""
+        return self._src_extract_init
+
+    @property
+    def rep_path(self):
+        """This grid's assembly path, or empty string when no node
+        is currently active."""
+        if self._node_id is None:
+            return ""
+        return self._tree.find_path(self._node_id) or ""
 
     def color_array_type(self, name) -> None:
         """Return 'CELLS' / 'POINTS' / 'FIELD' depending on which data
@@ -398,7 +420,7 @@ class IjkGrid:
     # ------------------------------------------------------------------
     # Show / hide
 
-    def show(self):
+    def show(self, view=None):
         """Show / hide the right combination of sources for the current
         slicer mode. Slice mode displays the per-axis crops; range mode
         displays slicervolume when the slider is on a subset of the grid,
@@ -411,10 +433,44 @@ class IjkGrid:
 
         When the chain has any visible entry, each "would-be visible"
         source is replaced by its corresponding Threshold proxy from
-        the deepest visible chain leaf."""
+        the deepest visible chain leaf.
+
+        `view` defaults to the active view when None — call sites that
+        target a specific panel (multi-view eye toggle) pass that
+        panel's render view to avoid leaking the Show/Hide into the
+        wrong view."""
         if self._node_id is None:
             return
-        view = pvsimple.GetActiveView()
+        if view is None:
+            view = pvsimple.GetActiveView()
+        if view is None:
+            return
+
+        # `set_node_id` set Representation + tint (DiffuseColor /
+        # AmbientColor / Opacity from state.solid_color_by_rep) on each
+        # of this grid's sources, but only in the view that was active
+        # at the time. For OTHER views (multi-view copies, empty
+        # panels promoted via eye toggle), the display was created
+        # later with PV's default Representation='Outline' and default
+        # grey color — so the slicers rendered as bare outlines once
+        # shown, ignoring the user-picked color. Re-assert
+        # Representation + tint on every managed source's display in
+        # `view`.
+        rep_type = state.representation_active or 'Surface'
+        grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
+        for src in (
+            list(self._all_slice_sources())
+            + ([self._src_slicer_volume] if self._src_slicer_volume is not None else [])
+            + ([self._src_extract_init] if self._src_extract_init is not None else [])
+        ):
+            try:
+                disp = pvsimple.GetRepresentation(proxy=src, view=view)
+                if disp is not None:
+                    disp.Representation = rep_type
+                    _apply_default_tint(disp, grid_color)
+            except Exception:
+                pass
+
         deepest_leaf = self._deepest_visible_leaf()
 
         if self._range_mode == 'slice':

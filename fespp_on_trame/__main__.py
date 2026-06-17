@@ -10,9 +10,9 @@ from trame.decorators import TrameApp
 from trame_server import Server
 from trame.app import get_server
 
-from fespp_on_trame.app.core.fespp_engine import initialize_fespp_engine
-from fespp_on_trame.app.io.http import download_file_from_url
-from fespp_on_trame.app.ui.view import ui
+from fespp_on_trame.app.core.engine import initialize_fespp_engine
+from fespp_on_trame.app.io.http_download import download_file_from_url
+from fespp_on_trame.app.ui.app_layout import ui
 from fespp_on_trame.constants import TRAME_APP_TITLE
 
 

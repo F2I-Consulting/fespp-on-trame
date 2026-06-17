@@ -10,7 +10,7 @@ from aiohttp import web as aiohttp_web
 
 
 def register_upload_route(server) -> bool:
-    from fespp_on_trame.app.io.drop_files import temp_dir
+    from fespp_on_trame.app.io.temp_dir import temp_dir
 
     async def handle_upload(request: aiohttp_web.Request) -> aiohttp_web.Response:
         state = server.state
@@ -142,3 +142,28 @@ def register_upload_route(server) -> bool:
 
 
 _registered_handler = None
+
+
+def resolve_upload_session_id(server) -> None:
+    """Fill `state.upload_session_id` once the trame server is bound
+    to its port. Each process looks up its own port in
+    `/opt/trame/proxy-mapping.txt` to build the per-session
+    `/api/{sid}/upload` URL the client posts to.
+
+    The lookup is best-effort — running outside the trame container
+    (the file doesn't exist) leaves the session id empty, which the
+    client falls back to a no-prefix `/upload` for."""
+    state = server.state
+    port = getattr(server, "_running_port", None) or getattr(server, "port", None)
+    sid = ""
+    try:
+        with open("/opt/trame/proxy-mapping.txt") as _f:
+            for _ln in _f:
+                parts = _ln.strip().split()
+                if len(parts) == 2 and parts[1].endswith(f":{port}"):
+                    sid = parts[0]
+                    break
+    except Exception:
+        pass
+    state.upload_session_id = sid
+    print(f"[Upload] session_id={sid!r} (port={port})", flush=True)
