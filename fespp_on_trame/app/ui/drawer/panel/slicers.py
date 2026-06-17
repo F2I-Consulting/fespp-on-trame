@@ -2,6 +2,10 @@ from trame.app import get_server
 from trame.widgets import vuetify3 as vuetify3, html
 from typing import Literal
 
+from fespp_on_trame.app.ui.drawer.panel.copy_from_view_menu import (
+    render_copy_menu,
+)
+
 server = get_server()
 state = server.state
 
@@ -27,13 +31,20 @@ class SlicerControls:
 
     def render_body(self):
         with html.Div(v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'"):
-            vuetify3.VSwitch(
-                v_model=(self._mode_var, "range",),
-                style="margin-left: 0.5rem;",
-                label=(self._mode_var,),
-                false_value="range",
-                true_value="slice",
-            )
+            # Phase 3b: header row hosts the Copy-from-view menu so the
+            # user can snapshot another panel's IJK slicer / volume /
+            # mode state onto the active panel. Sits flush with the
+            # mode switch to keep the IJK tab body compact.
+            with html.Div(classes="d-flex align-center"):
+                vuetify3.VSwitch(
+                    v_model=(self._mode_var, "range",),
+                    style="margin-left: 0.5rem;",
+                    label=(self._mode_var,),
+                    false_value="range",
+                    true_value="slice",
+                )
+                vuetify3.VSpacer()
+                render_copy_menu("ijk_slicers")
 
             # Single eye for the full volume in range mode.
             with html.Div(

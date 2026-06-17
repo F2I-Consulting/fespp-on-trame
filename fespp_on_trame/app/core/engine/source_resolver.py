@@ -34,6 +34,40 @@ from paraview import simple as pvsimple
 _NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
 
 
+def _scene_clip_output_for_view(rep_path: str, view):
+    """Return the Clip proxy owned by the RepInScene whose owning view
+    matches `view`, or None when no such RepInScene has clip
+    enabled. Phase 1.b.1: clip moved from the per-rep wrappers to
+    per-(rep, view) RepInScene; this lookup lets the ColorBy fan-out
+    still find the right clip output."""
+    rep = _scene_rep_for_view(rep_path, view)
+    if rep is None:
+        return None
+    try:
+        return rep.clip_output()
+    except Exception:
+        return None
+
+
+def _scene_rep_for_view(rep_path: str, view):
+    """Return the RepInScene for (view, rep_path), or None when no
+    scene currently renders that rep in that view. Used by the
+    ColorBy fan-out to find the per-view extractor + chain (Phase
+    3a) so coloring targets the per-view pipeline, not the shared
+    legacy source."""
+    try:
+        from trame.app import get_server
+        scenes = getattr(get_server().context, "scene_registry", None)
+        if scenes is None:
+            return None
+        for scene in scenes.all_scenes():
+            if scene.pv_view is view:
+                return scene.get_rep(rep_path)
+    except Exception:
+        return None
+    return None
+
+
 def sources_for_rep_path(source_registry, rep_path, view=None):
     """See module docstring. Returns `(sources, view)` so callers can
     chain Render(view=...) without re-resolving the active view.
@@ -49,6 +83,26 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
     if view is None:
         return [], None
     out = []
+    # Phase 3b: prefer the per-view IjkGrid for IJK reps in this view
+    # so visibility toggles operate on the per-view pipeline (not on
+    # the now-hidden legacy IjkGrid).
+    rep_in_scene = _scene_rep_for_view(rep_path, view)
+    if rep_in_scene is not None and rep_in_scene._is_ijk_grid():
+        per_view_ijk = rep_in_scene._ensure_per_view_ijk()
+        if per_view_ijk is not None and per_view_ijk.source is not None:
+            deepest_leaf = per_view_ijk._deepest_visible_leaf()
+            grid_sources = list(per_view_ijk._all_slice_sources())
+            if per_view_ijk._src_slicer_volume is not None:
+                grid_sources.append(per_view_ijk._src_slicer_volume)
+            if per_view_ijk._src_extract_init is not None:
+                grid_sources.append(per_view_ijk._src_extract_init)
+            for s in grid_sources:
+                proxy = None
+                if deepest_leaf is not None:
+                    proxy = deepest_leaf.pv_proxies.get(id(s))
+                out.append(proxy if proxy is not None else s)
+            return out, view
+
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
         deepest_leaf = ijk._deepest_visible_leaf()
@@ -66,6 +120,23 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
                 proxy = deepest_leaf.pv_proxies.get(id(s))
             out.append(proxy if proxy is not None else s)
         return out, view
+
+    # Phase 3a: non-IjkGrid reps own a per-view extractor + per-view
+    # chain. Substitute the per-view deepest visible chain leaf for
+    # the per-view extractor when the chain is active.
+    if rep_in_scene is not None:
+        per_view_src = None
+        try:
+            per_view_src = rep_in_scene._ensure_extractor()
+        except Exception:
+            per_view_src = None
+        if per_view_src is not None:
+            try:
+                visibles = rep_in_scene.all_visible_thresholds()
+            except Exception:
+                visibles = []
+            out.append(visibles[-1] if visibles else per_view_src)
+            return out, view
 
     eb = source_registry.get_extract_block(rep_path)
     if eb is not None:
@@ -105,6 +176,31 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
     if view is None:
         return [], None
     out = []
+    # Clip output is per-(rep, view) since Phase 1.b.1 — look it up
+    # via the scene_registry on server.context. Slice's display is
+    # intentionally excluded (it's tinted red so the cross-section
+    # stands out against the underlying rep).
+    rep_in_scene_clip_out = _scene_clip_output_for_view(rep_path, view)
+    rep_in_scene = _scene_rep_for_view(rep_path, view)
+
+    # Phase 3b: IJK reps now own a per-view IjkGrid pipeline. Fan
+    # ColorBy onto the per-view slicers / volume / chain in THIS
+    # view's pipeline, NOT onto the legacy shared IjkGrid (which is
+    # hidden in this view by `_hide_legacy_ijk_in_scene_view`).
+    if rep_in_scene is not None and rep_in_scene._is_ijk_grid():
+        per_view_ijk = rep_in_scene._ensure_per_view_ijk()
+        if per_view_ijk is not None and per_view_ijk.source is not None:
+            out.extend(per_view_ijk._all_slice_sources())
+            if per_view_ijk._src_slicer_volume is not None:
+                out.append(per_view_ijk._src_slicer_volume)
+            try:
+                out.extend(per_view_ijk.all_threshold_sources())
+            except Exception:
+                pass
+            if rep_in_scene_clip_out is not None:
+                out.append(rep_in_scene_clip_out)
+            return out, view
+
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
         out.extend(ijk._all_slice_sources())
@@ -114,24 +210,36 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
             out.extend(ijk.all_threshold_sources())
         except Exception:
             pass
-        # Include the clip's output so ColorBy fan-out picks up its
-        # display alongside the grid's other sources — the clip
-        # inherits the rep's coloring only once at creation, so without
-        # this it stays coloured by whatever property was active back
-        # then. Slice's display is intentionally excluded (it's tinted
-        # red so the cross-section stands out)."""
-        clip_out = ijk.clip_output() if hasattr(ijk, "clip_output") else None
-        if clip_out is not None:
-            out.append(clip_out)
+        if rep_in_scene_clip_out is not None:
+            out.append(rep_in_scene_clip_out)
         return out, view
+    # Phase 3a: non-IjkGrid reps own a per-view EnergisticsExtractor +
+    # per-view threshold chain. Fan ColorBy onto those (per-view), not
+    # onto the legacy shared ExtractBlock + shared chain.
+    rep_in_scene = _scene_rep_for_view(rep_path, view)
+    if rep_in_scene is not None:
+        per_view_src = None
+        try:
+            per_view_src = rep_in_scene._ensure_extractor()
+        except Exception:
+            per_view_src = None
+        if per_view_src is not None:
+            out.append(per_view_src)
+            try:
+                out.extend(rep_in_scene.all_chain_proxies())
+            except Exception:
+                pass
+            if rep_in_scene_clip_out is not None:
+                out.append(rep_in_scene_clip_out)
+            return out, view
+
     eb = source_registry.get_extract_block(rep_path)
     if eb is not None:
         if eb.source is not None:
             out.append(eb.source)
         out.extend(source_registry.all_chain_proxies(rep_path))
-        clip_out = eb.clip_output() if hasattr(eb, "clip_output") else None
-        if clip_out is not None:
-            out.append(clip_out)
+        if rep_in_scene_clip_out is not None:
+            out.append(rep_in_scene_clip_out)
         return out, view
     # Legacy fallback: match by registered name.
     expected_rep_filter = "rep" + (rep_path or "").replace('/', '_')
@@ -242,6 +350,188 @@ def hide_unused_scalar_bars(view=None):
         print(f"[WARNING] hide_unused_scalar_bars: {exc}")
 
 
+def swap_to_scene_tfs(displays, target_view, array_name):
+    """Swap each display's `LookupTable` / `ScalarOpacityFunction` to
+    the per-(scene, array) proxies, so a COE edit in one view doesn't
+    bleed across views sharing PV's default singleton-per-name LUT.
+
+    Returns `(scene_lut, scene_pwf)` for the caller's downstream use
+    (typically scalar-bar binding). Returns `(None, None)` when no
+    scene owns `target_view` (legacy / pre-Phase-1 callers, bootstrap)
+    — displays stay bound to PV's singleton LUT in that case.
+
+    The actual scope name (`f"{array_name}__{view_id}"`) is generated
+    by `ViewScene._scoped_tf_name` so the scope only lives in
+    `view_scene.py`."""
+    if not displays or not array_name:
+        return None, None
+    try:
+        from trame.app import get_server
+        scene_registry = getattr(get_server().context, "scene_registry", None)
+        if scene_registry is None:
+            return None, None
+        scene = scene_registry.scene_for_pv_view(target_view)
+        if scene is None:
+            return None, None
+        scene_lut = scene.get_or_create_lut(array_name)
+        scene_pwf = scene.get_or_create_pwf(array_name)
+        for d in displays:
+            try:
+                if scene_lut is not None:
+                    d.LookupTable = scene_lut
+                if scene_pwf is not None:
+                    d.ScalarOpacityFunction = scene_pwf
+            except Exception:
+                pass
+        return scene_lut, scene_pwf
+    except Exception as _exc:
+        print(f"[WARNING] swap_to_scene_tfs failed for {array_name!r}: {_exc}")
+        return None, None
+
+
+def resolve_target_scoped_lut(array_name):
+    """Resolve `array_name` (UI base name — title for MR, raw
+    otherwise) into the per-(target scene, MR-suffixed base) LUT
+    proxy for the drawer's currently-targeted view. Used by COE-style
+    edit panels (solid_color_panel, categorical_color_editor, …) so
+    a user write goes to the per-view LUT and doesn't bleed across
+    views.
+
+    Returns `(base, scene_lut)`:
+      - `base` : MR-suffixed-if-applicable base array name (what
+        `ColorArrayName` carries on the displays).
+      - `scene_lut`: the per-(scene, base) LUT proxy, or None when
+        no scene owns the drawer target (legacy / bootstrap caller).
+    """
+    if not array_name:
+        return array_name, None
+    try:
+        from trame.app import get_server
+        from fespp_on_trame.app.core import engine as _engine_pkg
+        from fespp_on_trame.app.core.engine import realization_dispatch
+        server = get_server()
+        state = server.state
+        tree = getattr(_engine_pkg, "_tree", None)
+        base = array_name
+        if tree is not None:
+            active_nodes = state.ui_active_node_reservoir or []
+            if active_nodes:
+                try:
+                    array_path = tree.find_path(active_nodes[0])
+                except Exception:
+                    array_path = None
+                if array_path and realization_dispatch.is_multirealization_property(tree, array_path):
+                    panel_id = (
+                        getattr(state, "drawer_target_view_id", "") or ""
+                        or getattr(state, "fespp_active_panel_id", "") or ""
+                    )
+                    idx = realization_dispatch.get_active_realization_for_view(
+                        state, panel_id, array_path,
+                    )
+                    if idx is None:
+                        idx = realization_dispatch.default_realization_for(
+                            state, tree, array_path,
+                        )
+                    if idx is not None:
+                        base = realization_dispatch.suffixed_array_name(
+                            array_name, int(idx),
+                        )
+        target_panel = (
+            getattr(state, "drawer_target_view_id", "") or ""
+            or getattr(state, "fespp_active_panel_id", "") or ""
+        )
+        scene_registry = getattr(server.context, "scene_registry", None)
+        if scene_registry is None or not target_panel:
+            return base, None
+        scene = scene_registry.get_scene(target_panel)
+        if scene is None:
+            return base, None
+        return base, scene.get_or_create_lut(base)
+    except Exception as exc:
+        print(f"[WARNING] resolve_target_scoped_lut({array_name!r}): {exc}")
+        return array_name, None
+
+
+def target_view_and_panel():
+    """Resolve the drawer target's `(pv_view, panel_id)` pair.
+
+    Used by edit panels (COE, categorical, …) so a write goes to the
+    pinned target view's render — not the focused panel's. Falls back
+    to the active panel when no drawer target is set (initial boot
+    window, no pin)."""
+    try:
+        from trame.app import get_server
+        server = get_server()
+        state = server.state
+        panel_id = (
+            getattr(state, "drawer_target_view_id", "") or ""
+            or getattr(state, "fespp_active_panel_id", "") or ""
+        )
+        if not panel_id:
+            return None, ""
+        scene_registry = getattr(server.context, "scene_registry", None)
+        if scene_registry is None:
+            return None, panel_id
+        scene = scene_registry.get_scene(panel_id)
+        if scene is None:
+            return None, panel_id
+        return scene.pv_view, panel_id
+    except Exception:
+        return None, ""
+
+
+def render_and_push_target(controller):
+    """Render the drawer target's pv_view and push a fresh vtk.js
+    frame to its panel — used by edit handlers that mutate a per-
+    view proxy (LUT / PWF / display.Representation / …) and need the
+    target's browser to actually show the new state.
+
+    Bypasses `controller.view_update()` (which only refreshes the
+    active panel) in favour of `view_update_for(panel_id)`. Falls
+    back to `view_update()` when the per-panel hook isn't wired."""
+    pv_view, panel_id = target_view_and_panel()
+    if pv_view is not None:
+        try:
+            pvsimple.Render(view=pv_view)
+        except Exception:
+            pass
+    if controller is None:
+        return
+    update_for = getattr(controller, "view_update_for", None)
+    if update_for is not None and panel_id:
+        try:
+            update_for(panel_id)
+            return
+        except Exception:
+            pass
+    try:
+        controller.view_update()
+    except Exception:
+        pass
+
+
+def scene_lut_for_view(view, array_name):
+    """Lookup helper for callers that already know a `view` and need
+    the scene-scoped LUT (e.g. the activator's scalar bar binding).
+    Returns the per-view LUT when one exists for `(scene, array)`,
+    else the global singleton LUT (PV default). Never returns None
+    unless `array_name` is empty."""
+    if not array_name:
+        return None
+    try:
+        from trame.app import get_server
+        scene_registry = getattr(get_server().context, "scene_registry", None)
+        if scene_registry is not None and view is not None:
+            scene = scene_registry.scene_for_pv_view(view)
+            if scene is not None:
+                cached = scene.get_lut(array_name)
+                if cached is not None:
+                    return cached
+    except Exception:
+        pass
+    return pvsimple.GetColorTransferFunction(array_name)
+
+
 def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
                        realization_idx=None):
     """See module docstring.
@@ -254,10 +544,23 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     None (legacy behaviour: resolver picks the unsuffixed name)."""
     displays = displays_for_rep_path(source_registry, rep_path, view=view)
     if not displays:
-        print(f"[APC_DEBUG] apply_color_array({rep_path}, {array_path}): no displays for view={view}")
         return
     if not array_path:
+        # Deselect path (tree eye unchecked). Hide the previous
+        # scalar bar through display.SetScalarBarVisibility BEFORE
+        # clearing SetScalarColoring — otherwise the LUT reference
+        # is severed first and vtkSMTransferFunctionManager's
+        # bookkeeping leaves the bar widget visible on the view
+        # until a downstream sweep happens to reap it. With per-
+        # view LUT scope the timing matters: the manager only
+        # hides bars whose LUT it currently tracks as wired, so
+        # we must tell it BEFORE the wire goes away.
         for d in displays:
+            try:
+                if d.LookupTable is not None and view is not None:
+                    d.SetScalarBarVisibility(view, False)
+            except Exception:
+                pass
             try:
                 sm = getattr(d, "SMProxy", None)
                 if sm is not None:
@@ -272,15 +575,15 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         source_registry, tree, rep_path, array_path,
         realization_idx=realization_idx,
     )
-    print(f"[APC_DEBUG] apply_color_array({rep_path}, {array_path}, real_idx={realization_idx})"
-          f" -> assoc={assoc} name={name} n_displays={len(displays)}")
     if not assoc or not name:
         return
     for d in displays:
         try:
             pvsimple.ColorBy(d, (assoc, name))
-        except Exception as exc:
-            print(f"[APC_DEBUG]   ColorBy raised: {exc}")
+        except Exception:
+            pass
+    target_view = view if view is not None else pvsimple.GetActiveView()
+    scene_lut, scene_pwf = swap_to_scene_tfs(displays, target_view, name)
     # `pvsimple.ColorBy` doesn't show the scalar bar — and a prior
     # `hide_unused_scalar_bars` sweep may have unbound the bar from
     # the view's representation list, in which case a raw
@@ -289,7 +592,6 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     # `display.SetScalarBarVisibility` drives the
     # TransferFunctionManager which re-attaches the bar to the view
     # if needed. Tweak the bar's cosmetics after it's wired in.
-    target_view = view if view is not None else pvsimple.GetActiveView()
     try:
         if target_view is not None:
             for d in displays:
@@ -298,9 +600,12 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
                     break
                 except Exception:
                     continue
-            lut = pvsimple.GetColorTransferFunction(name)
-            if lut is not None:
-                bar = pvsimple.GetScalarBar(lut, target_view)
+            # Use the scoped LUT when we have one so the scalar bar
+            # follows the per-view gradient. Fall back to the global
+            # LUT otherwise (legacy / pre-scene callers).
+            bar_lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(name)
+            if bar_lut is not None:
+                bar = pvsimple.GetScalarBar(bar_lut, target_view)
                 if bar is not None:
                     bar.Title = name
                     bar.RangeLabelFormat = '%-#6.3g'

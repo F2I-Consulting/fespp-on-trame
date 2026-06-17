@@ -30,6 +30,17 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHJA-Z]")
 # vtkLogger line format: "(  29.2s) [thread] file.cxx:67  ERR| message"
 _VTK_LINE_RE = re.compile(r"\([\d. ]+s\)\s*\[.*?\].*?\b([A-Z]{3,})\|\s*(.*)")
 
+# Known-noise patterns to suppress in BOTH docker logs and the
+# in-memory queue. Each is matched against the cleaned message text
+# (no ANSI codes, no level prefix). Add a new entry rather than
+# silence broader categories when a recurring nuisance appears.
+_SUPPRESS_PATTERNS = (
+    # Fires on every time-slider tick while the stats compute holds
+    # the active view at None to neutralise ptc reactions. The lack
+    # of an active view in that window is expected, not an error.
+    re.compile(r"No active view found"),
+)
+
 
 def setup_stderr_tee() -> None:
     """Tee C-level stderr so VTK output reaches both docker logs and
@@ -52,27 +63,37 @@ def setup_stderr_tee() -> None:
                     chunk = src.read(1024)
                     if not chunk:
                         break
-                    dst.write(chunk)
-                    dst.flush()
                     buf += chunk
+                    # Drain whole lines so the suppression decision
+                    # is taken line-by-line — we can't filter the raw
+                    # chunk (a single read might straddle a boundary).
                     while b"\n" in buf:
                         raw_line, buf = buf.split(b"\n", 1)
-                        line = _ANSI_RE.sub(
+                        clean = _ANSI_RE.sub(
                             "", raw_line.decode("utf-8", errors="replace")
                         ).strip()
-                        if not line:
-                            continue
-                        m = _VTK_LINE_RE.search(line)
-                        if not m:
-                            continue
-                        level_tag = m.group(1)
-                        text = m.group(2).strip()
-                        if not text:
-                            continue
-                        level = ("error"   if "ERR"  in level_tag else
-                                 "warning" if "WARN" in level_tag else
-                                 "info")
-                        _vtk_log_queue.append({"text": text, "level": level})
+                        m = _VTK_LINE_RE.search(clean) if clean else None
+                        text = m.group(2).strip() if m else ""
+                        suppress = any(
+                            p.search(text) for p in _SUPPRESS_PATTERNS
+                        ) if text else False
+                        if not suppress:
+                            # Forward to docker logs verbatim (with
+                            # the ANSI codes intact so colour-aware
+                            # log viewers still highlight WARN/ERR).
+                            dst.write(raw_line)
+                            dst.write(b"\n")
+                            dst.flush()
+                            if m and text:
+                                level_tag = m.group(1)
+                                level = (
+                                    "error"   if "ERR"  in level_tag else
+                                    "warning" if "WARN" in level_tag else
+                                    "info"
+                                )
+                                _vtk_log_queue.append(
+                                    {"text": text, "level": level}
+                                )
 
         threading.Thread(target=_reader, daemon=True).start()
         _vtk_stderr_tee_done = True

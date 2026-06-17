@@ -53,14 +53,24 @@ class ClipPlane:
 
     __slots__ = (
         "_rep_path", "_upstream", "_state",
+        "_view_id", "_view_pv",
         "_enabled", "_axis", "_origin", "_normal", "_inside_out",
         "_proxy", "_bounds", "_widget",
     )
 
-    def __init__(self, rep_path: str, upstream, state):
+    def __init__(self, rep_path: str, upstream, state,
+                 view_id: str | None = None, view_pv=None):
+        """`view_id` / `view_pv` make this clip per-(rep, view):
+          - `view_pv` is the PV view to Show/Hide on; falls back to
+            `GetActiveView()` when None (backward compat).
+          - `view_id` is mixed into the proxy registration name so two
+            clips on the same rep but different views don't collide
+            on the PV proxy registry."""
         self._rep_path = rep_path
         self._upstream = upstream
         self._state = state
+        self._view_id = view_id
+        self._view_pv = view_pv
         self._enabled = False
         self._axis = "X"
         self._origin: list = [0.0, 0.0, 0.0]
@@ -68,11 +78,21 @@ class ClipPlane:
         self._inside_out = False
         self._proxy = None
         self._bounds: tuple | None = None
+        widget_suffix = (
+            f"clip_{view_id}_{rep_path}" if view_id else f"clip_{rep_path}"
+        )
         self._widget = PlaneWidget(
-            id_suffix=f"clip_{rep_path}",
+            id_suffix=widget_suffix,
             bounds_provider=self._ensure_bounds,
             on_end_interact=self._on_widget_interact,
         )
+
+    def _resolve_view(self):
+        """The PV view this clip targets. Captured view wins; falls
+        back to active view for backward-compat callers."""
+        if self._view_pv is not None:
+            return self._view_pv
+        return pvsimple.GetActiveView()
 
     # ------------------------------------------------------------------
     # Public API
@@ -133,7 +153,7 @@ class ClipPlane:
         self._widget.destroy()
         if self._proxy is None:
             return
-        view = pvsimple.GetActiveView()
+        view = self._resolve_view()
         try:
             if view is not None:
                 pvsimple.Hide(proxy=self._proxy, view=view)
@@ -193,7 +213,10 @@ class ClipPlane:
     def _ensure_proxy(self):
         if self._proxy is not None:
             return
-        name = f"clip_{_sanitize(self._rep_path)}"
+        if self._view_id:
+            name = f"clip_{self._view_id}_{_sanitize(self._rep_path)}"
+        else:
+            name = f"clip_{_sanitize(self._rep_path)}"
         try:
             self._proxy = pvsimple.Clip(
                 Input=self._upstream,
@@ -215,7 +238,7 @@ class ClipPlane:
         # representation type). Copied once on creation — if the user
         # changes the rep's coloring later, they can toggle clip
         # off/on to refresh.
-        view = pvsimple.GetActiveView()
+        view = self._resolve_view()
         if view is not None:
             try:
                 src_disp = pvsimple.GetDisplayProperties(self._upstream, view=view)
@@ -242,7 +265,7 @@ class ClipPlane:
             self._widget.destroy()
             if self._proxy is None:
                 return
-            view = pvsimple.GetActiveView()
+            view = self._resolve_view()
             try:
                 if view is not None:
                     pvsimple.Hide(proxy=self._proxy, view=view)
@@ -269,7 +292,7 @@ class ClipPlane:
         except Exception as exc:
             print(f"[WARNING] ClipPlane apply {self._rep_path}: {exc}")
             return
-        view = pvsimple.GetActiveView()
+        view = self._resolve_view()
         if view is None:
             return
         try:

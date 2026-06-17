@@ -47,6 +47,76 @@ def _find_registered_proxy(reg_name: str):
     return None
 
 
+def _create_plugin_filter_proxy(proxy_class: str, registration_name: str,
+                                 inputs: dict | None = None):
+    """Robust plugin-proxy instantiation. Returns a pvsimple-style
+    wrapped proxy, or None when the definition truly doesn't exist
+    server-side.
+
+    Resolution order:
+
+      1. `pvsimple.<proxy_class>` — preferred fast path (handles
+         wrapping + registration in one call). Often absent for
+         plugin proxies on session-reuse paths.
+      2. `paraview.servermanager.filters.<proxy_class>` — lower-level
+         attribute access. Same cache constraint as pvsimple's
+         namespace, but sometimes refreshed differently.
+      3. `vtkSMSessionProxyManager.NewProxy("filters", proxy_class)` —
+         direct ProxyManager creation, bypasses the Python wrapper
+         cache entirely. Always sees freshly-loaded plugin
+         definitions (the underlying ProxyDefinitionManager is
+         updated by LoadPlugin even when the wrapper namespace
+         isn't). Registers the result and wraps it via
+         `_getPyProxy` so callers can use it with the standard
+         pvsimple API (Show/Hide/GetDisplayProperties/etc.).
+
+    `inputs` is an optional dict of property_name → upstream proxy.
+    For the common case `{"Input": upstream}` it wires the input
+    using the SM property API when the direct path is hit. Pass None
+    or an empty dict for proxies that don't need inputs.
+
+    PARAVIEW.md documents why this fallback is necessary
+    ("LoadPlugin doesn't always refresh pvsimple namespace")."""
+    from paraview import simple as pvsimple
+    from paraview import servermanager as _sm
+
+    # 1 + 2: cached Python wrappers (preferred when available).
+    ctor = getattr(pvsimple, proxy_class, None)
+    if ctor is None:
+        ctor = getattr(_sm.filters, proxy_class, None)
+    if ctor is not None:
+        kwargs = {"registrationName": registration_name}
+        if inputs:
+            kwargs.update(inputs)
+        return ctor(**kwargs)
+
+    # 3: SMProxyManager direct (most robust — sees definitions the
+    # wrapper namespace missed).
+    try:
+        spm = _sm.vtkSMProxyManager.GetProxyManager().GetActiveSessionProxyManager()
+        sm_proxy = spm.NewProxy("filters", proxy_class)
+        if sm_proxy is None:
+            return None
+        for prop_name, upstream in (inputs or {}).items():
+            if upstream is None:
+                continue
+            input_prop = sm_proxy.GetProperty(prop_name)
+            if input_prop is None:
+                continue
+            sm_upstream = upstream.SMProxy if hasattr(upstream, "SMProxy") else upstream
+            try:
+                input_prop.SetInputConnection(0, sm_upstream, 0)
+            except Exception as exc:
+                print(f"[plugin proxy] SetInputConnection({prop_name}) on"
+                      f" {proxy_class}: {exc}")
+        sm_proxy.UpdateVTKObjects()
+        spm.RegisterProxy("sources", registration_name, sm_proxy)
+        return _sm._getPyProxy(sm_proxy)
+    except Exception as exc:
+        print(f"[plugin proxy] direct NewProxy({proxy_class!r}) failed: {exc}")
+        return None
+
+
 def _apply_default_tint(display, color_hex):
     """Set DiffuseColor + AmbientColor (and Opacity if alpha is given)
     on a display. Does NOT touch ColorArrayName, so a later ColorBy

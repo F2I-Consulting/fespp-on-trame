@@ -218,6 +218,165 @@ def init_state_defaults(state):
     state.setdefault("ui_threshold_pending_action", None)
     state.setdefault("ui_threshold_local_ranges", {})
 
+    # Descriptive statistics — Brique B model.
+    #
+    # The singleton stats dockview tab (created lazily on first
+    # pin by `multi_view._add_stats_panel`) renders one VCard per
+    # property the user has pinned via the tree's "Display stats"
+    # button (a property toggle independent of the active-node or
+    # eye state). Each card's table has:
+    #
+    #   - 1+ "Original" rows: a `default` row (uses the property's
+    #     first available realization / time step) plus zero or more
+    #     `custom` rows the user pinned via a per-row pin icon, each
+    #     with its own real / ts selection. Original rows compute on
+    #     the unfiltered rep_data — independent of any view's
+    #     slicer / clip / threshold.
+    #
+    #   - 1 row per render view: stats on the view's post-threshold
+    #     output (what the user actually sees) at that view's
+    #     realization / time pick.
+    #
+    # `ui_descriptive_stats` (the legacy single-table state) is
+    # kept defaulted to `[]` so the Brique A revert path still
+    # compiles; Brique B uses `ui_stats_tables` below.
+    state.setdefault("ui_descriptive_stats", [])
+
+    # Property paths whose stats are pinned in the drawer panel.
+    # Order matters (rendered top-to-bottom). Toggled via the
+    # tree's "Display stats" button.
+    state.setdefault("ui_stats_pinned_paths", [])
+
+    # Per-pinned-property panel state:
+    #   {array_path: {"originals": [{"id", "pinned", "real_idx", "ts_idx"}, ...]}}
+    # The first entry of `originals` is always `{"id": "default",
+    # "pinned": False, "real_idx": None, "ts_idx": None}` — its
+    # selectors default to the first available indices and are not
+    # persisted. Pin icon on the row turns `pinned=True` and copies
+    # the current indices into a new `custom-<n>` entry, leaving
+    # the default row free to follow defaults again. Custom entries
+    # are deletable.
+    state.setdefault("ui_stats_panel_state", {})
+
+    # Computed stats tables, one entry per pinned property.
+    # Shape:
+    #   {
+    #     array_path: {
+    #         "title": "VOIL",
+    #         "rows": [
+    #             {
+    #                 "kind": "original" | "view",
+    #                 "id": <stable id used by the UI v-for key>,
+    #                 "label": "Original (real_23, t0)" | "View 1 (real_23)",
+    #                 "real_idx": int | null,  # for selectors / UI display
+    #                 "ts_idx": int | null,
+    #                 "pinned": bool,  # only meaningful for kind=='original'
+    #                 # vtkDescriptiveStatistics output:
+    #                 "Cardinality": int, "Minimum": float, ...
+    #             }, ...
+    #         ],
+    #     }, ...
+    #   }
+    state.setdefault("ui_stats_tables", {})
+    # Monotonic counter bumped by `publish_descriptive_stats` on
+    # every recompute. Used as a tie-breaker in the panel's v-for
+    # `:key` so Vue ALWAYS treats rows as new after a recompute,
+    # even when their structural content happens to be identical
+    # (e.g. a TS picker change on a static-time array). Without it
+    # the table stays on the previous render until the dockview
+    # tab loses focus and re-mounts.
+    state.setdefault("ui_stats_publish_version", 0)
+    # Monotonic counter bumped by `time_realization.register_per_view_time_label`
+    # whenever any per-view TC moves. Watched by the stats trigger
+    # list so the View rows recompute (and their labels re-resolve
+    # via the human time-label helper). Per-view time values live
+    # in dynamic state vars `time_value_<panel_id>` — too dynamic
+    # for the static `@state.change` declaration to enumerate, so
+    # we funnel them through this single pulse.
+    state.setdefault("ui_per_view_time_pulse", 0)
+
+    # Per-property compare cart. ONE cart per property — drives both
+    # the floating Compare-stats panel (numeric table) and the
+    # Compare-distribution overlay. Mixing properties in the same
+    # cart is structurally impossible (the cart is keyed by
+    # array_path; the UI only renders the Cmp column / Compare
+    # button on cards whose property is MR or TS).
+    # Maps array_path -> list[item_key] where item_key is
+    # "<array_path>|<row_kind>|<row_id>".
+    state.setdefault("ui_stats_compare", {})
+    # Singleton tracker for the NEW floating Compare-stats panel
+    # (former modal dialog, converted to dockview kind="stats_compare"
+    # per user feedback round 2026-06). Maps array_path -> panel_id.
+    state.setdefault("ui_stats_compare_panel", {})
+    # Singleton tracker for the floating Compare-distribution panel
+    # (already in place). Maps array_path -> panel_id.
+    state.setdefault("ui_stats_compare_dist_panel", {})
+    # Pre-resolved comparison items — `[{key, row, propertyTitle}, …]`
+    # computed by `stats_dispatch.publish_compare_items` from the
+    # active `ui_stats_compare[array_path]` cart × `ui_stats_tables`.
+    # The dialog's v-for iterates this directly instead of a complex
+    # inline JS lookup (Vue's template parser balks at deeply nested
+    # arrow functions and object literals after `return ? :`). Stale
+    # entries whose row no longer exists are filtered out of the
+    # list rather than the dialog template.
+    state.setdefault("ui_stats_compare_items", [])
+
+    # Attributes drawer target view — `drawer_target_view_id` is the
+    # render panel id that the edit panels (slice / clip / threshold /
+    # IJK slicers) operate on. Decoupled from `fespp_active_panel_id`
+    # to let the user edit a view's state without first having to
+    # focus it (the "pinned" mode).
+    #
+    # When `drawer_target_view_pinned` is False (default), the target
+    # follows the active panel automatically — same UX as before this
+    # picker was introduced. When True, the user has explicitly
+    # picked a view via the picker; the target stays put across
+    # active-panel switches. If the pinned view is closed, the auto-
+    # depin handler reverts to follow-active.
+    state.setdefault("drawer_target_view_id", "")
+    state.setdefault("drawer_target_view_pinned", False)
+
+    # Panel id of the singleton stats dockview tab (see
+    # `multi_view._add_stats_panel`). Empty string when no stats tab is
+    # currently open. Driven by `multi_view.add_view(kind="stats")` and
+    # cleared on `_on_view_closed`. Read by the tree's chart icon
+    # handler to decide whether to focus an existing tab or create a
+    # new one.
+    state.setdefault("fespp_stats_panel_id", "")
+
+    # Floating Stats overlay collapsed-to-tabstrip flag. Toggled by
+    # the minimize button rendered inside the Stats panel template
+    # (see multi_view._add_stats_panel). When True, the JS watcher
+    # in ui/shared/scripts.py mirrors it to a fespp-stats-minimized
+    # class on <body>; CSS in ui/shared/styles.py then collapses the
+    # floating window's .dv-resize-container shell to a single
+    # tabstrip row via :has(.fespp-stats-panel). Per-session — not
+    # persisted across reload.
+    state.setdefault("ui_stats_panel_minimized", False)
+    # Mutex companion to ui_stats_panel_minimized. When True, the
+    # JS watcher in scripts.py adds the `fespp-stats-maximized`
+    # class to <body>; styles.py then pins the floating Stats
+    # shell to top:0/left:0/width:100%/height:100% of its dockview
+    # container, covering the full multi-view content area. The
+    # two flags are mutually exclusive — toggling one in the
+    # Stats tab chrome clears the other. Restore is automatic
+    # (clearing the class lets the original inline top/left/width
+    # /height take effect again).
+    state.setdefault("ui_stats_panel_maximized", False)
+
+    # Distribution panels are multi-instance — each open spawns a
+    # fresh floating dockview group with its own per-panel state
+    # var `ui_distribution_figure_<panel_id>` (set by trame-plotly's
+    # Figure widget via `state_variable_name=...` at template build),
+    # plus a set of per-panel option vars (mode / nbins / log_y /
+    # show_stats / cumulative / norm) seeded by the spawner in
+    # `boot._spawn_distribution_panel`. Lookup table that maps panel
+    # id → row context (single row vs compare selection) so the per-
+    # panel option watcher can re-run the same compute on every
+    # option change; cleared by `multi_view._on_view_closed` when the
+    # panel is dismissed.
+    state.setdefault("ui_distribution_contexts", {})
+
     # Active inner tab of the SlicersPanel. Single state var across
     # all main tabs (reservoir / surface / well) — VTabs mandatory
     # mode auto-falls-back to the first available tab when the value

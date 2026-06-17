@@ -1,5 +1,23 @@
 """Unified per-representation registry.
 
+DEPRECATION NOTICE (Phase 4, post-3a/3b/3c):
+  The per-rep compat shims below (`add_threshold`, `delete_threshold`,
+  `set_range`, `set_visible`, `get_chain`, `slice_state`, `slice_set`,
+  `clip_state`, `clip_set`) are SUPERSEDED by per-(rep, view)
+  `RepInScene` ownership via `scene_registry`. They remain reachable
+  via the threshold_dispatch / slicer_dispatch fallback paths when
+  the per-view IjkGrid / per-view extractor isn't built yet (early
+  boot / `vtkEPCCollectorClone` unavailable). Do not call from new
+  code. Phase 5 removal pending real-world validation.
+
+  Read-side methods (`available_arrays`, `array_data_range`,
+  `all_visible_thresholds`, `all_chain_proxies`, `get_threshold`)
+  are still safe to use as data-layer accessors — the per-view
+  pipelines share the same EPCCollector and surface the same arrays.
+
+  `get`, `get_ijk_grid`, `get_extract_block`, `apply_z_scale`,
+  `apply_representation`, `sync`, `release` remain in active use.
+
 One entry per loaded RESQML representation, regardless of its type:
   - `IjkGrid` — slicer + volume + threshold pipeline (in `ijkgrid.py`).
   - `ExtractBlockRepresentation` — ExtractBlock + threshold pipeline
@@ -10,11 +28,11 @@ The engine talks to this registry through a single compat surface:
   registry.get(rep_path)               → source proxy (either type)
   registry.get_ijk_grid(rep_path)      → IjkGrid instance | None
   registry.get_extract_block(rep_path) → ExtractBlockRepresentation | None
-  registry.add_threshold(rep_path, parent, array)
-  registry.delete_threshold(rep_path, name)
-  registry.set_range(rep_path, name, low, high)
-  registry.set_visible(rep_path, name, visible)
-  registry.get_chain(rep_path)
+  registry.add_threshold(rep_path, parent, array)   # [DEPRECATED]
+  registry.delete_threshold(rep_path, name)         # [DEPRECATED]
+  registry.set_range(rep_path, name, low, high)     # [DEPRECATED]
+  registry.set_visible(rep_path, name, visible)     # [DEPRECATED]
+  registry.get_chain(rep_path)                      # [DEPRECATED]
   registry.available_arrays(rep_path)
   registry.array_data_range(rep_path, array_name)
   registry.all_visible_thresholds(rep_path)
@@ -146,23 +164,42 @@ class SourceRegistry:
     # Chain (per-rep)
 
     def get_chain(self, rep_path: str):
+        """DEPRECATED: superseded by `RepInScene.get_chain()` per-view.
+        Still reachable via threshold_dispatch's fallback for early-boot
+        callers before scene_registry is ready; single-fire warning so
+        the fallback hits stay visible."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.get_chain")
         inst = self.get_instance(rep_path)
         return inst.get_chain() if inst is not None else []
 
     def add_threshold(self, rep_path: str, parent_name, array: str):
+        """DEPRECATED: superseded by per-view threshold ops on
+        `RepInScene`. Same fallback warning rationale as `get_chain`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.add_threshold")
         inst = self.get_instance(rep_path)
         return inst.add_threshold(parent_name, array) if inst is not None else None
 
     def delete_threshold(self, rep_path: str, name: str):
+        """DEPRECATED: superseded by per-view threshold ops on `RepInScene`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.delete_threshold")
         inst = self.get_instance(rep_path)
         return inst.delete_threshold(name) if inst is not None else False
 
     def set_range(self, rep_path: str, name: str, low: float, high: float):
+        """DEPRECATED: superseded by per-view threshold ops on `RepInScene`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.set_range")
         inst = self.get_instance(rep_path)
         if inst is not None:
             inst.set_range(name, low, high)
 
     def set_visible(self, rep_path: str, name: str, visible: bool):
+        """DEPRECATED: superseded by per-view threshold ops on `RepInScene`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.set_visible")
         inst = self.get_instance(rep_path)
         if inst is not None:
             inst.set_visible(name, visible)
@@ -195,11 +232,19 @@ class SourceRegistry:
         eb = self._extract_blocks.get(rep_path)
         return eb.deepest_visible_threshold() if eb is not None else None
 
-    # Slice plane (per-rep)
+    # Slice plane (per-rep) — DEPRECATED, no callers remaining.
+    #
+    # Phase 1.b moved slice / clip ownership onto `RepInScene` (per
+    # (rep, view)). The dispatchers in `slice_dispatch.py` and
+    # `clip_dispatch.py` route through `SceneRegistry.get_rep(view, rep)`
+    # so these compat shims are unreachable from the engine flow.
+    # Kept here as a safety net during the migration window; Phase 5
+    # (aggressive cleanup) deletes them.
 
     def slice_state(self, rep_path: str) -> dict:
-        """See `SlicePlane.to_dict` for the schema. Returns the
-        default descriptor when `rep_path` has no live rep yet."""
+        """DEPRECATED: superseded by `RepInScene.slice_state()`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.slice_state")
         inst = self.get_instance(rep_path)
         if inst is None or not hasattr(inst, "slice_state"):
             return {
@@ -209,14 +254,20 @@ class SourceRegistry:
         return inst.slice_state()
 
     def slice_set(self, rep_path: str, enabled=None, axis=None, offset=None):
+        """DEPRECATED: superseded by `RepInScene.slice_set()`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.slice_set")
         inst = self.get_instance(rep_path)
         if inst is None or not hasattr(inst, "slice_set"):
             return
         inst.slice_set(enabled=enabled, axis=axis, offset=offset)
 
-    # Clip plane (per-rep) — mirrors slice_*
+    # Clip plane (per-rep) — DEPRECATED, mirrors `slice_*`.
 
     def clip_state(self, rep_path: str) -> dict:
+        """DEPRECATED: superseded by `RepInScene.clip_state()`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.clip_state")
         inst = self.get_instance(rep_path)
         if inst is None or not hasattr(inst, "clip_state"):
             return {
@@ -228,6 +279,9 @@ class SourceRegistry:
 
     def clip_set(self, rep_path: str, enabled=None, axis=None,
                  offset=None, inside_out=None):
+        """DEPRECATED: superseded by `RepInScene.clip_set()`."""
+        from fespp_on_trame.app.core.sources.extract_block import _warn_deprecated
+        _warn_deprecated("SourceRegistry.clip_set")
         inst = self.get_instance(rep_path)
         if inst is None or not hasattr(inst, "clip_set"):
             return
@@ -301,6 +355,17 @@ class SourceRegistry:
             # Creation failed at the collector level.
             self._ijk_grids.pop(rep_path, None)
             return None
+        # Phase 3b: fan the property change to every per-view IjkGrid
+        # owned by scenes so split views stay in step with the active
+        # property. Best-effort: scene_registry may not be wired up
+        # yet (engine boot ordering); silently skip in that case.
+        try:
+            from trame.app import get_server
+            scene_reg = getattr(get_server().context, "scene_registry", None)
+            if scene_reg is not None and hasattr(scene_reg, "refresh_per_view_ijk_for_rep"):
+                scene_reg.refresh_per_view_ijk_for_rep(rep_path, prop_node_id)
+        except Exception:
+            pass
         return ijk
 
     def release(self, rep_path: str):

@@ -1,5 +1,20 @@
 """Per-rep data source for non-IjkGrid representations.
 
+DEPRECATION NOTICE (Phase 4, post-3a/3b/3c):
+  - `slice_set` / `slice_state` / `clip_set` / `clip_state` /
+    `clip_output` are SUPERSEDED by `RepInScene` (per-(rep, view)
+    ownership). They remain as a Phase 2 fallback used only when
+    `vtkEPCCollectorClone` isn't available (logged as `clone=shared`
+    in `[SCENE_REG]`). Do not call from new code.
+  - `add_threshold` / `delete_threshold` / `set_range` / `set_visible`
+    on this class are SUPERSEDED by `RepInScene._chain` + the
+    per-view dispatch in `threshold_dispatch`. Same fallback caveat.
+  - `_chain` is no longer mutated by the engine in the normal path
+    and will stay empty unless the fallback fires.
+
+Phase 5 removal is planned once the per-view paths are validated
+under real-world use.
+
 One `ExtractBlockRepresentation` instance per loaded RESQML rep
 (UnstructuredGrid, Wellbore, Trajectory, Grid2d, PointSet, Polyline,
 PolylineSet, TriangulatedSet, …). Each instance owns:
@@ -24,6 +39,8 @@ Visibility rules:
 The class is independent of `SourceRegistry` (the manager in
 `source_registry.py`) — that one holds a dict of instances and
 forwards the per-rep calls."""
+import re
+
 from trame.app import get_server
 from paraview import simple as pvsimple
 from paraview.servermanager import vtkSMPropertyHelper
@@ -47,13 +64,27 @@ class ChainEntry:
     `proxy.Input` reflects the *effective* input — when an ancestor
     is hidden, the proxy is dynamically rewired to skip it. The
     logical parent (`parent_name`) stays immutable for the entry's
-    lifetime."""
+    lifetime.
+
+    Property-kind dispatch:
+      - `kind` is one of `"Continuous"` / `"Discrete"` / `"Categorical"`.
+        Drives the threshold panel's slider widget (range slider vs.
+        integer-stepped vs. labeled-ticks).
+      - `unique_values` is a sorted list of distinct values in the
+        underlying VTK array — used to render ticks for Discrete /
+        Categorical entries. Empty for Continuous (the range slider
+        works on continuous bounds instead).
+      - `labels` is a `{value: label}` dict for Categorical entries
+        (value→category-name), read from the LUT's `Annotations`
+        property at threshold creation. Empty for the other kinds."""
 
     __slots__ = ("name", "parent_name", "array", "assoc", "proxy",
-                 "visible", "low", "high", "data_range")
+                 "visible", "low", "high", "data_range",
+                 "kind", "unique_values", "labels")
 
     def __init__(self, name, parent_name, array, assoc, proxy,
-                 visible, low, high, data_range):
+                 visible, low, high, data_range,
+                 kind="Continuous", unique_values=None, labels=None):
         self.name = name
         self.parent_name = parent_name
         self.array = array
@@ -63,6 +94,9 @@ class ChainEntry:
         self.low = low
         self.high = high
         self.data_range = data_range
+        self.kind = kind
+        self.unique_values = list(unique_values or [])
+        self.labels = dict(labels or {})
 
     def to_dict(self):
         return {
@@ -73,12 +107,240 @@ class ChainEntry:
             "low": self.low,
             "high": self.high,
             "data_range": list(self.data_range),
+            "kind": self.kind,
+            "unique_values": list(self.unique_values),
+            "labels": dict(self.labels),
         }
+
+
+_DEPRECATED_WARNED: set = set()
+
+
+def _warn_deprecated(name: str) -> None:
+    """Single-fire deprecation print. Keeps the log readable when a
+    legacy path is hit in a tight loop (e.g. ColorBy fan-out)."""
+    if name in _DEPRECATED_WARNED:
+        return
+    _DEPRECATED_WARNED.add(name)
+    print(f"[DEPRECATED] {name} — see doc/REFACTOR_PER_VIEW_PHASE_3.md.")
+
+
+# Max number of unique values for which we treat an array as
+# Categorical / Discrete in the threshold UI. Beyond that the slider
+# becomes unreadable (too many ticks) so we degrade to Continuous —
+# the user can still threshold via low/high bounds.
+_MAX_DISCRETE_UNIQUES = 64
+
+
+def resolve_chain_kind(tree, rep_path, array_name, source_proxy, assoc):
+    """Determine the property kind + unique-value list + categorical
+    labels for a fresh chain entry.
+
+    Returns `(kind, unique_values, labels)`:
+
+      - `kind` is `"Continuous"` / `"Discrete"` / `"Categorical"`.
+        Derived from the tree's `propKind` attribute on the property
+        node whose VTK array name matches `array_name`. Falls back to
+        `"Continuous"` when the lookup fails (defensive — UI then
+        renders a plain range slider).
+      - `unique_values` is the sorted list of distinct values found
+        on the VTK array. Populated only for Discrete / Categorical.
+        Capped to `_MAX_DISCRETE_UNIQUES`; an array exceeding the
+        cap is demoted to `"Continuous"`.
+      - `labels` is the `{value: label}` mapping read from the LUT's
+        `Annotations` property — set only for Categorical and only
+        when the LUT has annotations (typically populated by the
+        CategoricalColorEditor on first activation). Empty otherwise."""
+    kind = _kind_from_tree(tree, rep_path, array_name)
+    if kind == "Continuous":
+        return ("Continuous", [], {})
+
+    uniques = _scan_unique_values(source_proxy, array_name, assoc)
+    if not uniques or len(uniques) > _MAX_DISCRETE_UNIQUES:
+        return ("Continuous", [], {})
+
+    labels = {}
+    if kind == "Categorical":
+        labels = _read_lut_annotations(array_name)
+    return (kind, uniques, labels)
+
+
+def _kind_from_tree(tree, rep_path, array_name):
+    """Walk the rep's subtree for a property node whose title (or
+    propTitle for MR) matches `array_name`, return its `propKind`.
+
+    Mirrors `threshold_dispatch._find_property_path_by_title` but
+    inlined here to keep the dependency graph tidy (extract_block
+    shouldn't import from engine.threshold_dispatch)."""
+    if tree is None or not rep_path or not array_name:
+        return "Continuous"
+    try:
+        rep_id = tree.find_node_id(rep_path)
+    except Exception:
+        return "Continuous"
+    if rep_id is None:
+        return "Continuous"
+    # Strip the MR realization suffix `_real_<idx>` (if any) so we
+    # match the MR property node by its propTitle. Non-MR arrays
+    # don't have the suffix so this is a no-op for them.
+    bare = re.sub(r"_real_\d+$", "", array_name)
+    sanitized = _NAME_RE.sub("", bare)
+    for nid in tree.find_all_descendant_ids(rep_id):
+        try:
+            kind = tree.find_type(nid) or ""
+        except Exception:
+            continue
+        if kind not in (
+            "ContinuousProperty", "DiscreteProperty", "CategoricalProperty",
+            "MultiRealization", "MultiRealizationTimeSeries", "TimeSeries",
+        ):
+            continue
+        title = tree.find_title(nid) or ""
+        if kind in ("MultiRealization", "MultiRealizationTimeSeries"):
+            pt = tree.find_attribute_value(nid, "propTitle")
+            if pt:
+                title = pt
+        if _NAME_RE.sub("", title) != sanitized:
+            continue
+        # MR / TimeSeries: pull the embedded propKind attribute.
+        if kind in ("MultiRealization", "MultiRealizationTimeSeries", "TimeSeries"):
+            pk = tree.find_attribute_value(nid, "propKind") or ""
+            return _normalise_kind(pk)
+        return _normalise_kind(kind)
+    return "Continuous"
+
+
+def _normalise_kind(kind_str):
+    """Map a `propKind` / type string to one of the three threshold
+    UI kinds we dispatch on. Anything unrecognised → Continuous."""
+    if not kind_str:
+        return "Continuous"
+    s = kind_str.lower()
+    if "categorical" in s:
+        return "Categorical"
+    if "discrete" in s:
+        return "Discrete"
+    return "Continuous"
+
+
+def _scan_unique_values(source_proxy, array_name, assoc):
+    """Iterate the source's CellData or PointData array and collect
+    the sorted set of distinct values. Used by Discrete / Categorical
+    entries to populate the slider's ticks.
+
+    Returns an empty list on failure (no array, no client-side
+    object) — the caller demotes to Continuous in that case."""
+    if source_proxy is None or not array_name:
+        return []
+    try:
+        client = source_proxy.GetClientSideObject()
+        out = client.GetOutputDataObject(0)
+    except Exception:
+        return []
+    inner = _drill_inner_partition(out)
+    if inner is None:
+        return []
+    store = None
+    if assoc == "POINTS" and hasattr(inner, "GetPointData"):
+        store = inner.GetPointData()
+    elif hasattr(inner, "GetCellData"):
+        store = inner.GetCellData()
+    if store is None:
+        return []
+    arr = store.GetArray(array_name)
+    if arr is None:
+        return []
+    seen = set()
+    n = arr.GetNumberOfTuples()
+    for i in range(n):
+        try:
+            v = arr.GetTuple1(i)
+        except Exception:
+            continue
+        # Skip NaN — they don't belong in a discrete value set.
+        if v != v:  # NaN-ne-NaN
+            continue
+        seen.add(float(v))
+        if len(seen) > _MAX_DISCRETE_UNIQUES:
+            return []  # Too many uniques → caller demotes to Continuous
+    out = sorted(seen)
+    # Normalise integer-valued floats to int when round-trip is exact —
+    # makes the UI labels cleaner ("3" vs "3.0").
+    return [int(v) if float(v).is_integer() else v for v in out]
+
+
+def _drill_inner_partition(vtk_out):
+    """Same shape as `activator._drill_to_inner`. Duplicated here to
+    keep the dependency graph tidy."""
+    if vtk_out is None:
+        return None
+    if hasattr(vtk_out, 'GetPartitionedDataSet'):
+        try:
+            pds = vtk_out.GetPartitionedDataSet(0)
+            if pds is not None and pds.GetNumberOfPartitions() > 0:
+                return pds.GetPartitionAsDataObject(0)
+        except Exception:
+            return vtk_out
+    return vtk_out
+
+
+def _read_lut_annotations(array_name):
+    """Read the `Annotations` property of the LUT bound to
+    `array_name` and return a `{value: label}` dict.
+
+    The CategoricalColorEditor populates this on first activation of
+    a Discrete / Categorical property. Returns an empty dict when
+    the LUT has no annotations yet — the threshold UI then falls
+    back to `str(value)` labels."""
+    if not array_name:
+        return {}
+    try:
+        from paraview import simple as pvsimple
+        lut = pvsimple.GetColorTransferFunction(array_name)
+        if lut is None or lut.SMProxy is None:
+            return {}
+        prop = lut.SMProxy.GetProperty("Annotations")
+        if prop is None:
+            return {}
+        n = prop.GetNumberOfElements()
+        out = {}
+        for i in range(0, n - 1, 2):
+            try:
+                val_str = prop.GetElement(i)
+                label = prop.GetElement(i + 1)
+                v = float(val_str)
+                key = int(v) if v.is_integer() else v
+                out[key] = str(label)
+            except (ValueError, TypeError):
+                continue
+        return out
+    except Exception:
+        return {}
+
+
+_NAME_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
 
 
 class ExtractBlockRepresentation:
     """One non-IjkGrid representation backed by an ExtractBlock
-    filter on the FESPP collector, plus its threshold chain."""
+    filter on the FESPP collector, plus its threshold chain.
+
+    DEPRECATED (Phase 3a+): for non-IjkGrid reps every per-(rep, view)
+    operation now lives on `RepInScene` (slice / clip / threshold
+    chain, all anchored on the per-view `EnergisticsExtractor` chained
+    on `vtkEPCCollectorClone`). This class is kept around solely as:
+
+      1. A fallback when the plugin DLL pre-dates `vtkEPCCollectorClone`
+         and `ViewScene._create_clone` falls back to the shared
+         collector source.
+      2. A back-compat target for engine code paths that still flow
+         through `SourceRegistry.{add_threshold,slice_set,clip_set,…}`
+         compat shims.
+
+    The slice/clip/threshold methods on this class call
+    `_warn_deprecated` on first use and emit a single `[DEPRECATED]`
+    line to the server log so we can identify any caller still relying
+    on them after Phase 4 ships."""
 
     def __init__(self, collector, tree, rep_path: str):
         self._collector = collector
@@ -188,7 +450,10 @@ class ExtractBlockRepresentation:
     def slice_state(self) -> dict:
         """Return the current slice descriptor — enabled, axis, offset,
         bounds — for the UI panel to bind to. Always returns a dict,
-        even pre-slice: the UI reads bounds to seed the range slider."""
+        even pre-slice: the UI reads bounds to seed the range slider.
+
+        DEPRECATED: superseded by `RepInScene.slice_state()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.slice_state")
         self._ensure_slice()
         if self._slice is None:
             return {
@@ -201,7 +466,10 @@ class ExtractBlockRepresentation:
         """Patch the plane params and re-render. When the enabled bit
         flips, also re-run the chain-visibility resolver so the rep's
         source / chain tips get hidden (slice replaces them visually)
-        or restored."""
+        or restored.
+
+        DEPRECATED: superseded by `RepInScene.slice_set()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.slice_set")
         self._ensure_slice()
         if self._slice is None:
             return
@@ -220,6 +488,8 @@ class ExtractBlockRepresentation:
         self._clip = ClipPlane(self._rep_path, self._source, state)
 
     def clip_state(self) -> dict:
+        """DEPRECATED: superseded by `RepInScene.clip_state()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.clip_state")
         self._ensure_clip()
         if self._clip is None:
             return {
@@ -233,7 +503,10 @@ class ExtractBlockRepresentation:
                  inside_out=None):
         """Patch the clip params and re-render. Flipping `enabled`
         re-runs the visibility resolver so the rep source / chain tip
-        gets replaced by the clip's output (or restored)."""
+        gets replaced by the clip's output (or restored).
+
+        DEPRECATED: superseded by `RepInScene.clip_set()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.clip_set")
         self._ensure_clip()
         if self._clip is None:
             return
@@ -337,7 +610,11 @@ class ExtractBlockRepresentation:
     def add_threshold(self, parent_name, array: str):
         """Create a new threshold node attached under `parent_name`
         (or under the rep's source if None). Returns the new node's
-        name, or None on failure."""
+        name, or None on failure.
+
+        DEPRECATED: superseded by `RepInScene.add_threshold()` (per-view).
+        See `doc/REFACTOR_PER_VIEW_PHASE_3.md` for migration notes."""
+        _warn_deprecated("ExtractBlockRepresentation.add_threshold")
         if self._source is None or not array:
             return None
         if parent_name is not None and not any(e.name == parent_name for e in self._chain):
@@ -424,7 +701,10 @@ class ExtractBlockRepresentation:
 
     def delete_threshold(self, name: str):
         """Delete the named node, rewiring its children onto the
-        deleted node's parent (transparent "remove from chain")."""
+        deleted node's parent (transparent "remove from chain").
+
+        DEPRECATED: superseded by `RepInScene.delete_threshold()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.delete_threshold")
         idx = next((i for i, e in enumerate(self._chain) if e.name == name), -1)
         if idx < 0:
             return False
@@ -448,6 +728,8 @@ class ExtractBlockRepresentation:
         return True
 
     def set_range(self, name: str, low: float, high: float):
+        """DEPRECATED: superseded by `RepInScene.set_range()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.set_range")
         for e in self._chain:
             if e.name == name:
                 e.low = float(low)
@@ -461,6 +743,8 @@ class ExtractBlockRepresentation:
                 return
 
     def set_visible(self, name: str, visible: bool):
+        """DEPRECATED: superseded by `RepInScene.set_visible()` (per-view)."""
+        _warn_deprecated("ExtractBlockRepresentation.set_visible")
         for e in self._chain:
             if e.name == name:
                 e.visible = bool(visible)

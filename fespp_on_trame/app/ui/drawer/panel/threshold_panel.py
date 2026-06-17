@@ -14,6 +14,10 @@ the engine consumes + resets to flow add/delete/set_range/set_visible
 events through a single state var)."""
 from trame.widgets import html, vuetify3
 
+from fespp_on_trame.app.ui.drawer.panel.copy_from_view_menu import (
+    render_copy_menu,
+)
+
 
 # Show the threshold panel only for rep types that actually support it.
 THRESHOLD_PANEL_VISIBLE = (
@@ -43,6 +47,10 @@ class ThresholdPanel:
                     color="green",
                     classes="mr-2",
                 )
+                # Phase 3c: one-shot copy of the threshold chain from
+                # another view onto the active panel. Hidden when
+                # there's only one render panel.
+                render_copy_menu("threshold")
             with vuetify3.VExpansionPanelText(classes="pa-2"):
                 self._render_body()
 
@@ -154,7 +162,55 @@ class ThresholdPanel:
                     " paddingRight: '4px' }",
                 ),
             ):
+                # Discrete property → range slider snapped to integers.
+                # `step=1`; no tick labels (the values are just integers).
+                # Slightly larger thumbs help readability when there are
+                # only a handful of valid positions on the track.
                 vuetify3.VRangeSlider(
+                    v_if="entry.kind === 'Discrete'",
+                    model_value=("[entry.low, entry.high]",),
+                    min=("entry.data_range[0]",),
+                    max=("entry.data_range[1]",),
+                    step=1,
+                    strict=True,
+                    thumb_label=True,
+                    hide_details=True,
+                    end=(
+                        "ui_threshold_pending_action = "
+                        "{ action: 'set_range', name: entry.name,"
+                        " low: $event[0], high: $event[1] }"
+                    ),
+                )
+                # Categorical property → range slider with labeled
+                # ticks, one per known category. `entry.labels` is
+                # `{value: label}`; Vuetify's VRangeSlider accepts
+                # exactly that shape for `ticks` and renders the label
+                # under each tick when `show-ticks='always'`. `step=1`
+                # snaps the thumbs to integer positions (categorical
+                # values are integers in RESQML).
+                vuetify3.VRangeSlider(
+                    v_else_if="entry.kind === 'Categorical'",
+                    model_value=("[entry.low, entry.high]",),
+                    min=("entry.data_range[0]",),
+                    max=("entry.data_range[1]",),
+                    step=1,
+                    strict=True,
+                    thumb_label=True,
+                    hide_details=True,
+                    ticks=("entry.labels || {}",),
+                    show_ticks="always",
+                    tick_size=4,
+                    end=(
+                        "ui_threshold_pending_action = "
+                        "{ action: 'set_range', name: entry.name,"
+                        " low: $event[0], high: $event[1] }"
+                    ),
+                )
+                # Continuous (default) — same range slider as before,
+                # with a fine step (range / 1000) so the thumbs slide
+                # smoothly over the value space.
+                vuetify3.VRangeSlider(
+                    v_else=True,
                     model_value=("[entry.low, entry.high]",),
                     min=("entry.data_range[0]",),
                     max=("entry.data_range[1]",),

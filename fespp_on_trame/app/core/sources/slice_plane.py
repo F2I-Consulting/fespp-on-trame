@@ -56,29 +56,55 @@ def _normal_to_axis(normal):
 
 class SlicePlane:
     """One axis-snapped (but freely orientable) plane slice over a
-    representation source."""
+    representation source.
+
+    View-aware via the optional `view_pv` / `view_id` constructor
+    args:
+      - `view_pv` (the PV view this slice should render into) drives
+        every `Show` / `Hide` / display lookup. When None, falls back
+        to `pvsimple.GetActiveView()` — backward compat for callers
+        that don't yet thread the view through.
+      - `view_id` (the trame panel id) makes the slice proxy's
+        registration name unique per (rep, view). Without this, two
+        SlicePlane instances for the same rep in different views
+        would collide on the PV registry name and reuse the same
+        proxy."""
 
     __slots__ = (
         "_rep_path", "_upstream", "_state",
+        "_view_id", "_view_pv",
         "_enabled", "_axis", "_origin", "_normal",
         "_proxy", "_bounds", "_widget",
     )
 
-    def __init__(self, rep_path: str, upstream, state):
+    def __init__(self, rep_path: str, upstream, state,
+                 view_id: str | None = None, view_pv=None):
         self._rep_path = rep_path
         self._upstream = upstream
         self._state = state
+        self._view_id = view_id
+        self._view_pv = view_pv
         self._enabled = False
         self._axis = "X"
         self._origin: list = [0.0, 0.0, 0.0]
         self._normal: list = list(_AXIS_NORMAL["X"])
         self._proxy = None
         self._bounds: tuple | None = None
+        widget_suffix = (
+            f"slice_{view_id}_{rep_path}" if view_id else f"slice_{rep_path}"
+        )
         self._widget = PlaneWidget(
-            id_suffix=f"slice_{rep_path}",
+            id_suffix=widget_suffix,
             bounds_provider=self._ensure_bounds,
             on_end_interact=self._on_widget_interact,
         )
+
+    def _resolve_view(self):
+        """Return the view to Show/Hide on. Captured view wins; falls
+        back to active view when the caller didn't provide one."""
+        if self._view_pv is not None:
+            return self._view_pv
+        return pvsimple.GetActiveView()
 
     # ------------------------------------------------------------------
     # Public API
@@ -90,6 +116,15 @@ class SlicePlane:
     @property
     def offset(self) -> float:
         return float(self._origin[_AXIS_INDEX[self._axis]])
+
+    @property
+    def output(self):
+        """The Slice filter proxy — exposed for callers that need to
+        treat the slice's output as a visible source (e.g. the stats
+        dispatcher, which has to include slice / clip outputs in the
+        per-view rendered sources list because they replace the
+        upstream rep on Visibility)."""
+        return self._proxy
 
     def to_dict(self) -> dict:
         bx0, bx1, by0, by1, bz0, bz1 = self._ensure_bounds()
@@ -131,7 +166,7 @@ class SlicePlane:
         self._widget.destroy()
         if self._proxy is None:
             return
-        view = pvsimple.GetActiveView()
+        view = self._resolve_view()
         try:
             if view is not None:
                 pvsimple.Hide(proxy=self._proxy, view=view)
@@ -189,7 +224,13 @@ class SlicePlane:
     def _ensure_proxy(self):
         if self._proxy is not None:
             return
-        name = f"slice_{_sanitize(self._rep_path)}"
+        # Include view_id in the registration name so per-(rep, view)
+        # SlicePlanes don't collide on PV's proxy registry. Falls back
+        # to the legacy name when no view is bound.
+        if self._view_id:
+            name = f"slice_{self._view_id}_{_sanitize(self._rep_path)}"
+        else:
+            name = f"slice_{_sanitize(self._rep_path)}"
         try:
             self._proxy = pvsimple.Slice(
                 Input=self._upstream,
@@ -202,7 +243,7 @@ class SlicePlane:
         # Bright red tint so the cross-section stands out against the
         # rep beneath (without an explicit tint the slice picks up the
         # rep's grey + z-fights — visually invisible).
-        view = pvsimple.GetActiveView()
+        view = self._resolve_view()
         if view is not None:
             try:
                 disp = pvsimple.GetRepresentation(proxy=self._proxy, view=view)
@@ -223,7 +264,7 @@ class SlicePlane:
             self._widget.destroy()
             if self._proxy is None:
                 return
-            view = pvsimple.GetActiveView()
+            view = self._resolve_view()
             try:
                 if view is not None:
                     pvsimple.Hide(proxy=self._proxy, view=view)
@@ -240,7 +281,7 @@ class SlicePlane:
         except Exception as exc:
             print(f"[WARNING] SlicePlane apply {self._rep_path}: {exc}")
             return
-        view = pvsimple.GetActiveView()
+        view = self._resolve_view()
         if view is None:
             return
         try:

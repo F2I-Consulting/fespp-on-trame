@@ -15,6 +15,10 @@ single widget channel.
 from trame.app import get_server
 from trame.widgets import html, vuetify3
 
+from fespp_on_trame.app.ui.drawer.panel.copy_from_view_menu import (
+    render_copy_menu,
+)
+
 
 _server = get_server()
 
@@ -25,7 +29,7 @@ class SlicePlanePanel:
     VExpansionPanel of its own (the parent provides one)."""
 
     def render_body(self):
-        # Top row: Enable switch + Edit toggle.
+        # Top row: Enable switch + Edit toggle + Copy-from-view menu.
         with html.Div(classes="d-flex align-center mb-2"):
             vuetify3.VSwitch(
                 v_model=("ui_slice_enabled", False),
@@ -50,6 +54,10 @@ class SlicePlanePanel:
                     " [ui_plane_edit_mode === 'slice' ? null : 'slice'])"
                 ),
             )
+            vuetify3.VSpacer()
+            # Phase 3c: one-shot snapshot/apply from a peer view. Only
+            # visible when there are 2+ render panels.
+            render_copy_menu("slice")
 
         html.Div(
             "Normal axis",

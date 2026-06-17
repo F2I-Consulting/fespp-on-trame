@@ -277,6 +277,62 @@ def _chip_slot():
     )
 
 
+_PROPERTY_TYPES_JS = (
+    "['ContinuousProperty','DiscreteProperty','CategoricalProperty',"
+    "'TimeSeries','MultiRealization','MultiRealizationTimeSeries']"
+)
+
+
+def _stats_slot(controller, select_var):
+    """`mdi-chart-box-outline` toggle next to each property node —
+    adds / removes the property from the singleton Stats dockview
+    tab's pinned list.
+
+    Visible only on property nodes (type in `_PROPERTY_TYPES_JS`)
+    that are **currently checked** in this tree (i.e. node `id` is
+    in `select_var`, the per-tree selection list — one of
+    `ui_select_node_reservoir` / `_surface` / `_well`). Stats on an
+    unchecked property would compute against data the user hasn't
+    asked to load, so the toggle is suppressed until they tick the
+    checkbox.
+
+    The icon flips to `mdi-chart-box` when the property is currently
+    pinned (path is in `ui_stats_pinned_paths`). Click fires
+    `controller.toggle_stats_display(item.path)`.
+
+    Placed in the row's append slot, BEFORE `_eye_slot` — keeps the
+    stats toggle structurally distinct from the per-view eye chips
+    (one is about computing tabular stats, the other about per-view
+    visibility / coloring)."""
+    is_property = (
+        f"({_PROPERTY_TYPES_JS}).indexOf(item.type) !== -1"
+    )
+    is_selected = (
+        f"({select_var} || []).indexOf(item.id) !== -1"
+    )
+    visible = f"({is_property}) && ({is_selected})"
+    is_pinned = (
+        "ui_stats_pinned_paths"
+        " && ui_stats_pinned_paths.indexOf(item.path) !== -1"
+    )
+    with html.Div(
+        v_if=visible,
+        classes="d-inline-flex align-center mr-1",
+        title=(
+            f"({is_pinned})"
+            " ? ('Stop showing stats for ' + item.title)"
+            " : ('Show stats for ' + item.title + ' in the Stats panel')",
+        ),
+    ):
+        vuetify3.VIcon(
+            icon=(f"({is_pinned}) ? 'mdi-chart-box' : 'mdi-chart-box-outline'",),
+            size="small",
+            color=(f"({is_pinned}) ? 'teal-darken-2' : 'grey-lighten-1'",),
+            style="cursor: pointer;",
+            click=(controller.toggle_stats_display, "[item.path]"),
+        )
+
+
 def _eye_slot(controller):
     """Per-view eye chips on a tree node, rendered in the
     v_slot_append slot.
@@ -629,6 +685,7 @@ class TreeViews:
                 )
                 _chip_slot()
             with vuetify3.Template(v_slot_append="{ item }"):
+                _stats_slot(self.controller, "ui_select_node_reservoir")
                 _eye_slot(self.controller)
 
     def surface_tree(self):
@@ -676,6 +733,7 @@ class TreeViews:
                 )
                 _chip_slot()
             with vuetify3.Template(v_slot_append="{ item }"):
+                _stats_slot(self.controller, "ui_select_node_surface")
                 _eye_slot(self.controller)
 
     def well_tree(self):
@@ -723,4 +781,5 @@ class TreeViews:
                 )
                 _chip_slot()
             with vuetify3.Template(v_slot_append="{ item }"):
+                _stats_slot(self.controller, "ui_select_node_well")
                 _eye_slot(self.controller)

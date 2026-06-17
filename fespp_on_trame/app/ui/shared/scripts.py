@@ -52,6 +52,7 @@ _CLIENT_JS = """
 
         setupLogScroll();
         setupDrawerResize();
+        setupStatsMinimize();
     }
 
     // ---- Drawer resize handle (pure JS — zero trame/server round-trips) ----
@@ -101,6 +102,57 @@ _CLIENT_JS = """
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
         });
+    }
+
+    // ---- Stats panel window-state (minimize / maximize, floating overlay) ----
+    // Mirrors two trame state flags to body classes:
+    //   ui_stats_panel_minimized → body.fespp-stats-minimized
+    //   ui_stats_panel_maximized → body.fespp-stats-maximized
+    // CSS in styles.py reads those classes to collapse / expand
+    // the floating Stats shell. The two are mutex (the Vue click
+    // handlers in multi_view ensure only one is true at a time)
+    // but we don't enforce that here — class toggling is a pure
+    // state mirror.
+    function setupStatsMinimize() {
+        var KEYS = [
+            ['ui_stats_panel_minimized', 'fespp-stats-minimized'],
+            ['ui_stats_panel_maximized', 'fespp-stats-maximized'],
+        ];
+        function apply() {
+            if (!window.trame || !window.trame.state) return;
+            for (var i = 0; i < KEYS.length; i++) {
+                var v = !!window.trame.state.get(KEYS[i][0]);
+                document.body.classList.toggle(KEYS[i][1], v);
+            }
+        }
+        function snapshot() {
+            var out = {};
+            for (var i = 0; i < KEYS.length; i++) {
+                out[KEYS[i][0]] = window.trame.state.get(KEYS[i][0]);
+            }
+            return out;
+        }
+        function differs(a, b) {
+            for (var i = 0; i < KEYS.length; i++) {
+                if (a[KEYS[i][0]] !== b[KEYS[i][0]]) return true;
+            }
+            return false;
+        }
+        function watchState() {
+            if (!window.trame || !window.trame.state) {
+                setTimeout(watchState, 200);
+                return;
+            }
+            apply();
+            var last = snapshot();
+            setInterval(function () {
+                var cur = snapshot();
+                if (!differs(last, cur)) return;
+                last = cur;
+                apply();
+            }, 150);
+        }
+        watchState();
     }
 
     if (document.readyState === 'loading') {

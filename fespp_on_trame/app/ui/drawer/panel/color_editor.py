@@ -6,6 +6,8 @@ from trame.decorators import change
 from paraview import simple as pvsimple
 from ptc.color_opacity_editor import ColorOpacityEditorConvertor
 
+from fespp_on_trame.app.core.engine import source_resolver
+
 server = get_server()
 state = server.state
 controller = server.controller
@@ -113,11 +115,108 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         editor inverts this check)."""
         return not bool(self.state.diff_colors_dialog_visible)
 
+    def update_scalar_range(self) -> None:
+        """Override ptc's `update_scalar_range`.
+
+        Resolve the BASE array name (title → suffixed for MR) for the
+        data-info lookup, and the SCOPED name only for the LUT proxy.
+        Query the target scene's `RepInScene.source()` (per-view
+        EnergisticsExtractor) so MR `_real_<idx>` arrays are found —
+        ptc's `self.source_proxy` (= `GetActiveSource`) returns the
+        legacy shared `ExtractBlock` which doesn't carry them."""
+        raw_name = self.state.active_color_array_name or ""
+        if not raw_name:
+            self.state.scalar_range = [0, 0]
+            return
+        # Resolve the base VTK array name (MR title → `_real_<idx>`).
+        base_name, scene_lut = source_resolver.resolve_target_scoped_lut(raw_name)
+        if not base_name:
+            self.state.scalar_range = [0, 0]
+            return
+        # Prefer the per-view scene's RepInScene source for the array
+        # info lookup (Phase 3a/3b — MR `_real_<idx>` arrays live on
+        # the per-view EnergisticsExtractor, not on the legacy
+        # ExtractBlock that `GetActiveSource()` returns).
+        source = None
+        try:
+            from trame.app import get_server
+            srv = get_server()
+            st = srv.state
+            ctx = srv.context
+            target_panel = (
+                getattr(st, "drawer_target_view_id", "") or ""
+                or getattr(st, "fespp_active_panel_id", "") or ""
+            )
+            rep_path = st.active_representation_path or ""
+            scene_registry = getattr(ctx, "scene_registry", None)
+            if scene_registry is not None and target_panel and rep_path:
+                scene = scene_registry.get_scene(target_panel)
+                if scene is not None:
+                    rep_in_scene = scene.get_rep(rep_path)
+                    if rep_in_scene is not None:
+                        try:
+                            source = rep_in_scene.source()
+                        except Exception:
+                            source = None
+        except Exception:
+            source = None
+        if source is None:
+            source = self.source_proxy
+        if source is None:
+            self.state.scalar_range = [0, 0]
+            return
+        try:
+            source.UpdatePipelineInformation()
+            source_info = source.GetDataInformation()
+        except Exception:
+            self.state.scalar_range = [0, 0]
+            return
+        if source_info is None:
+            self.state.scalar_range = [0, 0]
+            return
+        # Default to cells (FESPP arrays are CELLS today) — fall back
+        # to points when not found.
+        array_info = None
+        for getter in (
+            source_info.GetCellDataInformation,
+            source_info.GetPointDataInformation,
+        ):
+            try:
+                di = getter()
+                if di is not None:
+                    ai = di.GetArrayInformation(base_name)
+                    if ai is not None:
+                        array_info = ai
+                        break
+            except Exception:
+                continue
+        if array_info is None:
+            self.state.scalar_range = [0, 0]
+            return
+        lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(base_name)
+        vector_component = 0
+        try:
+            vector_component = int(lut.VectorComponent) if lut is not None else 0
+        except Exception:
+            vector_component = 0
+        try:
+            r = array_info.GetComponentRange(vector_component)
+            self.state.scalar_range = [r[0], r[1]]
+        except Exception:
+            self.state.scalar_range = [0, 0]
+
     @change("colors")
     def on_colors_changed(self, *args, **kwargs) -> None:
         if not self._should_apply_state_change():
             return
         super().on_colors_changed(*args, **kwargs)
+        # ptc's `update_color_transfer_function` writes RGBPoints but
+        # never calls Render — the LUT is mutated server-side and the
+        # client never sees the new gradient. AND in pinned mode the
+        # default `view_update` would refresh the focused panel, not
+        # the drawer target where the edit actually applies. Render +
+        # push to the target panel explicitly.
+        source_resolver.render_and_push_target(self.server.controller)
 
     @change("preset_name")
     def on_preset_name_changed(self, *args, **kwargs) -> None:
@@ -131,6 +230,8 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         super().on_preset_name_changed(*args, **kwargs)
         current = (self.state.nan_color or "#FF0000").lstrip("#")[:6]
         self.state.nan_color = f"#{current}{saved_alpha}"
+        # Parent mutates RGBPoints but never Renders. Push to target.
+        source_resolver.render_and_push_target(self.server.controller)
 
     @change("opacities")
     def on_opacities_changed(self, *args, **kwargs) -> None:
@@ -149,6 +250,11 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 has_transparency = any(op[1] < 0.999 for op in opacities)
                 lut.EnableOpacityMapping = 1 if has_transparency else 0
         super().on_opacities_changed(*args, **kwargs)
+        # Parent's `update_opacity_transfer_function` does call Render
+        # + view_update, but on the FOCUSED panel (active view in
+        # pvsimple). Re-Render + push on the drawer target so pinned
+        # mode refreshes the right panel.
+        source_resolver.render_and_push_target(self.server.controller)
 
     @change("nan_color")
     def on_nan_color_changed(self, *args, **kwargs) -> None:
@@ -165,8 +271,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         if not lut:
             return
         _apply_nan_color_to_lut(lut)
-        pvsimple.Render()
-        self.ctrl.view_update()
+        source_resolver.render_and_push_target(self.server.controller)
 
 
 state.setdefault("active_color_array_name", "")

@@ -81,12 +81,22 @@ def on_active_array_change(state, controller, source_registry, tree,
         # `_apply` to re-Show (the clip's display might have been
         # implicitly recreated by `displays_for_rep_path`), and the
         # rep source must stay hidden when slice / clip is enabled.
-        inst = source_registry.get_instance(rep_path)
-        if inst is not None and hasattr(inst, "refresh_planes_after_property_change"):
-            try:
-                inst.refresh_planes_after_property_change()
-            except Exception as exc:
-                print(f"[WARNING] refresh_planes {rep_path}: {exc}")
+        # Phase 1.b.1: slice/clip moved from the per-rep wrappers to
+        # per-(rep, view) RepInScene; iterate scenes instead.
+        try:
+            from trame.app import get_server
+            scenes = getattr(get_server().context, "scene_registry", None)
+            if scenes is not None:
+                for scene in scenes.all_scenes():
+                    rep_in_scene = scene.get_rep(rep_path)
+                    if rep_in_scene is None:
+                        continue
+                    try:
+                        rep_in_scene.refresh_planes_after_property_change()
+                    except Exception as exc:
+                        print(f"[WARNING] refresh_planes {scene.view_id}/{rep_path}: {exc}")
+        except Exception as exc:
+            print(f"[WARNING] active_array scene refresh: {exc}")
     if view is not None:
         pvsimple.Render(view=view)
     controller.view_update()
@@ -113,20 +123,14 @@ def apply_panel_coloring(state, source_registry, tree, panel_id, view):
     by_view = state.ui_active_array_by_rep_by_view or {}
     panel_map = by_view.get(panel_id) or {}
     if not panel_map or view is None:
-        print(f"[APC_DEBUG] apply_panel_coloring({panel_id}) skipped:"
-              f" panel_map empty={not panel_map} view=None={view is None}")
         return
     realizations_by_view = state.ui_active_realization_by_array_by_view or {}
     panel_realizations = realizations_by_view.get(panel_id) or {}
-    print(f"[APC_DEBUG] apply_panel_coloring({panel_id})"
-          f" panel_map={panel_map} realizations={panel_realizations}")
     shown_bars: set = set()
     for rep_path, array_path in panel_map.items():
         if not rep_path or not array_path:
             continue
         realization_idx = panel_realizations.get(array_path)
-        print(f"[APC_DEBUG]   rep={rep_path} array={array_path}"
-              f" real_idx={realization_idx}")
         source_resolver.apply_color_array(
             source_registry, tree, rep_path, array_path, view=view,
             realization_idx=realization_idx,
@@ -152,8 +156,17 @@ def apply_panel_coloring(state, source_registry, tree, panel_id, view):
             if lut is not None:
                 bar = pvsimple.GetScalarBar(lut, view)
                 if bar is not None:
+                    # NOTE: do NOT raw-write bar.Visibility = 1 here.
+                    # apply_color_array above invoked
+                    # display.SetScalarBarVisibility(view, True) which goes through
+                    # vtkSMTransferFunctionManager. Raw writes bypass the manager's
+                    # bookkeeping and desync from the view's representation list
+                    # under per-view LUT scope, surfacing a duplicate bar on other
+                    # views. The bug was visible when opening Stats / Distribution
+                    # panels triggered apply_panel_coloring via the panel-state
+                    # publish chain.
+                    # (any Title / format writes BELOW stay — they are appearance.)
                     bar.Title = name
-                    bar.Visibility = 1
                     bar.RangeLabelFormat = '%-#6.3g'
                     bar.Resizable = 1
         except Exception:

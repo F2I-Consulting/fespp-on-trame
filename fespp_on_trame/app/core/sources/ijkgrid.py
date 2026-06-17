@@ -21,13 +21,20 @@ class _IjkChainEntry:
     an IjkGrid entry must attach to *every* currently-active upstream
     (rep_data + slicers in slice mode, rep_data + slicervolume in
     range mode). `pv_proxies` is keyed by id(upstream_source) and
-    holds the per-upstream Threshold proxy."""
+    holds the per-upstream Threshold proxy.
+
+    `kind` / `unique_values` / `labels` mirror the shape of
+    `extract_block.ChainEntry` — drive the threshold panel's slider
+    variant (Continuous range, Discrete integer-stepped, Categorical
+    labeled-ticks)."""
 
     __slots__ = ("name", "parent_name", "array", "assoc",
-                 "visible", "low", "high", "data_range", "pv_proxies")
+                 "visible", "low", "high", "data_range", "pv_proxies",
+                 "kind", "unique_values", "labels")
 
     def __init__(self, name, parent_name, array, assoc,
-                 visible, low, high, data_range):
+                 visible, low, high, data_range,
+                 kind="Continuous", unique_values=None, labels=None):
         self.name = name
         self.parent_name = parent_name
         self.array = array
@@ -37,6 +44,9 @@ class _IjkChainEntry:
         self.high = high
         self.data_range = data_range
         self.pv_proxies = {}  # id(upstream_proxy) -> Threshold proxy
+        self.kind = kind
+        self.unique_values = list(unique_values or [])
+        self.labels = dict(labels or {})
 
     def to_dict(self):
         return {
@@ -47,6 +57,9 @@ class _IjkChainEntry:
             "low": self.low,
             "high": self.high,
             "data_range": list(self.data_range),
+            "kind": self.kind,
+            "unique_values": list(self.unique_values),
+            "labels": dict(self.labels),
         }
 
 
@@ -69,9 +82,30 @@ class IjkGrid:
     re-parents children to the entry's *current effective* upstream
     (skipping hidden ancestors)."""
 
-    def __init__(self, collector: Collector, tree: Tree):
+    def __init__(self, collector: Collector, tree: Tree, *,
+                 view_id=None, clone=None, pv_view=None):
+        """
+        collector / tree : engine globals — same as before.
+        view_id / clone / pv_view (Phase 3b, all optional, all-or-none):
+            When provided, this IjkGrid operates in **per-view mode**:
+            rep_data extractor is created via `EnergisticsExtractor`
+            chained on `clone` (not via `EPCCollector.ExtractRepPath`
+            which is shared across views), and every Show/Hide
+            defaults to `pv_view` instead of `pvsimple.GetActiveView()`.
+            Slicers and chain proxies follow naturally because they
+            chain on rep_data and use `_target_view()`.
+
+            When all three are None, the legacy shared-instance
+            behaviour kicks in: rep_data is created on the shared
+            collector and Show/Hide tracks `GetActiveView()`. Used by
+            `SourceRegistry` for backwards compat until Phase 4
+            removes the legacy path.
+        """
         self._collector = collector
         self._tree = tree
+        self._view_id = view_id
+        self._clone = clone
+        self._pv_view = pv_view
         self._node_id = None
         self._title = None
         self._property_path = None
@@ -80,6 +114,8 @@ class IjkGrid:
         self._current_extent = None  # [x0,x1,y0,y1,z0,z1]
         # Per-grid token used to suffix PV registration names so
         # multiple IjkGrids don't collide on slicer / volume names.
+        # In per-view mode the token also includes the view_id so
+        # parallel per-view instances of the same grid coexist.
         self._rep_token = ""
 
         self._src_extract_init = None
@@ -129,6 +165,17 @@ class IjkGrid:
         proxy for the ColorBy fan-out / displays-for-rep lookup."""
         return self._src_extract_init
 
+    def _target_view(self):
+        """The view this IjkGrid renders into. Per-view mode → the
+        captured `pv_view`; legacy mode → whatever's currently active.
+        Every Show/Hide/GetRepresentation in this class flows through
+        this helper so the per-view variant doesn't leak its output
+        into other panels' displays."""
+        if self._pv_view is not None:
+            return self._pv_view
+        from paraview import simple as pvsimple
+        return pvsimple.GetActiveView()
+
     @property
     def rep_path(self):
         """This grid's assembly path, or empty string when no node
@@ -163,7 +210,7 @@ class IjkGrid:
     def _delete_chain(self):
         """Tear down every PV proxy in the chain. Children-first so
         Inputs don't dangle."""
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         for entry in reversed(self._chain):
             for proxy in list(entry.pv_proxies.values()):
                 try:
@@ -183,7 +230,7 @@ class IjkGrid:
         `src` — used when the corresponding slicer is destroyed."""
         if src is None:
             return
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         sid = id(src)
         for entry in reversed(self._chain):
             proxy = entry.pv_proxies.pop(sid, None)
@@ -200,7 +247,7 @@ class IjkGrid:
                 pass
 
     def _delete_all_sources(self):
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         pvsimple.SetActiveSource(None)
         # Slice + chain reference slicer/rep_data proxies; delete them
         # FIRST so the upstream Delete calls don't trip on dangling
@@ -254,7 +301,7 @@ class IjkGrid:
         if self._current_extent:
             src.OutputWholeExtent = list(self._current_extent)
         src.UpdatePipelineInformation()
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
         rep.Representation = state.representation_active or 'Surface'
         if self._title and self._current_array_type:
@@ -274,7 +321,7 @@ class IjkGrid:
             # New slicer joins the active upstream set — reattach the
             # chain to it.
             self._refresh_chain_pipeline()
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         while len(srcs) > count:
             src = srcs.pop()
             self._delete_chain_proxies_for_upstream(src)
@@ -308,21 +355,59 @@ class IjkGrid:
             self._node_id = ijkgrid_node_id
             self._property_path = self._tree.find_path(node_id)
             ijkgrid_rep_path = self._tree.find_path(ijkgrid_node_id)
-            self._rep_token = _sanitize(ijkgrid_rep_path or "")
-            coll_proxy = self._collector.get_source().SMProxy
-            vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
-            coll_proxy.UpdateVTKObjects()
-            coll_proxy.UpdatePropertyInformation()
-            reg_name = vtkSMPropertyHelper(coll_proxy, "ExtractedRepProducerName").GetAsString()
-            if not reg_name:
-                self._node_id = None
-                return
-            self._src_extract_init = _find_registered_proxy(reg_name)
-            if self._src_extract_init is None:
-                self._node_id = None
-                return
+            # In per-view mode we include `view_id` in the registration
+            # token so parallel per-view instances of the same grid
+            # don't collide on slicer/volume names.
+            base_token = _sanitize(ijkgrid_rep_path or "")
+            self._rep_token = (
+                f"{base_token}_v{_sanitize(str(self._view_id))}"
+                if self._view_id is not None
+                else base_token
+            )
+            if self._view_id is not None and self._clone is not None:
+                # Phase 3b per-view path: create rep_data via
+                # EnergisticsExtractor chained on the view's clone.
+                # Same data as the legacy collector-anchored extractor
+                # (ShallowCopy passthrough) but isolated per view, so
+                # downstream slicers / chain proxies don't collide on
+                # id() across views.
+                from fespp_on_trame.app.core.sources.representation import (
+                    _create_plugin_filter_proxy,
+                )
+                ext_reg = f"ijk_rep_data_{self._rep_token}"
+                ext = _create_plugin_filter_proxy(
+                    proxy_class="EnergisticsExtractor",
+                    registration_name=ext_reg,
+                    inputs={"Input": self._clone},
+                )
+                if ext is None:
+                    print(f"[IjkGrid v={self._view_id}] EnergisticsExtractor"
+                          f" create failed for {ijkgrid_rep_path}")
+                    self._node_id = None
+                    return
+                vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(ijkgrid_rep_path)
+                ext.SMProxy.UpdateVTKObjects()
+                ext.UpdatePipelineInformation()
+                self._src_extract_init = ext
+            else:
+                # Legacy shared path: rep_data is created via the
+                # EPCCollector.ExtractRepPath property (C++ side
+                # calls ExtractWithoutCopy and registers an
+                # EnergisticsExtractor chained on the collector).
+                coll_proxy = self._collector.get_source().SMProxy
+                vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
+                coll_proxy.UpdateVTKObjects()
+                coll_proxy.UpdatePropertyInformation()
+                reg_name = vtkSMPropertyHelper(coll_proxy, "ExtractedRepProducerName").GetAsString()
+                if not reg_name:
+                    self._node_id = None
+                    return
+                self._src_extract_init = _find_registered_proxy(reg_name)
+                if self._src_extract_init is None:
+                    self._node_id = None
+                    return
 
-            view = pvsimple.GetActiveView()
+            view = self._target_view()
             for axis in ('i', 'j', 'k'):
                 src = pvsimple.ExplicitStructuredGridCrop(
                     registrationName=f'slicer{axis}_0__{self._rep_token}',
@@ -461,7 +546,7 @@ class IjkGrid:
         if self._node_id is None:
             return
         if view is None:
-            view = pvsimple.GetActiveView()
+            view = self._target_view()
         if view is None:
             return
 
@@ -703,6 +788,18 @@ class IjkGrid:
             base_name = f"{base_name}_{suffix}"
 
         rng = self.array_data_range(array) or (0.0, 1.0)
+
+        # Resolve property kind (Continuous / Discrete / Categorical)
+        # for the threshold panel slider dispatch. Source proxy: the
+        # rep_data extractor — that's the unfiltered VTK array store,
+        # so scanning uniques there reflects the data's true value
+        # set, not what's left after slicers / chain filtering.
+        from fespp_on_trame.app.core.sources.extract_block import resolve_chain_kind
+        kind, unique_values, labels = resolve_chain_kind(
+            self._tree, rep_path, array,
+            self._src_extract_init, assoc,
+        )
+
         entry = _IjkChainEntry(
             name=base_name,
             parent_name=parent_name,
@@ -712,6 +809,9 @@ class IjkGrid:
             low=float(rng[0]),
             high=float(rng[1]),
             data_range=(float(rng[0]), float(rng[1])),
+            kind=kind,
+            unique_values=unique_values,
+            labels=labels,
         )
         self._chain.append(entry)
         self._refresh_chain_pipeline()
@@ -728,7 +828,7 @@ class IjkGrid:
             if e.parent_name == name:
                 e.parent_name = target.parent_name
         self._chain.pop(idx)
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         for proxy in list(target.pv_proxies.values()):
             try:
                 if view is not None:
@@ -791,13 +891,24 @@ class IjkGrid:
         return out
 
     # ------------------------------------------------------------------
-    # Slice plane (MVP — single axis-aligned plane per rep)
+    # Slice / clip plane — DEPRECATED legacy path.
+    #
+    # Phase 1.b moved slice / clip ownership onto `RepInScene`
+    # (per-(rep, view)). Both the per-view and the legacy IjkGrid mode
+    # rely on `RepInScene._slice_plane` / `_clip_plane` for the
+    # actual rendering — the `_slice` / `_clip` fields here stay None
+    # in normal use. The methods below are only reachable via
+    # `SourceRegistry.slice_set/state/clip_set/state` compat shims,
+    # which are themselves deprecated and have no remaining callers.
+    # Kept here as a safety net during the migration window.
 
     def _ensure_slice(self):
         """Lazily build a `SlicePlane` once the rep_data extractor
         exists. Called by the public slice_state / slice_set entry
         points so the slice's upstream is always the un-cropped
-        grid."""
+        grid.
+
+        DEPRECATED: per-(rep, view) slice lives on `RepInScene`."""
         if self._slice is not None or self._src_extract_init is None:
             return
         from fespp_on_trame.app.core.sources.slice_plane import SlicePlane
@@ -916,7 +1027,7 @@ class IjkGrid:
           - the slicer mode flips (active upstream set changes)."""
         upstreams = self._active_upstreams()
         upstream_ids = {id(s) for s in upstreams}
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
 
         for entry in self._chain:
             # Drop slots for upstreams that are no longer active.
@@ -968,7 +1079,7 @@ class IjkGrid:
         display so the threshold output mirrors its parent visually
         (both in property-color mode and SolidColor mode) from the
         moment it appears."""
-        view = pvsimple.GetActiveView()
+        view = self._target_view()
         if view is None:
             return
         try:
@@ -1016,13 +1127,14 @@ class IjkGrid:
         """Apply a ColorBy on a single slicer source: set the lookup
         table, the scalar bar's title / format, and hide the scalar
         bar of the previously selected array."""
-        representation = pvsimple.GetRepresentation(proxy=src, view=pvsimple.GetActiveView())
+        view = self._target_view()
+        representation = pvsimple.GetRepresentation(proxy=src, view=view)
         representation.ColorArrayName = [array_type, property_title]
         lut = pvsimple.GetColorTransferFunction(property_title)
         lut.NanOpacity = self._nan_opacity_from_state()
         representation.LookupTable = lut
         representation.RescaleTransferFunctionToDataRange(True)
-        bar = pvsimple.GetScalarBar(ctf=lut, view=pvsimple.GetActiveView())
+        bar = pvsimple.GetScalarBar(ctf=lut, view=view)
         bar.Visibility = True
         bar.RangeLabelFormat = '%-#6.3g'
         bar.Resizable = 1
@@ -1032,7 +1144,7 @@ class IjkGrid:
         if self._title:
             try:
                 old_lut = pvsimple.GetColorTransferFunction(self._title, representation)
-                pvsimple.GetScalarBar(ctf=old_lut, view=pvsimple.GetActiveView()).Visibility = False
+                pvsimple.GetScalarBar(ctf=old_lut, view=view).Visibility = False
             except Exception:
                 pass
 

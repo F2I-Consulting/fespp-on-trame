@@ -1,15 +1,18 @@
-"""Slice-plane dispatch — single axis-aligned plane per rep.
+"""Slice-plane dispatch — single axis-aligned plane per (rep, view).
 
-The engine exposes three controller entry points:
-  - `slice_publish_state(rep_path)` — pushes the rep's slice
-    descriptor into the `ui_slice_*` trame vars so the panel binds
-    to it. Called on rep activation, and whenever the slice changes.
-  - `slice_set(...)` — applies an (enabled, axis, offset) patch on
-    the rep's `SlicePlane` and republishes.
+Three controller entry points:
+  - `publish_slice_state(state, scene_registry, ...)` — pushes the
+    active panel's active rep's slice descriptor into the
+    `ui_slice_*` trame vars so the panel binds to it.
+  - `slice_set(state, controller, scene_registry, view, ...,
+    panel_id=None)` — applies an (enabled, axis, offset) patch on
+    the RepInScene that owns the slice and republishes. `panel_id`
+    defaults to the currently active panel.
 
-The "active rep" is read from `state.active_representation_path` —
-the rep whose properties are currently edited by the side-panels.
-Switching the active rep republishes the new rep's slice state.
+Phase 1.b.1: the dispatcher routes through `scene_registry` so each
+(rep, view) has its own slice filter. The "active rep" is read from
+`state.active_representation_path` — same as the legacy flow.
+Per-view state vars + UI re-enable land in Phase 1.b.2.
 """
 from paraview import simple as pvsimple
 
@@ -17,18 +20,42 @@ from paraview import simple as pvsimple
 _AXIS_INDEX = {"X": 0, "Y": 1, "Z": 2}
 
 
-def publish_slice_state(state, source_registry):
-    """Push the active rep's slice descriptor into `ui_slice_*` so
-    the UI panel binds to it. Idempotent — called on activation, on
-    user edits, and after data load.
+def _resolve_active_panel_id(state, scene_registry):
+    """Best-effort target panel id for the slice plane edits.
 
-    Also resolves the offset slider's domain (min/max/step) from the
-    chosen axis + bounds and writes them to dedicated state vars,
-    so the Vue template doesn't have to evaluate a ternary across
-    `ui_slice_axis` / `ui_slice_bounds` (which can trip Vue's
-    expression parser depending on context)."""
+    Prefers the Attributes drawer's `drawer_target_view_id` (which
+    follows the active panel by default and can be pinned to a
+    specific view via the picker in the Attributes toolbar), falls
+    back to `fespp_active_panel_id` for the boot window before the
+    drawer-pinned change handler has fired, falls back to the first
+    known scene as a last resort."""
+    target = getattr(state, "drawer_target_view_id", "") or ""
+    if target:
+        return target
+    active = getattr(state, "fespp_active_panel_id", "") or ""
+    if active:
+        return active
+    ids = scene_registry.view_ids() if scene_registry is not None else []
+    return ids[0] if ids else None
+
+
+def _resolve_rep(state, scene_registry, panel_id):
+    """Look up the RepInScene for (panel_id, active rep_path)."""
+    if scene_registry is None or not panel_id:
+        return None
     rep_path = getattr(state, "active_representation_path", "") or ""
-    desc = source_registry.slice_state(rep_path) if rep_path else {
+    if not rep_path:
+        return None
+    return scene_registry.get_rep(panel_id, rep_path)
+
+
+def publish_slice_state(state, scene_registry, panel_id=None):
+    """Push the active rep's slice descriptor (from the active panel's
+    RepInScene) into `ui_slice_*` so the UI panel binds to it.
+    Idempotent."""
+    panel_id = panel_id or _resolve_active_panel_id(state, scene_registry)
+    rep = _resolve_rep(state, scene_registry, panel_id)
+    desc = rep.slice_state() if rep is not None else {
         "enabled": False, "axis": "X", "offset": 0.0,
         "bounds": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
     }
@@ -39,8 +66,6 @@ def publish_slice_state(state, source_registry):
     hi = float(bounds[2 * i + 1])
     step = (hi - lo) / 1000.0 if hi > lo else 0.001
 
-    # Trame is fine writing identical values — these compare equal
-    # and short-circuit at the deep-equality check.
     state.ui_slice_enabled = bool(desc.get("enabled"))
     state.ui_slice_axis = axis
     state.ui_slice_offset = float(desc.get("offset") or 0.0)
@@ -50,21 +75,40 @@ def publish_slice_state(state, source_registry):
     state.ui_slice_offset_step = step
 
 
-def slice_set(state, controller, source_registry, view,
-              enabled=None, axis=None, offset=None):
-    """Apply a partial update to the active rep's slice plane, then
-    republish + render. Called from the UI panel via a controller
-    method. Passing all three None is a no-op (still republishes —
-    cheap, and useful as a forced refresh hook)."""
-    rep_path = getattr(state, "active_representation_path", "") or ""
-    if rep_path:
-        source_registry.slice_set(rep_path, enabled=enabled, axis=axis, offset=offset)
-    publish_slice_state(state, source_registry)
-    if view is not None:
+def slice_set(state, controller, scene_registry, view,
+              enabled=None, axis=None, offset=None, panel_id=None):
+    """Apply a partial update to the (panel_id, active_rep) slice
+    plane, then republish + render. `panel_id` defaults to the active
+    panel. Calling with all three (enabled/axis/offset) None is a
+    no-op pipeline-wise but still republishes — useful as a forced
+    refresh hook on rep activation."""
+    panel_id = panel_id or _resolve_active_panel_id(state, scene_registry)
+    rep = _resolve_rep(state, scene_registry, panel_id)
+    if rep is not None:
+        rep.slice_set(enabled=enabled, axis=axis, offset=offset)
+    publish_slice_state(state, scene_registry, panel_id=panel_id)
+    # Prefer rendering the owning view — when slice_dispatch is
+    # called via a per-view UI in Phase 1.b.2 we want THIS specific
+    # view to refresh, not just whatever was globally active.
+    target_view = view
+    scene = scene_registry.get_scene(panel_id) if scene_registry is not None else None
+    if scene is not None and scene.pv_view is not None:
+        target_view = scene.pv_view
+    if target_view is not None:
         try:
-            pvsimple.Render(view=view)
+            pvsimple.Render(view=target_view)
         except Exception:
             pass
+    # Push the freshly-rendered frame to BOTH:
+    #   - the target panel's vtk.js client (so pinned mode sees its
+    #     edit immediately even when the focus is on another panel);
+    #   - the active panel's client (the legacy view_update — safe
+    #     to call too, the no-op cost is negligible and it covers
+    #     follow-mode where target == active).
+    try:
+        controller.view_update_for(panel_id)
+    except Exception:
+        pass
     try:
         controller.view_update()
     except Exception:

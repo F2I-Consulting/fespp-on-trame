@@ -191,7 +191,14 @@ class Drawer:
                 self._tv.well_tree()
 
     # ------------------------------------------------------------------
-    # Attributes card
+    # Attributes card — slice / clip / threshold / IJK slicers /
+    # representation / solid color, scoped to `drawer_target_view_id`.
+    #
+    # Statistics live in their own dockview tab (the singleton
+    # `kind="stats"` panel created by `multi_view._add_stats_panel`,
+    # opened on the first chart-icon click in the tree) — they no
+    # longer share this card. The drawer focuses purely on the
+    # per-view edit operations.
 
     def _render_attributes_card(self):
         with vuetify3.VCard(
@@ -206,7 +213,11 @@ class Drawer:
                 classes="bg-blue-grey-darken-2 flex-grow-0 flex-shrink-0",
                 color="white",
             ):
-                vuetify3.VIcon("mdi-information", classes="mr-3", color="white")
+                vuetify3.VIcon(
+                    "mdi-information",
+                    classes="mr-3",
+                    color="white",
+                )
                 vuetify3.VToolbarTitle(
                     "Attributes",
                     classes="text-subtitle-1 font-weight-medium",
@@ -216,10 +227,12 @@ class Drawer:
                 classes="pa-2",
                 style="flex: 1 1 0; min-height: 0; overflow-y: auto;",
             ):
+                # Target view picker — sits at the top of the card
+                # body so it has full drawer width to render its
+                # label / VSelect cleanly.
+                self._render_target_view_strip()
                 # Reservoir attributes — slicers + representation +
-                # solid color. v_if check: any active node (the
-                # legacy reservoir behaviour, simpler than the other
-                # two tabs).
+                # solid color. v_if check: any active node.
                 with html.Div(v_show="tab === 'reservoir'"):
                     with html.Div(
                         v_if="ui_active_node_reservoir && ui_active_node_reservoir.length > 0"
@@ -233,10 +246,7 @@ class Drawer:
                             RepresentationTypePanel()
                             SolidColorPanel()
 
-                # Surface attributes — no IJK slicer. Active node must
-                # also be in the current selection (a node can be
-                # active without being checked, e.g. after a tab
-                # switch).
+                # Surface attributes — no IJK slicer.
                 with html.Div(v_show="tab === 'surface'"):
                     with html.Div(
                         v_if=(
@@ -248,10 +258,7 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
-                            # SLICE/CLIP UI HIDDEN — SlicersPanel with
-                            # `with_ijk=False` would render an empty body
-                            # once Slice and Clip tabs are commented out.
-                            # SlicersPanel(with_ijk=False).render()
+                            SlicersPanel(with_ijk=False).render()
                             RepresentationTypePanel()
                             SolidColorPanel()
 
@@ -267,7 +274,95 @@ class Drawer:
                             style="display: initial;",
                             classes="mb-2",
                         ):
-                            # SLICE/CLIP UI HIDDEN — see surface tab note.
-                            # SlicersPanel(with_ijk=False).render()
+                            SlicersPanel(with_ijk=False).render()
                             RepresentationTypePanel()
                             SolidColorPanel()
+
+    # ------------------------------------------------------------------
+    # Target view strip (top of Attributes tab body)
+    #
+    # Drives `state.drawer_target_view_id` — the render panel the edit
+    # panels (slice / clip / threshold / IJK slicers) operate on. Two
+    # modes:
+    #
+    #   - **Follow active** (default, `drawer_target_view_pinned=False`)
+    #     → the target id auto-syncs to `fespp_active_panel_id` on every
+    #     panel-activated event. The strip shows a passive label with
+    #     the active view's title.
+    #
+    #   - **Pinned** (`drawer_target_view_pinned=True`) → the target id
+    #     stays put across active-panel switches; the strip shows a
+    #     `VSelect` for picking another view. Useful for editing a
+    #     view's filters without losing focus on the currently-active
+    #     one.
+    #
+    # Lives at the TOP of the Attributes tab body (not in the card
+    # toolbar) so the picker has the full drawer width to render and
+    # narrow drawers don't squash it against the tabs.
+    #
+    # The pin toggle is hidden until there are 2+ render panels — with
+    # a single view the picker has nothing to choose.
+
+    def _render_target_view_strip(self):
+        with html.Div(
+            classes="d-flex align-center mb-2 pa-2",
+            style=(
+                "background: rgba(0,0,0,0.04);"
+                " border-radius: 4px; gap: 8px;"
+            ),
+        ):
+            html.Span(
+                "Target view:",
+                classes="text-caption font-weight-medium text-medium-emphasis",
+                style="white-space: nowrap;",
+            )
+            with vuetify3.VTooltip(location="bottom"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        v_bind="props",
+                        icon=(
+                            "drawer_target_view_pinned"
+                            " ? 'mdi-pin' : 'mdi-pin-off-outline'",
+                        ),
+                        variant="text",
+                        density="compact",
+                        size="small",
+                        color=(
+                            "drawer_target_view_pinned"
+                            " ? 'primary' : 'grey'",
+                        ),
+                        v_show="(fespp_render_panels || []).length > 1",
+                        click=(
+                            "drawer_target_view_pinned = !drawer_target_view_pinned"
+                        ),
+                    )
+                html.Span(
+                    "{{ drawer_target_view_pinned"
+                    " ? 'Unpin (follow active view)'"
+                    " : 'Pin to a specific view' }}",
+                )
+            # Follow mode → passive label showing the active view's
+            # title. Empty when no view is active yet — keeps the
+            # strip silent during the boot window before the first
+            # split.
+            html.Span(
+                "{{ ((fespp_render_panels || []).find("
+                "p => p.id === fespp_active_panel_id) || {}).title"
+                " || '—' }}",
+                v_if="!drawer_target_view_pinned",
+                classes="text-body-2 font-weight-medium",
+                style="white-space: nowrap;",
+            )
+            # Pinned mode → dropdown of all render panels. Takes the
+            # remaining flex space so it grows with the drawer.
+            vuetify3.VSelect(
+                v_if="drawer_target_view_pinned",
+                v_model=("drawer_target_view_id", ""),
+                items=("fespp_render_panels", []),
+                item_title="title",
+                item_value="id",
+                density="compact",
+                hide_details=True,
+                variant="outlined",
+                style="flex: 1 1 auto; min-width: 100px;",
+            )

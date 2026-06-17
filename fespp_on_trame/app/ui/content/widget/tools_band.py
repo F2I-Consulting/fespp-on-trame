@@ -39,6 +39,7 @@ class ToolsBand:
             self._render_global_time_control()
             self._render_global_realization_picker()
             html.Div(style="flex: 1;")
+            self._render_stats_button()
             self._render_settings_cog()
 
     def _render_global_time_control(self):
@@ -71,6 +72,35 @@ class ToolsBand:
             style="flex: 0 0 auto;",
         ):
             GlobalRealizationPicker().render()
+
+    def _render_stats_button(self):
+        """Open / close toggle for the Descriptive Statistics
+        floating overlay. Only rendered when at least one property
+        has its chart icon active in the tree
+        (`ui_stats_pinned_paths` non-empty) — without pinned
+        properties the panel would just show its empty-state hint,
+        and exposing the button is misleading. Pinned properties
+        + their per-Original snapshots survive a close, so
+        reopening shows the previous state."""
+        with html.Div(
+            v_if=(
+                "ui_stats_pinned_paths"
+                " && ui_stats_pinned_paths.length > 0",
+            ),
+            classes="d-flex align-center",
+            style="flex: 0 0 auto;",
+        ):
+            with vuetify3.VTooltip(location="bottom"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        icon="mdi-chart-box-outline",
+                        v_bind="props",
+                        variant="text",
+                        color="teal-darken-2",
+                        size="small",
+                        click=controller.open_stats_panel,
+                    )
+                html.Span("View Descriptive Statistics")
 
     def _render_settings_cog(self):
         """Right-side cog opening the global settings modal.

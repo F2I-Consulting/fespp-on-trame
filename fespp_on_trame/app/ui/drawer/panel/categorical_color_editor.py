@@ -17,6 +17,8 @@ from trame.app import get_server
 from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
 
+from fespp_on_trame.app.core.engine import source_resolver
+
 server = get_server()
 state = server.state
 controller = server.controller
@@ -224,6 +226,21 @@ class CategoricalColorEditor(html.Div):
             else:
                 state.categorical_entries = []
 
+        @state.change(
+            "drawer_target_view_id",
+            "ui_active_realization_by_array_by_view",
+        )
+        def _on_target_or_realization_change(**_):
+            """Re-pull the categorical palette from the new target's
+            scene-scoped LUT so the swatches displayed match the LUT
+            actually rendered in that view. Per-view LUT isolation
+            means the same property can carry different palettes
+            across views."""
+            kind = state.active_property_kind or ""
+            name = state.active_color_array_name or ""
+            if kind in ("DiscreteProperty", "CategoricalProperty") and name:
+                self._refresh(name)
+
         @state.change("cce_pending_change")
         def _on_pending_change(cce_pending_change=None, **_):
             if not cce_pending_change:
@@ -301,7 +318,15 @@ class CategoricalColorEditor(html.Div):
         print(f"[PERF cce] scan VTK array {n} cells → {len(sorted_vals)} uniques: {_ms_scan}ms")
 
         _t = time.perf_counter()
-        lut = pvsimple.GetColorTransferFunction(array_name)
+        # Per-view LUT: read from the target view's scene-scoped LUT
+        # (created lazily by `swap_to_scene_tfs` when the property was
+        # first ColorBy'd) so the categorical palette displayed and
+        # edited matches the LUT actually rendered in that view.
+        # Falls back to the global singleton when no scene resolves
+        # (legacy / pre-Phase-1 callers).
+        _base_name, lut = source_resolver.resolve_target_scoped_lut(array_name)
+        if lut is None:
+            lut = pvsimple.GetColorTransferFunction(array_name)
         annotations = []
         existing_colors = []
         existing_opacities = []
@@ -412,7 +437,12 @@ class CategoricalColorEditor(html.Div):
         if not array_name:
             return
         r, g, b, a = _hex_to_rgba01(hex_color)
-        lut = pvsimple.GetColorTransferFunction(array_name)
+        # Per-view LUT: write to the target view's scene-scoped LUT so
+        # the edit affects only that view. Same fallback to the global
+        # singleton as the read path in `_refresh`.
+        _base_name, lut = source_resolver.resolve_target_scoped_lut(array_name)
+        if lut is None:
+            lut = pvsimple.GetColorTransferFunction(array_name)
         if lut is None or lut.SMProxy is None:
             return
 
@@ -474,8 +504,7 @@ class CategoricalColorEditor(html.Div):
             entries[index] = {**entries[index], "color": hex_color}
             state.categorical_entries = entries
 
-        try:
-            pvsimple.Render()
-            controller.view_update()
-        except Exception:
-            pass
+        # Render + push on the drawer target view — `Render()` /
+        # `view_update()` would otherwise hit pvsimple's active view
+        # and the focused panel only, missing the pinned target.
+        source_resolver.render_and_push_target(controller)

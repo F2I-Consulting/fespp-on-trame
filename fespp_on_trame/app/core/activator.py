@@ -5,6 +5,7 @@ from trame.app import get_server
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.tree import Tree
+from fespp_on_trame.app.core.engine import source_resolver
 
 
 # Mirror of FESPP's C++ MakeValidNodeName. FESPP strips characters
@@ -528,6 +529,7 @@ class Activator:
             array_type = "CELLS"
         elif has_pt:
             array_type = "POINTS"
+        color_displays = []
         if array_type and eye_open_for_this:
             # Apply ColorBy to every display rendering this rep
             # (source + downstream Threshold filter, IJK slicers +
@@ -557,25 +559,72 @@ class Activator:
                 )
                 if not still_used:
                     try:
-                        prev_lut = pvsimple.GetColorTransferFunction(prev_array)
+                        # Hide the previous bar — prefer the scene-
+                        # scoped LUT for `prev_array` (we likely
+                        # created one earlier), fall back to the
+                        # global singleton.
+                        prev_lut = source_resolver.scene_lut_for_view(
+                            active_view, prev_array,
+                        )
                         if prev_lut:
                             prev_bar = pvsimple.GetScalarBar(prev_lut, active_view)
                             if prev_bar:
-                                prev_bar.Visibility = 0
+                                # NOTE: do NOT raw-write prev_bar.Visibility = 0 here. The
+                                # hide_unused_scalar_bars sweep in source_resolver.apply_color_array
+                                # (line ~607) hides previous bars view-correctly through the manager;
+                                # raw writes bypass vtkSMTransferFunctionManager bookkeeping and
+                                # desync from the view's representation list under per-view LUT
+                                # scope, leaving stale bars visible on OTHER views.
+                                pass
                     except Exception:
                         pass
             if eye_open_for_this:
                 self._current_array_by_rep[rep_block_path] = array_name
 
-            lut = pvsimple.GetColorTransferFunction(array_name)
+            # Per-view LUT / PWF: swap each display from the global
+            # singleton to the active view's scene-scoped pair so a
+            # COE edit in this view doesn't bleed across other views
+            # showing the same array. Returns the scoped LUT so the
+            # bar binding below targets the same proxy.
+            if color_displays:
+                lut, _scene_pwf = source_resolver.swap_to_scene_tfs(
+                    color_displays, active_view, array_name,
+                )
+            if lut is None:
+                lut = pvsimple.GetColorTransferFunction(array_name)
             if lut:
                 lut.NanOpacity = _nan_opacity_from_state()
                 color_bar = pvsimple.GetScalarBar(lut, active_view)
                 if color_bar:
                     color_bar.Title = array_name
-                    color_bar.Visibility = 1
+                    # NOTE: do NOT raw-write color_bar.Visibility = 1 here.
+                    # apply_color_array above already invoked
+                    # display.SetScalarBarVisibility(target_view, True) which goes
+                    # through vtkSMTransferFunctionManager. Raw writes desync from
+                    # the view's representation list under per-view LUT scope and
+                    # cause duplicate bars on render views when other state.change
+                    # handlers (e.g. apply_panel_coloring on MultiView.add_view of
+                    # the Stats / Distribution panel) re-fire the same write path.
+                    # (Title / format / Resizable writes below stay - they are
+                    # appearance, not the visibility toggle.)
                     color_bar.RangeLabelFormat = '%-#6.3g'
                     color_bar.Resizable = 1
+
+            # Retire any scalar bar that was attached to a now-orphaned LUT
+            # on this view. The manager keys bars by (lut, view); when
+            # `swap_to_scene_tfs` returns a different scoped-LUT proxy than
+            # the prior activation used, the prior bar lingers in
+            # `view.Representations` because nothing in this path reaped it.
+            # `apply_color_array` (source_resolver) handles this via
+            # `hide_unused_scalar_bars` — mirror the same call here.
+            try:
+                if active_view is not None:
+                    from paraview.servermanager import vtkSMTransferFunctionManager
+                    vtkSMTransferFunctionManager().UpdateScalarBars(
+                        active_view.SMProxy, 1,
+                    )
+            except Exception:
+                pass
 
         _t = time.perf_counter()
         target_source.UpdatePipeline()

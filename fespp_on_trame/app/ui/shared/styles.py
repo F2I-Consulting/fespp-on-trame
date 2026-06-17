@@ -40,6 +40,61 @@ def inject_global_styles() -> None:
         " }"
     )
 
+    # Floating Stats minimize: collapse the shell to one tabstrip
+    # row AND shrink the width to ~240px (just enough to hold the
+    # 'Stats' tab title + close × + our minimize/maximize
+    # buttons). The mirror `.dv-render-overlay-float` element gets
+    # the same pin because dockview's resize observer copies the
+    # shell's bounding rect onto it on every change. Resize
+    # handles are disabled so the user can't drag-resize the
+    # collapsed strip — that would leak a new width/height into
+    # the inline style and make restore land at the wrong size.
+    trame_client.Style(
+        "body.fespp-stats-minimized"
+        " .dv-resize-container:has(.fespp-stats-panel),"
+        " body.fespp-stats-minimized"
+        " .dv-render-overlay-float:has(.fespp-stats-panel) {"
+        "   height: calc(var(--dv-tabs-and-actions-container-height, 35px) + 3px) !important;"
+        "   min-height: calc(var(--dv-tabs-and-actions-container-height, 35px) + 3px) !important;"
+        "   width: 240px !important;"
+        "   min-width: 240px !important;"
+        " }"
+        " body.fespp-stats-minimized"
+        " .dv-resize-container:has(.fespp-stats-panel)"
+        " [class*='dv-resize-handle'] {"
+        "   pointer-events: none !important;"
+        " }"
+    )
+
+    # Floating Stats maximize: pin top/left/width/height so the
+    # shell covers the full dockview container (= the multi-view
+    # content area). `.dv-resize-container` is position:absolute
+    # inside the dockview gridview element, so 100% reaches the
+    # gridview's bounds. Same resize-handle disable as minimize
+    # (so the user can't accidentally rewrite inline bounds while
+    # maximized — restore would otherwise land at the wrong
+    # size).
+    trame_client.Style(
+        "body.fespp-stats-maximized"
+        " .dv-resize-container:has(.fespp-stats-panel),"
+        " body.fespp-stats-maximized"
+        " .dv-render-overlay-float:has(.fespp-stats-panel) {"
+        "   top: 0 !important;"
+        "   left: 0 !important;"
+        "   right: auto !important;"
+        "   bottom: auto !important;"
+        "   width: 100% !important;"
+        "   height: 100% !important;"
+        "   min-width: 0 !important;"
+        "   min-height: 0 !important;"
+        " }"
+        " body.fespp-stats-maximized"
+        " .dv-resize-container:has(.fespp-stats-panel)"
+        " [class*='dv-resize-handle'] {"
+        "   pointer-events: none !important;"
+        " }"
+    )
+
     # Match the dockview tab row to the drawer card title style
     # (`bg-blue-grey-lighten-5` + `color=blue-grey-darken-2`). Both
     # the container background and every tab variant land on

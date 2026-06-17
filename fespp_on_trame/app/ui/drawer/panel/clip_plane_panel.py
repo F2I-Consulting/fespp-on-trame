@@ -14,6 +14,10 @@ clip auto-focuses edit if nothing else is being edited.
 from trame.app import get_server
 from trame.widgets import html, vuetify3
 
+from fespp_on_trame.app.ui.drawer.panel.copy_from_view_menu import (
+    render_copy_menu,
+)
+
 
 _server = get_server()
 
@@ -47,6 +51,9 @@ class ClipPlanePanel:
                     " [ui_plane_edit_mode === 'clip' ? null : 'clip'])"
                 ),
             )
+            vuetify3.VSpacer()
+            # Phase 3c: one-shot snapshot/apply from a peer view.
+            render_copy_menu("clip")
 
         html.Div(
             "Normal axis",
