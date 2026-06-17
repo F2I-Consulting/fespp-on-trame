@@ -266,6 +266,10 @@ class DistributionPanel:
                 variant="text",
                 href=(self.csv_var,),
                 download="distribution.csv",
+                # target=_blank so the data: URL can never navigate (and
+                # drop the websocket) the main SPA window — the download
+                # attribute still saves the file.
+                target="_blank",
                 disabled=(f"!{self.csv_var}",),
                 title="Download bins as CSV",
             )

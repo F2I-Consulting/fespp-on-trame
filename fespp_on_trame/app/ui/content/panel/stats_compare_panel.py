@@ -231,6 +231,9 @@ class StatsComparePanel:
                 icon="mdi-download", size="small", variant="text",
                 href=(self.csv_var,),
                 download="compare.csv",
+                # target=_blank so the data: URL can never navigate (and drop
+                # the websocket) the main SPA window — download still saves.
+                target="_blank",
                 disabled=("!" + self.csv_var,),
                 title="Download CSV of the compare matrix",
             )

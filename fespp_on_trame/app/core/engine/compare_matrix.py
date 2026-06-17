@@ -151,9 +151,10 @@ def items_to_csv(items, hidden_metrics=None):
     header = ["row"] + [_METRIC_LABELS[k] for k in cols]
     lines = [",".join(_csv_escape(c) for c in header)]
     for it in items:
-        row = [_csv_escape(it.get("label") or it.get("key") or "")]
+        row = [_csv_escape(it.get("column_label") or it.get("label") or it.get("key") or "")]
+        stats = it.get("row") or {}
         for k in cols:
-            v = it.get(k)
+            v = stats.get(k)
             if v is None:
                 row.append("")
             else:
