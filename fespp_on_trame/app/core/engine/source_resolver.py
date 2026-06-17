@@ -369,10 +369,15 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
     `view` (default None) — when supplied, the per-view EnergisticsExtractor
     is consulted FIRST as a candidate source. For a wellbore frame the
     CHANNEL's OWN per-channel extractor (array_path = the channel leaf) is
-    the candidate — the only proxy carrying that channel's array."""
+    the candidate — the only proxy carrying that channel's array.
+
+    Returns `(assoc, name, source)` — `source` is the candidate proxy the
+    array was actually found on, so the caller can read the array's data
+    range from the SAME source (uniform across rep types). `(None, None,
+    None)` when unresolved."""
     node_id = tree.find_node_id(array_path)
     if node_id is None:
-        return None, None
+        return None, None, None
     title = tree.find_title(node_id) or ""
     # MultiRealization synthetic nodes carry the actual VTK array
     # name in propTitle, not title.
@@ -383,7 +388,7 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
         if pt:
             title = pt
     if not title:
-        return None, None
+        return None, None, None
     candidate_sources = []
     # When a view is supplied, consult that view's PER-VIEW source FIRST.
     # For a wellbore frame the array lives on the CHANNEL's OWN extractor
@@ -424,10 +429,10 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
             try:
                 cell_info = s.GetCellDataInformation()
                 if cell_info and cell_info.GetArray(suffixed):
-                    return "CELLS", suffixed
+                    return "CELLS", suffixed, s
                 point_info = s.GetPointDataInformation()
                 if point_info and point_info.GetArray(suffixed):
-                    return "POINTS", suffixed
+                    return "POINTS", suffixed, s
             except Exception:
                 pass
 
@@ -437,12 +442,12 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
             point_info = s.GetPointDataInformation()
             for nm in (title, sanitized):
                 if nm and cell_info and cell_info.GetArray(nm):
-                    return "CELLS", nm
+                    return "CELLS", nm, s
                 if nm and point_info and point_info.GetArray(nm):
-                    return "POINTS", nm
+                    return "POINTS", nm, s
         except Exception:
             pass
-    return None, None
+    return None, None, None
 
 
 def hide_unused_scalar_bars(view=None):
@@ -700,7 +705,7 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         # Deselect path (tree eye unchecked).
         _clear_coloring(displays, view)
         return True
-    assoc, name = resolve_array_for_path(
+    assoc, name, range_src = resolve_array_for_path(
         source_registry, tree, rep_path, array_path,
         realization_idx=realization_idx, view=view,
     )
@@ -722,21 +727,20 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
             pass
     target_view = view if view is not None else pvsimple.GetActiveView()
     scene_lut, scene_pwf = swap_to_scene_tfs(displays, target_view, name)
-    # Force the LUT range from the freshly-resolved VTK array.
-    # `pvsimple.ColorBy`'s internal RescaleTransferFunctionToDataRange
-    # reads a STALE proxy info cache when the upstream just re-extracted
-    # (a wellbore channel/marker pick re-points the per-view extractor's
-    # ExtractPath to a single leaf partition), leaving the LUT at [0,1] so
-    # the tube paints flat. Read the range from the fresh client-side
-    # array instead. Best-effort; skipped for indexed (categorical) LUTs
-    # whose annotations a numeric rescale would disturb.
+    # Force the LUT range from the freshly-resolved VTK array, read off the
+    # SAME source `resolve_array_for_path` matched it on — so the rescale is
+    # uniform across rep types (standard extractor, wellbore channel
+    # extractor, IjkGrid rep_data) instead of a hardcoded per-type source.
+    # `pvsimple.ColorBy`'s internal RescaleTransferFunctionToDataRange reads
+    # a STALE proxy info cache after an in-place re-extraction, leaving the
+    # LUT at [0,1] so the geometry paints flat; reading the client-side array
+    # avoids it. Best-effort; skipped for indexed (categorical) LUTs whose
+    # annotations a numeric rescale would disturb.
     try:
-        ris = _scene_rep_for_view(rep_path, target_view)
-        pv_src = ris._ensure_extractor() if ris is not None else None
         rescale_lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(name)
-        if (pv_src is not None and rescale_lut is not None
+        if (range_src is not None and rescale_lut is not None
                 and not getattr(rescale_lut, "IndexedLookup", 0)):
-            rng = _vtk_array_range_from_clientside(pv_src, name, assoc)
+            rng = _vtk_array_range_from_clientside(range_src, name, assoc)
             if rng is not None:
                 rescale_lut.RescaleTransferFunction(rng[0], rng[1])
     except Exception:

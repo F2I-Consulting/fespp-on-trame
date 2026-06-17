@@ -171,7 +171,7 @@ def apply_panel_coloring(state, source_registry, tree, panel_id, view):
         # LUT — so view A on real 3 and view B on real 7 keep
         # independent color bars even when both color by "K".
         try:
-            assoc, name = source_resolver.resolve_array_for_path(
+            assoc, name, _ = source_resolver.resolve_array_for_path(
                 source_registry, tree, rep_path, array_path,
                 realization_idx=realization_idx,
             )
