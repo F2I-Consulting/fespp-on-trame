@@ -146,7 +146,9 @@ class IjkGrid:
         self._range_i = None
         self._range_j = None
         self._range_k = None
-        self._range_mode = "slice"
+        # Range/full-extent by default so a freshly-loaded grid renders the
+        # complete grid (rep_data) rather than the three mid-plane slices.
+        self._range_mode = "range"
         self._volume_visible = True
 
     # ------------------------------------------------------------------
@@ -480,7 +482,7 @@ class IjkGrid:
             if array_type is not None:
                 self._current_array_type = array_type
                 self._current_property_type = property_type
-                for src in self._all_slice_sources() + [self._src_slicer_volume]:
+                for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
                     self.update_colors(src, array_type, property_title, property_type)
 
             self._title = property_title

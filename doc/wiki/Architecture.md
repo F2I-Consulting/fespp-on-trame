@@ -162,7 +162,7 @@ leaf.py
 [`registry.py`](fespp_on_trame/app/core/element_type/registry.py): each concrete class is instantiated **once** (stateless singleton) and registered under each of its `KINDS`; collisions raise at import. `for_kind(kind)` is an O(1) dict lookup (unknown/None → a generic `Representation` `_FALLBACK`); `for_path(tree, path)` resolves via the live assembly. The runtime `kind` strings are FESPP's `SimplifyXmlTag` output ('Frame', 'MarkerFrame', 'Marker', 'Sub', …), **not** the C++ enum names.
 
 Key behaviours the hierarchy decides (all consumed by `source_resolver` and `RepInScene`):
-- `rendered_sources(ris)` / `color_sources(ris)` — which per-view proxies a rep renders / ColorBy fans onto. `None` → fall through to legacy. (e.g. `IjkGridRep` returns slicers+volume+threshold leaves; `ChannelFrameRep` returns only the visible channel's extractor.)
+- `rendered_sources(ris)` / `color_sources(ris)` — which per-view proxies a rep renders / ColorBy fans onto. `None` → fall through to legacy. (e.g. `IjkGridRep` returns slicers+volume+rep_data+threshold leaves; `ChannelFrameRep` returns only the visible channel's extractor.)
 - `array_candidate_source(ris, array_path)` — which per-view source carries `array_path`'s VTK array (channel frame → the channel's own extractor; others → the primary extractor).
 - `primary_hidden()` — True on `FrameRep` (children render via their own extractors, the frame's primary must never Show).
 - `visibility_policy()` — STANDARD / IJK_MODAL / ONE_AT_A_TIME / MULTI.

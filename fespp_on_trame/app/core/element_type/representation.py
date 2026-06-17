@@ -333,14 +333,18 @@ class IjkGridRep(GridRep):
         return out
 
     def color_sources(self, ris):
-        """The colorable IJK proxies = slicers + volume + threshold leaves
-        (NOT the rep_data extractor — it's hidden upstream). None → legacy."""
+        """The colorable IJK proxies = slicers + volume + rep_data +
+        threshold leaves. rep_data is the proxy rendered for the COMPLETE
+        grid (range full-extent, and the slice-mode no-visible-slicer
+        fallback), so the active array must ColorBy it too. None → legacy."""
         ijk = ris._ensure_per_view_ijk()
         if ijk is None or ijk.source is None:
             return None
         out = list(ijk._all_slice_sources())
         if ijk._src_slicer_volume is not None:
             out.append(ijk._src_slicer_volume)
+        if ijk._src_extract_init is not None:
+            out.append(ijk._src_extract_init)
         try:
             out.extend(ijk.all_threshold_sources())
         except Exception:

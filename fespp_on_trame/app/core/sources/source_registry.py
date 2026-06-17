@@ -395,6 +395,15 @@ class SourceRegistry:
             ijk_id = self._tree.find_parent_node_id_with_type(reservoir_node_id, "IjkGrid")
             if ijk_id is None:
                 continue
+            # The colorise target must be a PROPERTY descendant, not the grid
+            # rep node itself (auto-added as a dependency and prepended ahead
+            # of the property clicks). find_parent_node_id_with_type returns
+            # the node itself when its kind is already 'IjkGrid', so skip that
+            # case — otherwise _title/_property_path bind to the grid and the
+            # slicers get no ColorBy. The selectors fallback below still
+            # builds a grid that was selected on its own (no property).
+            if ijk_id == reservoir_node_id:
+                continue
             ijk_rep_path = self._tree.find_path(ijk_id)
             if not ijk_rep_path:
                 continue

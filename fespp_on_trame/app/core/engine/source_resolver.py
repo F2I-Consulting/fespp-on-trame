@@ -316,6 +316,8 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
         out.extend(ijk._all_slice_sources())
         if ijk._src_slicer_volume is not None:
             out.append(ijk._src_slicer_volume)
+        if ijk._src_extract_init is not None:
+            out.append(ijk._src_extract_init)
         try:
             out.extend(ijk.all_threshold_sources())
         except Exception:
