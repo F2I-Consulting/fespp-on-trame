@@ -545,8 +545,9 @@ class IjkGrid:
         un-cropped grid — instead of leaving an empty view.
 
         When the chain has any visible entry, each "would-be visible"
-        source is replaced by its corresponding Threshold proxy from
-        the deepest visible chain leaf.
+        source is replaced by the Threshold proxies of every visible
+        chain TIP for that upstream (union branches all render; a linear
+        intersection chain collapses to its single deepest leaf).
 
         `view` defaults to the active view when None — call sites that
         target a specific panel (multi-view eye toggle) pass that
@@ -1166,6 +1167,18 @@ class IjkGrid:
         # Mode flip changes the active upstream set — rebuild chain
         # attachments before the next show().
         self.refresh_threshold_pipeline()
+        # The sources that become active in the NEW mode may carry a
+        # stale cached output (in range mode only the volume crop was
+        # pulled; in slice mode only the per-axis crops). show() Shows
+        # them and the render pulls data — rendering a slicer whose
+        # cached output no longer matches its upstream rep_data crashes
+        # natively ("Connection closed"). Force a fresh data pass first,
+        # mirroring the defensive UpdatePipeline in data_load.run.
+        for src in self._active_upstreams():
+            try:
+                src.UpdatePipeline()
+            except Exception:
+                pass
 
     def apply_volume_visible(self, visible):
         self._volume_visible = bool(visible)
