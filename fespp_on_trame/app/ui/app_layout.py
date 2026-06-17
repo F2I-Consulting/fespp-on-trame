@@ -27,6 +27,7 @@ from fespp_on_trame.app.ui.content.content import Content
 from fespp_on_trame.app.ui.shared.styles import inject_global_styles
 from fespp_on_trame.app.ui.shared.scripts import inject_client_scripts
 from fespp_on_trame.app.ui.shared.widget.hierarchy_snackbar import HierarchySnackbar
+from fespp_on_trame.app.ui.shared.widget.empty_color_snackbar import EmptyColorSnackbar
 
 
 server = get_server()
@@ -123,5 +124,6 @@ def ui(server: Server, **kwargs) -> None:
         display_options_dialog.render()
         inject_client_scripts()
         HierarchySnackbar().render()
+        EmptyColorSnackbar().render()
 
         return layout

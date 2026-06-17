@@ -135,20 +135,27 @@ class FesppMultiView(ptc.MultiView):
         hidden_by_view = dict(st.ui_hidden_rep_paths_by_view or {})
         active_by_view = dict(st.ui_active_array_by_rep_by_view or {})
         real_by_view = dict(st.ui_active_realization_by_array_by_view or {})
+        # Per-view VISIBLE markers (multi-select). Same copy semantics as
+        # the active-array bucket: a replicated view inherits the ref's
+        # shown markers; empty/diff/first views start with none.
+        marker_by_view = dict(st.ui_visible_marker_paths_by_view or {})
         if kind == "diff":
             hidden_by_view[panel_id] = []
             active_by_view[panel_id] = {}
             real_by_view[panel_id] = {}
+            marker_by_view[panel_id] = []
         elif kind == "render" and not replicate:
             # Empty panel — every loaded rep starts in the hidden
             # bucket so all chips appear closed in the tree.
             hidden_by_view[panel_id] = list(st.ui_loaded_rep_paths or [])
             active_by_view[panel_id] = {}
             real_by_view[panel_id] = {}
+            marker_by_view[panel_id] = []
         elif ref_panel_id and ref_panel_id in hidden_by_view:
             hidden_by_view[panel_id] = list(hidden_by_view.get(ref_panel_id, []) or [])
             active_by_view[panel_id] = dict(active_by_view.get(ref_panel_id, {}) or {})
             real_by_view[panel_id] = dict(real_by_view.get(ref_panel_id, {}) or {})
+            marker_by_view[panel_id] = list(marker_by_view.get(ref_panel_id, []) or [])
         else:
             hidden_by_view[panel_id] = list(st.ui_hidden_rep_paths or [])
             active_by_view[panel_id] = dict(st.ui_active_array_by_rep or {})
@@ -157,9 +164,11 @@ class FesppMultiView(ptc.MultiView):
             # written by toggle_dataarray_color when the active panel
             # picks an MR), else leave empty.
             real_by_view[panel_id] = dict(real_by_view.get(panel_id, {}) or {})
+            marker_by_view[panel_id] = list(marker_by_view.get(panel_id, []) or [])
         st.ui_hidden_rep_paths_by_view = hidden_by_view
         st.ui_active_array_by_rep_by_view = active_by_view
         st.ui_active_realization_by_array_by_view = real_by_view
+        st.ui_visible_marker_paths_by_view = marker_by_view
 
     def add_view(
         self,
@@ -283,6 +292,14 @@ class FesppMultiView(ptc.MultiView):
         self._seed_per_view_hidden_state(
             panel_id, ref_panel_id, kind=kind, replicate=replicate,
         )
+        # Render the markers the new panel inherited from its ref (the
+        # seed above only copied the STATE bucket; this creates+shows
+        # each marker's per-marker extractor in the new scene).
+        if scene_registry is not None:
+            try:
+                scene_registry.apply_visible_markers(panel_id)
+            except Exception as exc:
+                print(f"[multi_view] apply_visible_markers({panel_id}) failed: {exc}")
 
         self._panel_titles[panel_id] = panel_title
         self._panel_kinds[panel_id] = kind

@@ -24,6 +24,23 @@ from fespp_on_trame.app.core.engine import (
 )
 
 
+def _show_channel_active_view(tree, rep_path, array_path, view):
+    """If `array_path` is a wellbore-frame CHANNEL, SHOW it (exclusive,
+    one-at-a-time) in `view` so a plain channel selection renders the
+    log via its own per-channel extractor. No-op for non-channel arrays
+    and when no RepInScene renders the frame in this view."""
+    try:
+        node_id = tree.find_node_id(array_path)
+        r_id = tree.find_representation_node(node_id) if node_id is not None else None
+        if r_id is None or r_id == node_id or tree.find_type(r_id) != 'Frame':
+            return
+        rep_in_scene = source_resolver._scene_rep_for_view(rep_path, view)
+        if rep_in_scene is not None:
+            rep_in_scene.set_channel_visible(array_path, True)
+    except Exception:
+        pass
+
+
 def on_active_array_change(state, controller, source_registry, tree,
                            ui_active_array_by_rep, server=None):
     """Drive ColorBy on every loaded rep from the active-array map.
@@ -60,8 +77,14 @@ def on_active_array_change(state, controller, source_registry, tree,
     for rep_path in loaded:
         array_path = active_map.get(rep_path)
         realization_idx = panel_realizations.get(array_path) if array_path else None
+        # Wellbore-frame channel: SHOW it (exclusive) in the active view
+        # BEFORE coloring — on a plain channel SELECTION (data_load
+        # auto-activates frame→channel, no eye click) this is what renders
+        # the log via its own per-channel extractor.
+        if array_path and view is not None:
+            _show_channel_active_view(tree, rep_path, array_path, view)
         source_resolver.apply_color_array(
-            source_registry, tree, rep_path, array_path,
+            source_registry, tree, rep_path, array_path, view=view,
             realization_idx=realization_idx,
         )
         if rep_path in hidden_set and view is not None:
@@ -239,6 +262,16 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     if not r_path:
         return
 
+    # Wellbore-frame channel detection: the toggled node is a channel
+    # iff its rep ancestor is a 'Frame' AND the ancestor is not the node
+    # itself (a channel walks UP past its own property kind to 'Frame').
+    # 'SeismicWellboreFrame' / 'MarkerFrame' are distinct strings so the
+    # exact == 'Frame' test never false-positives. The channel leaf path
+    # == array_path (the tree eye node). Coloring one channel re-points
+    # the frame's per-view extractor at it → one log at a time.
+    rep_kind = tree.find_type(r_id) if r_id is not None else None
+    is_channel = rep_kind == 'Frame' and r_id != node_id
+
     view, html_view = panel_resolver.resolve_view_and_html_view(server, panel_id)
     bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
 
@@ -311,19 +344,25 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
             state.ui_hidden_rep_paths_by_view = hidden_by_view
             if active and active == bucket_key:
                 state.ui_hidden_rep_paths = list(hidden_bucket)
-            ijk = source_registry.get_ijk_grid(r_path)
-            if ijk is not None:
-                try:
-                    ijk.show(view=view)
-                except Exception:
-                    pass
-            else:
-                eb = source_registry.get_extract_block(r_path)
-                if eb is not None and eb.source is not None and view is not None:
+            # Wellbore channel: do NOT show the legacy frame source — it
+            # would surface the frame's FIRST channel (frame-pathed
+            # ExtractBlock). The per-view extractor Show below
+            # (set_extract_channel) is the only thing that should render
+            # for a frame.
+            if not is_channel:
+                ijk = source_registry.get_ijk_grid(r_path)
+                if ijk is not None:
                     try:
-                        pvsimple.Show(eb.source, view=view)
+                        ijk.show(view=view)
                     except Exception:
                         pass
+                else:
+                    eb = source_registry.get_extract_block(r_path)
+                    if eb is not None and eb.source is not None and view is not None:
+                        try:
+                            pvsimple.Show(eb.source, view=view)
+                        except Exception:
+                            pass
 
     # Apply ColorBy on the target view's displays. Do this
     # explicitly here (rather than relying on @state.change of the
@@ -332,10 +371,67 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     # panel. For MR properties, the per-view realization choice
     # threads through so the resolver picks the suffixed VTK array
     # name (`<title>_real_<idx>`).
-    source_resolver.apply_color_array(
+    # Re-point the FRAME's per-view extractor at the chosen channel
+    # (one log at a time) BEFORE coloring — apply_color_array re-reads
+    # the channel's OWN extractor arrays via resolve_array_for_path, so
+    # the SHOW (which materialises + exclusively shows that channel's
+    # extractor) MUST happen first. Toggling the channel OFF (new_value
+    # is None) just Hides that channel's extractor.
+    if is_channel:
+        try:
+            rep_in_scene = source_resolver._scene_rep_for_view(r_path, view)
+            if rep_in_scene is not None:
+                rep_in_scene.set_channel_visible(
+                    array_path, new_value is not None,
+                )
+        except Exception:
+            pass
+    resolved = source_resolver.apply_color_array(
         source_registry, tree, r_path, new_value, view=view,
-        realization_idx=new_realization_idx,
+        realization_idx=new_realization_idx, clear_on_empty=True,
     )
+    # Make the COE follow the channel actually VIEWED. The editor is
+    # driven by `active_color_array_name` (set by the activator's
+    # active-NODE path), which an eye click does NOT update — so on a
+    # frame that shows one log at a time, viewing a 2nd channel left the
+    # COE pointing at the 1st. Publish the viewed channel as the COE's
+    # active array + path (the COE reads the channel's OWN extractor via
+    # `channel_extractor_for(active_color_array_path)`).
+    if is_channel:
+        if new_value is not None:
+            ch_title = tree.find_title(node_id) or ""
+            ch_kind = tree.find_type(node_id) or ""
+            state.active_representation_path = r_path
+            state.active_color_array_name = ch_title
+            state.active_color_array_path = array_path
+            state.active_property_kind = (
+                ch_kind if ch_kind in (
+                    "ContinuousProperty", "DiscreteProperty", "CategoricalProperty"
+                ) else ""
+            )
+            try:
+                controller.update_color_editor(ch_title)
+            except Exception:
+                pass
+        else:
+            # Channel hidden — leave colour-map mode (back to Solid).
+            state.active_color_array_name = ""
+            state.active_property_kind = ""
+            state.active_color_array_path = ""
+    # The user switched the eye to a property that resolves to NO
+    # renderable array (a partial stub, a missing array, or — for a
+    # wellbore frame — a log on a partition the extractor discards).
+    # The colour was just cleared; tell the user why nothing painted
+    # instead of leaving them guessing. (Generic: fires for ANY rep.)
+    if new_value is not None and resolved is False:
+        title = tree.find_title(node_id) or ""
+        state.empty_color_snackbar_text = (
+            f"« {title} » : aucune donnée à afficher sur cette représentation"
+        )
+        # Reset then set so re-toggling the SAME property re-fires the
+        # snackbar (the var change is what triggers it).
+        state.empty_color_snackbar_visible = False
+        state.empty_color_snackbar_visible = True
     # When deactivating (new_value is None), the scalar bar for the
     # old array is orphaned in this view — sweep stale bars so the
     # legend goes away when the rep flips back to SolidColor.

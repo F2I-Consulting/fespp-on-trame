@@ -71,4 +71,20 @@ RUN /opt/trame/entrypoint.sh build && \
     . /opt/trame/activate_venv.sh && \
     cd /deploy && \
     uv pip install -r setup/requirements.txt && \
-    uv pip install .
+    uv pip install . && \
+    # Force the www regeneration AFTER our requirements are installed.
+    # The first `entrypoint.sh build` runs generate_www.py which calls
+    # `python -m trame.tools.www` via subprocess.run(...) WITHOUT
+    # check=True — if trame isn't fully resolvable from the subprocess
+    # at that point, the command silently fails and /deploy/server/www
+    # stays empty. An empty www directory makes Apache's
+    # `FallbackResource /index.html` loop on itself
+    # (AH00125 subrequest nesting), yielding HTTP 500 on the first
+    # browser request. Rebuilding the www explicitly here, after
+    # `uv pip install` has put trame on disk in the venv, guarantees
+    # the static client is in place before the container exits build.
+    /opt/trame/entrypoint.sh build www && \
+    # Sanity check: fail the build loudly if the www directory still
+    # ends up empty. Better a broken build than a runtime 500 with
+    # no logs (which is what bit us once already).
+    test -s /deploy/server/www/index.html

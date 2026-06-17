@@ -62,6 +62,8 @@ def on_tree_hierarchy_mode_change(state, controller, collector, tree_hierarchy_m
     state.ui_loaded_array_paths = []
     state.ui_active_array_by_rep = {}
     state.ui_active_array_by_rep_by_view = {}
+    state.ui_loaded_marker_paths = []
+    state.ui_visible_marker_paths_by_view = {}
     if had_selection:
         state.tree_hierarchy_snackbar_visible = True
     if state.file_loaded:

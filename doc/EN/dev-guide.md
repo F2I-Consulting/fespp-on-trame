@@ -251,17 +251,33 @@ nodes (idempotent — keyed by uuid) and returns the effective parent
 node id. It's called from `buildDataAssemblyFromDataObjectRepo` for
 every top-level rep.
 
-### Per-Rep Extract: ExtractRepWithoutCopy
+### Per-Rep Extract: EnergisticsExtractor (chained on collector)
 
-`SetExtractRepPath(path)` chains an `EnergisticsExtractor` filter on
-top of the collector for that one rep, so each rep gets its own
-single-output ParaView source. The Python side (`RepSources.get_or_create`)
-uses this to obtain a stable proxy per rep_path; the diffuse-color
-default tint and ColorBy operate on those individual sources.
+Each loaded rep gets its own single-output ParaView source via an
+`EnergisticsExtractor` filter chained on top of the collector. The
+Python side (`ExtractBlockRepresentation._create_source` in
+`extract_block.py`) builds the extractor via
+`_create_plugin_filter_proxy("EnergisticsExtractor", …)` and registers
+it under a deterministic `rep_<rep_path-with-_>` name. The Python side
+diffuse-color default tint and ColorBy operate on this individual
+source.
 
 The "WithoutCopy" semantics shallow-copy the partition data in
 `RequestData`, so the sub-source automatically tracks upstream changes
 (selector add/remove, realization swap, property in-place addition).
+
+**Why Python and not the C++ `SetExtractRepPath` proxy command:** the
+collector's C++ side does have a `SetExtractRepPath(path)` property
+command that internally calls
+`controller->RegisterPipelineProxy(extract, regName)` — but that path
+silently fails to re-publish the proxy when called a second time
+under the same `regName` after a Python `pvsimple.Delete` cycle
+(deselect-all + reselect on the same rep). See PARAVIEW.md
+"`controller->RegisterPipelineProxy` silently fails the second time
+under the same name" for the documented workaround pattern. The
+Python-direct path bypasses the controller entirely
+(`spm->NewProxy + spm->RegisterProxy("sources", …)`), which is
+re-callable N times in a row.
 
 ### Per-View Clone: vtkEPCCollectorClone
 
@@ -438,6 +454,17 @@ for subtrees) and writes three nested-dict lists:
 Each dict has: `id`, `parent_id`, `title`, `path`, `type`, `icon`,
 `is_ts`, `is_mr`, optional `disabled`, optional `children`.
 
+**Sibling order.** The C++ assembly emits children in its own order; the
+emitted `ui_subtree_*` dicts are then sorted **alphabetically at every
+level** (the hierarchy is kept; only siblings are reordered) via
+`_sibling_sort_key` — case-insensitive, accent-folded (`Éclair` sorts
+with `E`), natural-numeric (`Grid2` before `Grid10`), with the
+`!!!PARTIAL!!!` marker stripped so a partial sorts by its real name. This
+is **presentational only**: it reorders the three emitted lists and each
+node's `children`; node identity everywhere else is by `id`/`path`, never
+list position (the assembly walk, `find_*`, dataset/partition indexing,
+MR/timeseries, selection are all order-independent).
+
 Dispatching to the right tab handles the tree-hierarchy modes:
 top-level `Feature` / `Interpretation` nodes recurse via
 `_resolve_dispatch_kind` until the first non-grouping descendant is
@@ -608,6 +635,78 @@ that lets `multi_view._is_per_view_source(name)` detect per-view
 proxies and skip them when mirroring visibility from a ref view to
 a new view (otherwise `GetDisplayProperties` would lazily create
 phantom Vis=1 displays in the wrong view).
+
+#### Per-view IjkGrid pipeline gotchas
+
+A cluster of subtle ordering bugs lives in the per-view IjkGrid path
+(`RepInScene._ensure_per_view_ijk` → `IjkGrid.set_node_id`). All four
+were needed for a TimeSeries IjkGrid (`dynamicDiscreteProp.epc`) to
+render and recolor correctly:
+
+1. **Clone must execute before the per-view extractor is built.**
+   `_ensure_per_view_ijk` calls `clone.UpdatePipeline()` *before*
+   constructing the per-view `EnergisticsExtractor`. The extractor's
+   `RequestDataObject` peeks at the clone's assembly to decide its
+   output type; an un-executed clone has an empty assembly → the
+   extractor falls back to a `vtkPolyData` placeholder → every
+   downstream `ExplicitStructuredGridCrop` rejects it with
+   "Input ... is of type vtkPolyData, but a vtkExplicitStructuredGrid
+   is required".
+2. **rep_data needs a full `UpdatePipeline()` (data pass) before the
+   slicers chain on it** — `UpdatePipelineInformation()` alone doesn't
+   settle the concrete output type. The engine's `data_load.run` also
+   forces a data pass on the rep_data extractor + each slicer (not
+   just an info pass) so the property arrays propagate downstream.
+3. **`_refresh_parent_rep_visibility` defers to `ijk.show()` for IJK
+   reps.** For non-IJK the "rep source" is the rendered geometry; for
+   IJK the `_src_extract_init` extractor is NOT — `ijk.show()` hides
+   it whenever any slicer is visible. A blind `Show(self.source())`
+   here repainted the un-cropped grid as a SolidColor block over the
+   slicers (the red overlay seen after a 2nd property selector
+   flipped the active array via `on_active_array_change`).
+4. **The activator's `ijk_lookup` is per-view-aware**
+   (`boot._ijkgrid_by_rep_path` resolves the drawer-target view's
+   per-view IjkGrid, legacy fallback). The legacy IjkGrid's sources
+   are Hidden in the panel, so a legacy-only lookup made
+   `_resolve_color_target_source` find no visible target and bail
+   before `update_color_editor` — leaving the Colors panel stuck on
+   SolidColor when the active node differed from the eye-coloured one.
+
+#### Per-view scoped LUT / PWF naming
+
+`source_resolver.resolve_target_scoped_lut` and the rendering path
+(`apply_color_array` → `swap_to_scene_tfs`) MUST key the per-(scene,
+array) LUT on the **sanitized VTK array name**
+(`utils.naming.make_valid_vtk_name`), not the raw RESQML title. A
+title like `"Pressure (PRESSURE)"` materializes as the VTK array
+`"PressurePRESSURE"`; keying the COE's scoped LUT on the raw title
+made the editor look up a non-existent array (empty range) and edit a
+different LUT proxy than the displays rendered through.
+
+> **C++ invariant (array naming).** As of the array-naming consistency
+> fix, **every** colorable VTK array name is produced by C++
+> `MakeValidNodeName` — grid/UG properties (both the multi-proc AND the
+> single-proc/default ctor) and wellbore-log channels alike. Before the
+> fix the single-proc grid ctor and the channel mapper named arrays with
+> the **raw** title, so Python had to probe the source to discover which
+> name a given array actually carried (`source_resolver.real_base_name`).
+> `make_valid_vtk_name` is now a **byte-for-byte mirror** of C++
+> `MakeValidNodeName`, including the leading-`_` prepend it applies when
+> the stripped result is empty or starts with a digit / `-` / `.` (e.g.
+> `"123abc"` → `"_123abc"`). The Python source-probe helpers
+> (`real_base_name`, the title-then-sanitized fallbacks in
+> `resolve_array_for_path` / stats `_original_source_and_name`) are kept
+> as a **defensive layer** that tolerates an out-of-date plugin build
+> (raw-named arrays); they can be trimmed once every deployed plugin
+> carries the fix.
+
+New per-scene PWFs default to **flat opacity 1**
+(`ViewScene.get_or_create_pwf` flattens ParaView's seeded 0→1 ramp
+when it's still the untouched two-stop default, preserving the
+X-extent). NaN opacity is a separate `NanOpacity` on the LUT (default
+0 — transparent), so a flat-1 valid-value curve and transparent NaN
+cells coexist, and a user's later opacity edits are never re-flattened
+(cached PWFs return early).
 
 ### UI Layer
 

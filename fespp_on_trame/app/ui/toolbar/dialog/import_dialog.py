@@ -18,7 +18,9 @@ _IMPORT_CLICK_JS = (
     "  try {"
     "    var _doc=($event&&$event.target)?$event.target.ownerDocument:document;"
     "    var _inp=_doc&&_doc.getElementById('fesppFileInput');"
-    "    var _f=_inp&&_inp.files;"
+    # Read the ACCUMULATED File objects (kept on the element across drops),
+    # falling back to the input's own FileList if the accumulator is absent.
+    "    var _f=(_inp&&_inp._fesppFiles&&_inp._fesppFiles.length)?_inp._fesppFiles:(_inp&&_inp.files);"
     "    upload_debug='files:'+((_f&&_f.length)||0);"
     "    if (_f&&_f.length) {"
     "      var _win=_doc.defaultView;"
@@ -40,6 +42,7 @@ _IMPORT_CLICK_JS = (
     "        upload_debug='sent:'+_url;"
     "        upload_uploading=true; upload_progress=0;"
     "        upload_file_names=[]; upload_file_count=0;"
+    "        if(_inp){_inp._fesppFiles=[]; _inp.value='';}"
     "      }"
     "    }"
     "  } catch(e) { upload_debug='err:'+e.message; }"
@@ -229,10 +232,24 @@ class ImportDialog:
                                                 "position: absolute; inset: 0; width: 100%; height: 100%;"
                                                 " opacity: 0; cursor: pointer; z-index: 1;"
                                             ),
+                                            # A native <input type=file> REPLACES its FileList on
+                                            # every pick/drop — it never accumulates. To make
+                                            # successive drops add up, keep the File objects in a
+                                            # plain array on the element (`_fesppFiles`) and append
+                                            # each new batch (de-duped by name+size). File refs stay
+                                            # valid even after the input's own FileList is replaced.
+                                            # The Import JS reads `_fesppFiles`, not `input.files`.
                                             change=(
-                                                "upload_file_names=Array.from($event.target.files)"
-                                                ".map(function(f){return f.name;});"
-                                                " upload_file_count=upload_file_names.length;"
+                                                "var _inp=$event.target;"
+                                                "var _acc=_inp._fesppFiles||[];"
+                                                "Array.from(_inp.files).forEach(function(f){"
+                                                "  if(!_acc.some(function(g){"
+                                                "    return g.name===f.name&&g.size===f.size;})){"
+                                                "    _acc.push(f);}"
+                                                "});"
+                                                "_inp._fesppFiles=_acc;"
+                                                "upload_file_names=_acc.map(function(f){return f.name;});"
+                                                "upload_file_count=upload_file_names.length;"
                                             ),
                                         )
 
@@ -269,7 +286,14 @@ class ImportDialog:
                                                     variant="text",
                                                     size="x-small",
                                                     color="red-lighten-2",
+                                                    # Drop this file from BOTH the display list and
+                                                    # the input's accumulated array, so a later drop
+                                                    # doesn't re-introduce it (the change handler
+                                                    # rebuilds upload_file_names from `_fesppFiles`).
                                                     click=(
+                                                        "var _doc=($event&&$event.target)?$event.target.ownerDocument:document;"
+                                                        "var _inp=_doc&&_doc.getElementById('fesppFileInput');"
+                                                        "if(_inp&&_inp._fesppFiles){_inp._fesppFiles.splice(idx,1);}"
                                                         "upload_file_names = upload_file_names.filter(function(_, i){ return i !== idx; });"
                                                         " upload_file_count = upload_file_names.length;"
                                                     ),

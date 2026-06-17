@@ -44,8 +44,8 @@ __pycache__/
 /fespp-src-local/
 # ParaView Trame Components reference sources (not part of the project)
 /paraview-trame-components/
-doc/elba.md
-doc/elba.pdf
+# Private docs (Elba deployment, etc.) — local only, excluded from git
+doc/private/
 .claude/
 
 # Personal reference notes — accumulated knowledge about ParaView /

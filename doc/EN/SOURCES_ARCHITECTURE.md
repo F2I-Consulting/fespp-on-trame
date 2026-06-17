@@ -12,7 +12,7 @@ SM proxy graph.
 
 For a full app overview, see [`dev-guide.md`](dev-guide.md). For
 general ParaView / RESQML background, see the local notes
-[`../PARAVIEW.md`](../PARAVIEW.md) and [`../RESQML.md`](../RESQML.md)
+[`../PARAVIEW.md`](../../PARAVIEW.md) and [`../RESQML.md`](../../RESQML.md)
 (gitignored).
 
 ---
@@ -163,11 +163,17 @@ EPCCollector  --> ExtractBlock (rep_<sanitized>)
                        +--> Clip  (optional, plane)
 ```
 
-The ExtractBlock is created via the collector's `SetExtractRepPath`
-+ `GetExtractedRepProducerName` SM properties — the FESPP C++ side
-registers a sub-pipeline `EnergisticsExtractor` filter (ShallowCopy
-semantics, no real data duplication) and returns its registration
-name to Python.
+The per-rep `EnergisticsExtractor` filter (ShallowCopy semantics, no
+real data duplication) is created Python-side via
+`_create_plugin_filter_proxy("EnergisticsExtractor", …)` chained on
+the collector source, then registered under the deterministic name
+`rep_<rep_path-with-_>`. (The collector's C++ `SetExtractRepPath`
+property command produces an equivalent extractor but its
+`controller->RegisterPipelineProxy` step silently fails on a
+deselect/reselect cycle on the same rep — see PARAVIEW.md
+"`controller->RegisterPipelineProxy` silently fails the second time
+under the same name" for the root cause. The Python-direct path
+bypasses the controller entirely.)
 
 Chain entries use a simpler `ChainEntry` (one proxy per entry, not a
 dict): the input is a single source so no multi-upstream fan-out is
@@ -344,9 +350,12 @@ a state reload:
 registration names.
 
 `_find_registered_proxy(reg_name)` widens the SM `ProxyManager` lookup
-to both the `filters` and `sources` groups, because the C++ side
-registers extract filters under `filters` (RegisterPipelineProxy) but
-`pvsimple.FindSource` only scans `sources`.
+to both the `filters` and `sources` groups. Today the Python-direct
+extractor build registers under `sources`; the helper keeps the
+`filters` fallback as defensive coverage for code paths or legacy
+saved sessions that may have landed there, and because
+`pvsimple.FindSource` only scans `sources` and would miss anything
+else on its own.
 
 ---
 
@@ -391,7 +400,7 @@ manipulate their own internal state):
 ## See also
 
   - [`dev-guide.md`](dev-guide.md) — full app architecture.
-  - [`../PARAVIEW.md`](../PARAVIEW.md), [`../RESQML.md`](../RESQML.md)
+  - [`../PARAVIEW.md`](../../PARAVIEW.md), [`../RESQML.md`](../../RESQML.md)
     — local reference notes on the underlying tech stacks (gitignored).
   - `REFACTOR_PLAN.md` — pending refactor: collapse IjkGrid + EB into
     a shared `Representation` base, unify the chain entry type.

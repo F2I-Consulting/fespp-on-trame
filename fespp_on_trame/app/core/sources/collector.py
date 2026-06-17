@@ -54,11 +54,39 @@ class Collector:
 
     def add_file(self, epc_file_path: str) -> bool:
         """Push a new EPC path into the Files property and re-parse the
-        assembly into the Python tree."""
-        self._collector.SetPropertyWithName("Files", epc_file_path)
-        self._collector.UpdatePipelineInformation()
-        controller.update_data_information()
-        return True
+        assembly into the Python tree.
+
+        Belt-and-suspenders: the C++ EPC parse now catches its own
+        FESAPI exceptions (see vtkEPCCollector::GetAllFiles /
+        ResqmlDataRepository...::addFile) so a malformed EPC degrades to
+        an empty/partial tree instead of terminating the process. This
+        try/except is the Python-side net for any error the C++ now
+        surfaces (vs. silently dying) — it turns it into a user-facing
+        `state.load_error` rather than an unhandled traceback. It CANNOT
+        catch a hard C++ SIGABRT/SIGSEGV (the process would already be
+        gone); the C++ guards are what prevent that."""
+        try:
+            print(f"[DIAG load] add_file ENTER {epc_file_path}", flush=True)
+            self._collector.SetPropertyWithName("Files", epc_file_path)
+            self._collector.UpdatePipelineInformation()
+            print("[DIAG load] add_file: UpdatePipelineInformation done", flush=True)
+            controller.update_data_information()
+            try:
+                _asm = self._collector.GetClientSideObject().GetOutputDataObject(0)
+                _nnodes = _asm.GetDataAssembly().GetNumberOfChildren(0) if _asm and _asm.GetDataAssembly() else -1
+            except Exception:
+                _nnodes = "?"
+            print(f"[DIAG load] add_file DONE — tree top-level children={_nnodes}", flush=True)
+            return True
+        except Exception as exc:
+            import os
+            import traceback
+            traceback.print_exc()
+            state.load_error = (
+                f"Failed to load '{os.path.basename(epc_file_path)}': {exc}"
+            )
+            state.flush()
+            return False
 
     def show(self):
         pvsimple.Show(proxy=self._collector, view=pvsimple.GetActiveView())

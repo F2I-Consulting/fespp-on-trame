@@ -270,6 +270,30 @@ class ViewScene:
                         pass
         except Exception:
             pass
+        # Default a NEW per-scene PWF to FLAT opacity 1. ParaView seeds a
+        # fresh opacity TF (and its global template) with the 0→1 ramp
+        # `[0,0,0.5,0, 1,1,0.5,0]`, so the COE would render the lowest
+        # scalar at opacity 0 and `on_opacities_changed` would flip
+        # `EnableOpacityMapping=1` (which suppresses NaN opacity). The
+        # app default is flat-1 valid-value opacity with NaN handled
+        # separately by the LUT's `NanOpacity`. Flatten ONLY the
+        # untouched two-stop 0→1 default; preserve the X-extent so the
+        # later `RescaleTransferFunction` still maps to the data range.
+        # Cached PWFs return early above, so a user's per-stop opacity
+        # edits are never re-flattened.
+        try:
+            pts = list(getattr(scene_pwf, "Points", []) or [])
+            is_default_ramp = (
+                len(pts) == 8
+                and abs(float(pts[1])) < 1e-6
+                and abs(float(pts[-3]) - 1.0) < 1e-6
+            )
+            if is_default_ramp:
+                pmin = float(pts[0])
+                pmax = float(pts[-4])
+                scene_pwf.Points = [pmin, 1.0, 0.5, 0.0, pmax, 1.0, 0.5, 0.0]
+        except Exception:
+            pass
         self._pwfs[base_array_name] = scene_pwf
         return scene_pwf
 

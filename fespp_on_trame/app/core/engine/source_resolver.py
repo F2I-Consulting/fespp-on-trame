@@ -26,12 +26,59 @@ Functions:
     Workaround for PV6: `pvsimple.ColorBy(display, None)` raises
     "invalid association string NONE", so SolidColor clears via
     SMProxy.SetScalarColoring."""
-import re
-
 from paraview import simple as pvsimple
 
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
-_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
+
+def _vtk_array_range_from_clientside(pv_src, name, assoc):
+    """Return (min, max) of the named array read from `pv_src`'s
+    CLIENT-SIDE VTK output — bypassing the SM proxy info cache, which
+    PV's internal RescaleTransferFunctionToDataRange reads and which goes
+    stale after an in-place re-extraction (a channel/marker ExtractPath
+    retarget). Mirrors the activator's rescale-from-fresh-array path.
+    Handles a single dataset or a composite (iterates leaves). Returns
+    None when the array isn't present or has no valid range."""
+    if pv_src is None or not name:
+        return None
+    try:
+        cso = pv_src.GetClientSideObject()
+        dobj = cso.GetOutputDataObject(0) if cso is not None else None
+    except Exception:
+        return None
+    store_attr = "GetPointData" if assoc == "POINTS" else "GetCellData"
+
+    def _from_dataset(ds):
+        try:
+            store = getattr(ds, store_attr, None)
+            store = store() if store is not None else None
+            arr = store.GetArray(name) if store is not None else None
+            if arr is not None:
+                rng = arr.GetRange()
+                if rng and rng[0] < rng[1]:
+                    return (float(rng[0]), float(rng[1]))
+        except Exception:
+            pass
+        return None
+
+    if dobj is None:
+        return None
+    direct = _from_dataset(dobj)
+    if direct is not None:
+        return direct
+    # Composite — walk leaves.
+    try:
+        it = dobj.NewIterator()
+        it.InitTraversal()
+        while not it.IsDoneWithTraversal():
+            leaf = it.GetCurrentDataObject()
+            rng = _from_dataset(leaf) if leaf is not None else None
+            if rng is not None:
+                return rng
+            it.GoToNextItem()
+    except Exception:
+        pass
+    return None
 
 
 def _scene_clip_output_for_view(rep_path: str, view):
@@ -66,6 +113,108 @@ def _scene_rep_for_view(rep_path: str, view):
     except Exception:
         return None
     return None
+
+
+def channel_source_for(channel_path):
+    """The per-(channel, view) extractor for a wellbore-frame CHANNEL in
+    the drawer-target view, MATERIALISED (hidden) if absent. Returns None
+    when `channel_path` is not a channel or no frame RepInScene renders
+    it. Each channel owns a PERSISTENT extractor (tube + point array), so
+    the COE / stats read its data DIRECTLY even when a DIFFERENT channel
+    of the frame is the one displayed — no retarget needed (replaces the
+    old read-only-retarget dance)."""
+    if not channel_path:
+        return None
+    try:
+        from fespp_on_trame.app.core import engine as _engine_pkg
+        tree = getattr(_engine_pkg, "_tree", None)
+        if tree is None:
+            return None
+        node_id = tree.find_node_id(channel_path)
+        r_id = tree.find_representation_node(node_id) if node_id is not None else None
+        if r_id is None or r_id == node_id or (tree.find_type(r_id) or "") != "Frame":
+            return None  # not a wellbore-frame channel
+        rep_path = tree.find_path(r_id)
+        pv_view, _panel = target_view_and_panel()
+        ris = _scene_rep_for_view(rep_path, pv_view) if pv_view is not None else None
+        if ris is None:
+            return None
+        return ris.channel_extractor_for(channel_path, create=True)
+    except Exception:
+        return None
+
+
+def nondegenerate_range(lo, hi):
+    """Widen `(lo, hi)` to a finite, NON-zero-width interval.
+
+    A constant property — or an all-NaN log whose NaNs C++ maps to 0 —
+    has `lo == hi`. The COE's CanvasGradient normalises stop positions as
+    `(value - lo) / (hi - lo)`; a zero (or non-finite) width divides by
+    zero and the client throws "addColorStop: non-finite double",
+    blanking the editor. Returns a tiny relative widening (or a unit
+    interval at 0) so the gradient renders a near-flat band instead."""
+    import math
+    try:
+        lo = float(lo)
+        hi = float(hi)
+    except (TypeError, ValueError):
+        return 0.0, 1.0
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        return 0.0, 1.0
+    if hi > lo:
+        return lo, hi
+    span = abs(lo) * 1e-6
+    hi = lo + (span if span > 0.0 else 1.0)
+    if hi <= lo:        # float-rounding safety for huge magnitudes
+        hi = lo + 1.0
+    return lo, hi
+
+
+def _src_has_named_array(src, name):
+    """True iff the PV source proxy `src` exposes a Cell- or Point-data
+    array named exactly `name`."""
+    if src is None or not name:
+        return False
+    try:
+        for store_attr in ("GetCellDataInformation", "GetPointDataInformation"):
+            getter = getattr(src, store_attr, None)
+            di = getter() if getter is not None else None
+            if di is not None and di.GetArray(name) is not None:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def real_base_name(array_name, rep_path, view):
+    """The ACTUAL VTK array base name as it exists on the rep's per-view
+    source.
+
+    A wellbore-frame CHANNEL names its POINT array with the RAW,
+    UNSANITIZED title (C++ `ResqmlWellboreChannelToVtkPolyData` sets
+    `getTitle()` verbatim), whereas grid / surface properties go through
+    `MakeValidNodeName` (sanitized). The render path keys its per-view
+    scoped LUT on whichever name ACTUALLY exists (via
+    `resolve_array_for_path`), so the COE must resolve the SAME name —
+    blindly sanitizing keys a DIFFERENT, never-rendered LUT for channels
+    and makes `GetArrayInformation` miss, blanking the COE graph.
+
+    Strategy: when the raw title differs from its sanitized form and the
+    raw title is present on the per-view source, use the raw title
+    (channel); otherwise the sanitized name (grids/surfaces, MR, or any
+    clean title). Best-effort — defaults to sanitized."""
+    sanitized = make_valid_vtk_name(array_name)
+    if not array_name or array_name == sanitized:
+        return sanitized
+    try:
+        if rep_path and view is not None:
+            ris = _scene_rep_for_view(rep_path, view)
+            src = ris.source() if ris is not None else None
+            if src is not None and _src_has_named_array(src, array_name):
+                return array_name
+    except Exception:
+        pass
+    return sanitized
 
 
 def sources_for_rep_path(source_registry, rep_path, view=None):
@@ -119,6 +268,14 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
             if deepest_leaf is not None:
                 proxy = deepest_leaf.pv_proxies.get(id(s))
             out.append(proxy if proxy is not None else s)
+        return out, view
+
+    # Wellbore frame: the rendered geometry is the VISIBLE channel's OWN
+    # extractor (the primary stays hidden; the chain is N/A for logs).
+    if rep_in_scene is not None and rep_in_scene._is_wellbore_frame():
+        ch = rep_in_scene.visible_channel_extractor()
+        if ch is not None:
+            out.append(ch)
         return out, view
 
     # Phase 3a: non-IjkGrid reps own a per-view extractor + per-view
@@ -213,6 +370,17 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
         if rep_in_scene_clip_out is not None:
             out.append(rep_in_scene_clip_out)
         return out, view
+    # Wellbore frame: ColorBy the VISIBLE channel's OWN extractor (the
+    # log shown one-at-a-time); the primary stays hidden, the chain is
+    # N/A for logs.
+    if rep_in_scene is not None and rep_in_scene._is_wellbore_frame():
+        ch = rep_in_scene.visible_channel_extractor()
+        if ch is not None:
+            out.append(ch)
+        if rep_in_scene_clip_out is not None:
+            out.append(rep_in_scene_clip_out)
+        return out, view
+
     # Phase 3a: non-IjkGrid reps own a per-view EnergisticsExtractor +
     # per-view threshold chain. Fan ColorBy onto those (per-view), not
     # onto the legacy shared ExtractBlock + shared chain.
@@ -263,7 +431,7 @@ def displays_for_rep_path(source_registry, rep_path, view=None):
 
 
 def resolve_array_for_path(source_registry, tree, rep_path, array_path,
-                            realization_idx=None):
+                            realization_idx=None, view=None):
     """See module docstring.
 
     `realization_idx` (default None) — when set on a multi-realization
@@ -271,7 +439,12 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
     `<sanitized_title>_real_<realization_idx>` first. Falls back to
     the legacy unsuffixed name when not set or not found, preserving
     the single-realization global-cursor behaviour for non-MR
-    properties and for MR properties without per-property selection."""
+    properties and for MR properties without per-property selection.
+
+    `view` (default None) — when supplied, the per-view EnergisticsExtractor
+    is consulted FIRST as a candidate source. For a wellbore frame the
+    CHANNEL's OWN per-channel extractor (array_path = the channel leaf) is
+    the candidate — the only proxy carrying that channel's array."""
     node_id = tree.find_node_id(array_path)
     if node_id is None:
         return None, None
@@ -287,6 +460,25 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
     if not title:
         return None, None
     candidate_sources = []
+    # Phase 3a.1: when a view is supplied, consult that view's PER-VIEW
+    # source FIRST. For a wellbore frame the array lives on the CHANNEL's
+    # OWN extractor (array_path is the channel leaf), materialised on
+    # demand so it resolves even when hidden — the legacy frame-pathed
+    # source never carries it. Other reps use the primary extractor.
+    if view is not None:
+        try:
+            rep_in_scene = _scene_rep_for_view(rep_path, view)
+            if rep_in_scene is not None:
+                if rep_in_scene._is_wellbore_frame():
+                    ch = rep_in_scene.channel_extractor_for(array_path, create=True)
+                    if ch is not None:
+                        candidate_sources.append(ch)
+                else:
+                    pv_src = rep_in_scene._ensure_extractor()
+                    if pv_src is not None:
+                        candidate_sources.append(pv_src)
+        except Exception:
+            pass
     src = source_registry.get(rep_path)
     if src is not None:
         candidate_sources.append(src)
@@ -296,7 +488,7 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
             if name == "rep" + (rep_path or "").replace('/', '_'):
                 candidate_sources.append(s)
                 break
-    sanitized = _NAME_INVALID_RE.sub("", title)
+    sanitized = make_valid_vtk_name(title)
 
     # Per-property MR path: look up the suffixed array name first.
     # Falls through to the legacy lookup when the suffixed array
@@ -412,7 +604,23 @@ def resolve_target_scoped_lut(array_name):
         server = get_server()
         state = server.state
         tree = getattr(_engine_pkg, "_tree", None)
-        base = array_name
+        target_panel = (
+            getattr(state, "drawer_target_view_id", "") or ""
+            or getattr(state, "fespp_active_panel_id", "") or ""
+        )
+        scene_registry = getattr(server.context, "scene_registry", None)
+        scene = scene_registry.get_scene(target_panel) if (scene_registry and target_panel) else None
+        pv_view = scene.pv_view if scene is not None else None
+        rep_path = getattr(state, "active_representation_path", "") or ""
+        # `array_name` is the UI title. The render path keys its scoped
+        # LUT on whichever VTK array name ACTUALLY exists on the per-view
+        # source: the make_valid_vtk_name-SANITIZED name for grid /
+        # surface properties (FESPP strips chars), but the RAW title for
+        # a wellbore CHANNEL (its POINT array is named with the verbatim
+        # title). Probe the source so the COE keys the SAME LUT — keying
+        # blindly on the sanitized name would edit a different,
+        # never-rendered LUT for channels (empty COE graph).
+        base = real_base_name(array_name, rep_path, pv_view)
         if tree is not None:
             active_nodes = state.ui_active_node_reservoir or []
             if active_nodes:
@@ -421,29 +629,19 @@ def resolve_target_scoped_lut(array_name):
                 except Exception:
                     array_path = None
                 if array_path and realization_dispatch.is_multirealization_property(tree, array_path):
-                    panel_id = (
-                        getattr(state, "drawer_target_view_id", "") or ""
-                        or getattr(state, "fespp_active_panel_id", "") or ""
-                    )
                     idx = realization_dispatch.get_active_realization_for_view(
-                        state, panel_id, array_path,
+                        state, target_panel, array_path,
                     )
                     if idx is None:
                         idx = realization_dispatch.default_realization_for(
                             state, tree, array_path,
                         )
                     if idx is not None:
+                        # Suffix so MR matches the rendering path's
+                        # "<sanitized_title>_real_<idx>".
                         base = realization_dispatch.suffixed_array_name(
-                            array_name, int(idx),
+                            base, int(idx),
                         )
-        target_panel = (
-            getattr(state, "drawer_target_view_id", "") or ""
-            or getattr(state, "fespp_active_panel_id", "") or ""
-        )
-        scene_registry = getattr(server.context, "scene_registry", None)
-        if scene_registry is None or not target_panel:
-            return base, None
-        scene = scene_registry.get_scene(target_panel)
         if scene is None:
             return base, None
         return base, scene.get_or_create_lut(base)
@@ -532,8 +730,32 @@ def scene_lut_for_view(view, array_name):
     return pvsimple.GetColorTransferFunction(array_name)
 
 
+def _clear_coloring(displays, view):
+    """Drop ColorBy to SolidColor and hide the stale scalar bar on
+    every display. Shared by the deselect path (array_path falsy) and
+    the eye-toggle-resolves-to-nothing path (clear_on_empty=True).
+    Hide the bar via SetScalarBarVisibility BEFORE severing the LUT
+    wire (SetScalarColoring('',0)) — the TransferFunctionManager only
+    reaps bars whose LUT it still tracks as wired."""
+    for d in displays:
+        try:
+            if d.LookupTable is not None and view is not None:
+                d.SetScalarBarVisibility(view, False)
+        except Exception:
+            pass
+        try:
+            sm = getattr(d, "SMProxy", None)
+            if sm is not None:
+                sm.SetScalarColoring("", 0)
+                sm.UpdateVTKObjects()
+            else:
+                d.ColorArrayName = ['', '']
+        except Exception:
+            pass
+
+
 def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
-                       realization_idx=None):
+                       realization_idx=None, clear_on_empty=False):
     """See module docstring.
 
     `realization_idx` — when `array_path` is a multi-realization
@@ -541,42 +763,38 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     view, this is the integer index. Threaded through to
     `resolve_array_for_path` so the suffixed VTK array name
     "<title>_real_<idx>" is used for the ColorBy call. Defaults to
-    None (legacy behaviour: resolver picks the unsuffixed name)."""
+    None (legacy behaviour: resolver picks the unsuffixed name).
+
+    `clear_on_empty` — when `array_path` is given but resolves to no
+    VTK array (a partial property, missing/not-yet-materialized data),
+    clear the previous ColorBy + scalar bar instead of leaving them.
+    Only the user-driven eye-toggle passes True; the re-apply/restore
+    callers stay False so a transient load-time miss doesn't flicker a
+    correctly-coloured rep to SolidColor."""
     displays = displays_for_rep_path(source_registry, rep_path, view=view)
     if not displays:
-        return
+        return True
     if not array_path:
-        # Deselect path (tree eye unchecked). Hide the previous
-        # scalar bar through display.SetScalarBarVisibility BEFORE
-        # clearing SetScalarColoring — otherwise the LUT reference
-        # is severed first and vtkSMTransferFunctionManager's
-        # bookkeeping leaves the bar widget visible on the view
-        # until a downstream sweep happens to reap it. With per-
-        # view LUT scope the timing matters: the manager only
-        # hides bars whose LUT it currently tracks as wired, so
-        # we must tell it BEFORE the wire goes away.
-        for d in displays:
-            try:
-                if d.LookupTable is not None and view is not None:
-                    d.SetScalarBarVisibility(view, False)
-            except Exception:
-                pass
-            try:
-                sm = getattr(d, "SMProxy", None)
-                if sm is not None:
-                    sm.SetScalarColoring("", 0)
-                    sm.UpdateVTKObjects()
-                else:
-                    d.ColorArrayName = ['', '']
-            except Exception:
-                pass
-        return
+        # Deselect path (tree eye unchecked).
+        _clear_coloring(displays, view)
+        return True
     assoc, name = resolve_array_for_path(
         source_registry, tree, rep_path, array_path,
-        realization_idx=realization_idx,
+        realization_idx=realization_idx, view=view,
     )
     if not assoc or not name:
-        return
+        # array_path was given but resolves to NOTHING: partial stub,
+        # missing array, or (for a wellbore frame) a log on a partition
+        # the extractor discards. For a user-driven eye-toggle
+        # (clear_on_empty=True) the user explicitly switched the eye to
+        # a property with no renderable data, so clear the stale ColorBy
+        # + hide the previous colour bar (the reported "stays on z
+        # index"). Re-apply/restore callers stay tolerant of transient
+        # load-time misses (default False). Returns False so the caller
+        # can surface a "no data to display" alert.
+        if clear_on_empty:
+            _clear_coloring(displays, view)
+        return False
     for d in displays:
         try:
             pvsimple.ColorBy(d, (assoc, name))
@@ -584,6 +802,27 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
             pass
     target_view = view if view is not None else pvsimple.GetActiveView()
     scene_lut, scene_pwf = swap_to_scene_tfs(displays, target_view, name)
+    # Force the LUT range from the freshly-resolved VTK array.
+    # `pvsimple.ColorBy`'s internal RescaleTransferFunctionToDataRange
+    # reads a STALE proxy info cache when the upstream just re-extracted
+    # — a wellbore channel/marker pick re-points the per-view extractor's
+    # ExtractPath from the whole-frame composite to a single leaf
+    # partition, so PV emits "Could not determine array range" and leaves
+    # the LUT at [0,1]; the tube then paints as flat SolidColor / looks
+    # invisible. Mirror the activator's rescale-from-fresh-array
+    # workaround. Best-effort; skipped for indexed (categorical) LUTs
+    # whose annotations a numeric rescale would disturb.
+    try:
+        ris = _scene_rep_for_view(rep_path, target_view)
+        pv_src = ris._ensure_extractor() if ris is not None else None
+        rescale_lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(name)
+        if (pv_src is not None and rescale_lut is not None
+                and not getattr(rescale_lut, "IndexedLookup", 0)):
+            rng = _vtk_array_range_from_clientside(pv_src, name, assoc)
+            if rng is not None:
+                rescale_lut.RescaleTransferFunction(rng[0], rng[1])
+    except Exception:
+        pass
     # `pvsimple.ColorBy` doesn't show the scalar bar — and a prior
     # `hide_unused_scalar_bars` sweep may have unbound the bar from
     # the view's representation list, in which case a raw
@@ -619,3 +858,4 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     # survives the sweep.
     if target_view is not None:
         hide_unused_scalar_bars(view=target_view)
+    return True

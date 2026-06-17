@@ -403,6 +403,8 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
     except Exception:
         saved_active_view = None
     cleanup_merged = None
+    _restore_channel = (lambda: None)
+    _orig_real_name = None
     if row_kind == "view":
         from fespp_on_trame.app.core.engine import realization_dispatch
         real_idx = realization_dispatch.get_active_realization_for_view(
@@ -430,18 +432,28 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
         ts_idx = entry.get("ts_idx")
         if real_idx is None:
             real_idx = stats_dispatch._default_real_idx(state, tree, array_path)
-        source = source_registry.get(rep_path)
+        # Channel-aware source + REAL array name (wellbore channels: the
+        # array lives only on the per-view extractor and is raw-named).
+        _otitle, _okind, _ovtk = stats_dispatch._resolve_vtk_name(
+            tree, array_path, real_idx,
+        )
+        source, _orig_real_name, _restore_channel = stats_dispatch._original_source_and_name(
+            state, source_registry, tree, array_path, rep_path, _ovtk, _otitle,
+        )
         if source is None:
             return None
     vtitle, vkind, vtk_name = stats_dispatch._resolve_vtk_name(
         tree, array_path, real_idx,
     )
+    if _orig_real_name:
+        vtk_name = _orig_real_name   # raw title for wellbore channels
     if not vtk_name:
         if cleanup_merged is not None:
             try:
                 pvsimple.Delete(cleanup_merged)
             except Exception:
                 pass
+        _restore_channel()
         return None
     # Set the time-step. For Original rows pick the entry's ts_idx
     # (or fall back to state.time_index). For View rows the view's
@@ -521,6 +533,9 @@ def compute_histogram_figure(state, tree, scene_registry, source_registry,
                 pvsimple.Delete(cleanup_merged)
             except Exception:
                 pass
+        # Restore the channel extractor's ExtractPath (no-op for
+        # non-channels) so the live render is left untouched.
+        _restore_channel()
         # Restore PV globals so no fan-out handler sees a transient
         # source / view from the histogram compute as the "active".
         try:

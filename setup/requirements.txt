@@ -4,7 +4,14 @@ Pillow>=10.4.0 # @9.5.0 critical vulnerability, see https://cwe.mitre.org/data/d
 trame
 trame-iframe
 trame-vuetify
-trame-vtk
+# Pinned: trame-vtk 2.11.9 added a top-level `import vtk` (the monolithic
+# module) in its serializers, which pulls in `vtkmodules.vtkViewsInfovis`
+# — a module ParaView's bundled VTK (PV 6.0.1) does NOT ship, so the
+# trame view init crashes with `ModuleNotFoundError: vtkmodules.vtkViewsInfovis`
+# ("Session did not start before timeout expired"). 2.11.8 does not import
+# vtk and works against the same ParaView. Revisit when upstream stops
+# importing the monolithic vtk (or ships vtkViewsInfovis).
+trame-vtk==2.11.8
 trame-dockview
 trame-plotly
 plotly

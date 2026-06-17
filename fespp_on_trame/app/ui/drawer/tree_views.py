@@ -10,12 +10,20 @@ _state = _server.state
 # enum.h. When the user checks one of these, the UI auto-checks all
 # descendants too — `select_strategy="independent"` on the VTreeview
 # means Vuetify itself does no propagation, so we do it manually here.
+# 'Frame' (WellboreFrame logs) and 'MarkerFrame' (marker set) are
+# folders FOR SELECTION: checking one bulk-selects its child logs /
+# markers, and it shows a tri-state checkbox + no eye of its own. They
+# still own a per-view source (the rendering anchor) — see tree.py
+# is_grouping note — so this list governs only tree selection / tri-state,
+# never source creation (the C++ MapperSet classification is independent).
 _GROUPING_KINDS = (
     "Collection",
     "Wellbore",
     "Partial",
     "Feature",
     "Interpretation",
+    "Frame",
+    "MarkerFrame",
 )
 
 # Domain-level dependency: a WellboreChannel or WellboreMarker requires
@@ -76,7 +84,9 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
         if not kind:
             continue
         if kind in _GROUPING_KINDS:
-            for desc in tree.find_all_descendant_ids(node_id):
+            # Selectable-only: implicit grouping expansion must never add a
+            # partial stub (no checkbox, can't load) to the selection.
+            for desc in tree.find_all_selectable_descendant_ids(node_id):
                 _add_implicit(desc)
         if kind in _WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY:
             wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
@@ -251,6 +261,15 @@ _RAINBOW_STYLE = (
     "#ff0000,#ff8000,#ffff00,#00ff00,#00ffff,#0000ff,#8000ff);"
 )
 
+# Conic (pie) gradient for the "Multicolor" chip — rendered on a
+# MarkerFrame whose child markers carry 2+ distinct solid colours.
+_MULTICOLOR_STYLE = (
+    "width:10px;height:10px;border-radius:50%;display:inline-block;"
+    "margin-left:4px;vertical-align:middle;"
+    "background:conic-gradient("
+    "#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000);"
+)
+
 
 def _chip_slot():
     """Color chip rendered next to a tree node label.
@@ -259,15 +278,22 @@ def _chip_slot():
       tree_chip_color_by_path (rep not loaded yet).
     - Rainbow gradient when the entry is the sentinel "PROPERTY"
       (a dataArray is the active eye on the rep).
+    - Conic gradient when the entry is the sentinel "MULTICOLOR"
+      (a MarkerFrame whose child markers have 2+ distinct colours).
     - Solid mdi-circle in the assigned colour otherwise."""
     is_property = (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'PROPERTY'"
     )
+    is_multicolor = (
+        "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'MULTICOLOR'"
+    )
     is_solid = (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path]"
         " && tree_chip_color_by_path[item.path] !== 'PROPERTY'"
+        " && tree_chip_color_by_path[item.path] !== 'MULTICOLOR'"
     )
     html.Div(v_if=is_property, style=_RAINBOW_STYLE)
+    html.Div(v_else_if=is_multicolor, style=_MULTICOLOR_STYLE)
     vuetify3.VIcon(
         "mdi-circle",
         v_else_if=is_solid,
@@ -357,11 +383,34 @@ def _eye_slot(controller):
     into a single unlabelled chip — labels are pure redundancy in
     that state. A click on the folded chip targets the currently
     active panel so the user can break uniformity in one go."""
+    # A Frame (log set) / MarkerFrame (marker set) is a CONTAINER — it
+    # carries no rep eye of its own; each child log gets a data-array eye
+    # and each child marker gets a visibility eye (the blocks below).
+    # Exclude both frame kinds from the rep-eye gate.
     is_loaded_rep = (
         "ui_loaded_rep_paths && ui_loaded_rep_paths.indexOf(item.path) !== -1"
+        " && item.type !== 'MarkerFrame' && item.type !== 'Frame'"
     )
     is_loaded_array = (
         "ui_loaded_array_paths && ui_loaded_array_paths.indexOf(item.path) !== -1"
+    )
+    # Marker leaves (WellboreMarker, runtime kind 'Marker') — MULTI-select
+    # visibility, each independently toggleable per panel.
+    is_loaded_marker = (
+        "ui_loaded_marker_paths && ui_loaded_marker_paths.indexOf(item.path) !== -1"
+    )
+    marker_visible_in_panel = (
+        "ui_visible_marker_paths_by_view"
+        " && ui_visible_marker_paths_by_view[panel.id]"
+        " && ui_visible_marker_paths_by_view[panel.id].indexOf(item.path) !== -1"
+    )
+    marker_all_hidden = (
+        "(fespp_render_panels || []).length > 1"
+        " && (fespp_render_panels || []).every(p => "
+        "!(ui_visible_marker_paths_by_view"
+        " && ui_visible_marker_paths_by_view[p.id]"
+        " && ui_visible_marker_paths_by_view[p.id].indexOf(item.path) !== -1)"
+        ")"
     )
 
     # JS booleans evaluated per (panel, item) inside the v-for scope.
@@ -504,6 +553,53 @@ def _eye_slot(controller):
                     click=(controller.toggle_dataarray_color, "[item.path, panel.id]"),
                 )
 
+    # ---- Marker node (multi-select visibility) ----
+    with html.Div(v_if=is_loaded_marker, classes="d-inline-flex align-center"):
+        # Collapsed: marker shown in no panel → one unlabelled outline
+        # eye; click shows it in the active view.
+        with html.Div(
+            v_if=marker_all_hidden,
+            classes="d-inline-flex align-center ml-1",
+            title=("'Hidden in every view — click to show in the active view'",),
+        ):
+            vuetify3.VIcon(
+                icon="mdi-eye-outline",
+                size="small",
+                color="grey-darken-1",
+                style="cursor: pointer;",
+                click=(controller.toggle_marker_visibility, "[item.path]"),
+            )
+        with html.Div(
+            v_if=f"!({marker_all_hidden})",
+            classes="d-inline-flex align-center",
+        ):
+            with html.Div(
+                v_for="panel in (fespp_render_panels || [])",
+                key="'mrk-' + panel.id",
+                classes="d-inline-flex align-center",
+                style="gap: 1px; margin-left: 4px;",
+                title=("'Toggle ' + item.title + ' in ' + panel.title",),
+            ):
+                html.Span(
+                    "{{ panel.title }}",
+                    classes="text-caption",
+                    style=(
+                        "{ fontSize: '9px', lineHeight: 1,"
+                        f" color: ({marker_visible_in_panel}) ? '#e65100' : '#bdbdbd',"
+                        f" fontWeight: ({marker_visible_in_panel}) ? '700' : '400' }}"
+                        ,
+                    ),
+                )
+                vuetify3.VIcon(
+                    icon=(f"({marker_visible_in_panel}) ? 'mdi-eye' : 'mdi-eye-outline'",),
+                    size="small",
+                    color=(
+                        f"({marker_visible_in_panel}) ? 'deep-orange-darken-1' : 'grey-lighten-1'",
+                    ),
+                    style="cursor: pointer;",
+                    click=(controller.toggle_marker_visibility, "[item.path, panel.id]"),
+                )
+
 
 class TreeViews:
     """Owns the three VTreeviews (reservoir / surface / well). Wires
@@ -537,11 +633,16 @@ class TreeViews:
             if kind in ("partial", "Partial"):
                 return
             curr = list(getattr(state, select_var, []) or [])
-            is_grouping = kind in (
-                "Collection", "Wellbore", "Feature", "Interpretation",
-            )
+            # Reference the module-level set (minus Partial, already
+            # short-circuited above) so this never drifts from the
+            # additive/removal cascade in _expand_selection_with_deps.
+            is_grouping = kind in _GROUPING_KINDS
             if is_grouping:
-                descendants = self._tree.find_all_descendant_ids(node_id)
+                # Selectable-only: a bulk grouping click must never pull a
+                # partial stub into the selection (it has no checkbox and
+                # can't be loaded), and the all_in tri-state test then
+                # ranges over real children only so it can reach "all".
+                descendants = self._tree.find_all_selectable_descendant_ids(node_id)
                 if descendants:
                     curr_set = set(curr)
                     all_in = all(d in curr_set for d in descendants)

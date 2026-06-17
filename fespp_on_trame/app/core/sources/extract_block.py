@@ -16,8 +16,10 @@ Phase 5 removal is planned once the per-view paths are validated
 under real-world use.
 
 One `ExtractBlockRepresentation` instance per loaded RESQML rep
-(UnstructuredGrid, Wellbore, Trajectory, Grid2d, PointSet, Polyline,
-PolylineSet, TriangulatedSet, …). Each instance owns:
+(UnstructuredGrid, Trajectory, Grid2d, PointSet, Polyline,
+PolylineSet, TriangulatedSet, …). (`Wellbore` is NOT a rep — it's a
+grouping folder; only its child Trajectory/Frame/Marker reps load.)
+Each instance owns:
 
   - a single `ExtractBlock` proxy created via the collector's
     `ExtractRepPath` / `ExtractedRepProducerName` properties (this
@@ -50,6 +52,7 @@ from fespp_on_trame.app.core.sources.representation import (
     _find_registered_proxy,
     _apply_default_tint,
 )
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 
 server = get_server()
@@ -184,7 +187,7 @@ def _kind_from_tree(tree, rep_path, array_name):
     # match the MR property node by its propTitle. Non-MR arrays
     # don't have the suffix so this is a no-op for them.
     bare = re.sub(r"_real_\d+$", "", array_name)
-    sanitized = _NAME_RE.sub("", bare)
+    sanitized = make_valid_vtk_name(bare)
     for nid in tree.find_all_descendant_ids(rep_id):
         try:
             kind = tree.find_type(nid) or ""
@@ -200,7 +203,7 @@ def _kind_from_tree(tree, rep_path, array_name):
             pt = tree.find_attribute_value(nid, "propTitle")
             if pt:
                 title = pt
-        if _NAME_RE.sub("", title) != sanitized:
+        if make_valid_vtk_name(title) != sanitized:
             continue
         # MR / TimeSeries: pull the embedded propKind attribute.
         if kind in ("MultiRealization", "MultiRealizationTimeSeries", "TimeSeries"):
@@ -318,9 +321,6 @@ def _read_lut_annotations(array_name):
         return {}
 
 
-_NAME_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
-
-
 class ExtractBlockRepresentation:
     """One non-IjkGrid representation backed by an ExtractBlock
     filter on the FESPP collector, plus its threshold chain.
@@ -379,23 +379,50 @@ class ExtractBlockRepresentation:
     # Source lifecycle
 
     def _create_source(self) -> bool:
-        """Create the ExtractBlock proxy via the collector's
-        ExtractRepPath property. ExtractRepPath is a string proxy
-        property whose command runs the C++ ExtractRepWithoutCopy
-        logic and stores the resulting producer's registration name;
-        UpdatePropertyInformation refreshes the info-only
-        ExtractedRepProducerName so we can read it back."""
-        coll_proxy = self._collector.get_source().SMProxy
-        vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(self._rep_path)
-        coll_proxy.UpdateVTKObjects()
-        coll_proxy.UpdatePropertyInformation()
-        reg_name = vtkSMPropertyHelper(coll_proxy, "ExtractedRepProducerName").GetAsString()
-        if not reg_name:
+        """Create the per-rep `EnergisticsExtractor` chained on the
+        collector source.
+
+        Historically this delegated to the collector's `ExtractRepPath`
+        proxy property whose command runs the C++
+        `vtkEPCCollector::SetExtractRepPath` — which itself calls
+        `controller->RegisterPipelineProxy(extract, regName)` to publish
+        the new producer. That path silently FAILED to re-publish the
+        proxy on a second-pass `rep_path` (same path that was previously
+        released via `pvsimple.Delete`), leaving the proxy invisible to
+        `_sm.ProxyManager().GetProxy("sources", regName)` even though
+        the C++ readback returned a non-empty `regName`. Net symptom:
+        deselect-all + reselect rendered nothing.
+
+        Fix: bypass the C++ ExtractRepPath path entirely and build the
+        `EnergisticsExtractor` via `_create_plugin_filter_proxy` — same
+        helper `RepInScene._ensure_extractor` uses successfully. The
+        helper's final fallback (`spm->NewProxy + spm->RegisterProxy`)
+        publishes the proxy reliably on every call (see PARAVIEW.md
+        "LoadPlugin doesn't always refresh pvsimple namespace" for the
+        documented rationale of this register-direct pattern)."""
+        from fespp_on_trame.app.core.sources.representation import (
+            _create_plugin_filter_proxy,
+        )
+
+        collector_src = self._collector.get_source()
+        # Match the old C++-side naming so any other code that referenced
+        # the legacy `rep_<rep_path-with-_>` name still resolves.
+        reg_name = "rep" + self._rep_path.replace("/", "_")
+        ext = _create_plugin_filter_proxy(
+            proxy_class="EnergisticsExtractor",
+            registration_name=reg_name,
+            inputs={"Input": collector_src},
+        )
+        if ext is None:
             return False
-        src = _find_registered_proxy(reg_name)
-        if src is None:
-            return False
-        self._source = src
+        vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(self._rep_path)
+        ext.SMProxy.UpdateVTKObjects()
+        try:
+            ext.UpdatePipelineInformation()
+        except Exception:
+            pass
+        self._source = ext
+        src = ext
 
         view = pvsimple.GetActiveView()
         if view is not None:

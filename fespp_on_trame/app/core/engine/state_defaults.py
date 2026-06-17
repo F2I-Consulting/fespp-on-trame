@@ -54,6 +54,15 @@ def init_state_defaults(state):
     # Absence (or null) of (panel_id, rep_path) → SolidColor in
     # that view.
     state.setdefault("ui_active_array_by_rep_by_view", {})
+    # Markers (WellboreMarkerFrame children) display MULTIPLE at a time,
+    # each independently toggleable — unlike single-select log channels.
+    #   ui_loaded_marker_paths: marker leaf node paths that currently
+    #     carry a per-marker eye (their MarkerFrame rep is loaded).
+    #   ui_visible_marker_paths_by_view: {panel_id: [marker_path, ...]}
+    #     — which markers are SHOWN in each view. Each shown marker
+    #     renders via its own per-(rep, view) EnergisticsExtractor.
+    state.setdefault("ui_loaded_marker_paths", [])
+    state.setdefault("ui_visible_marker_paths_by_view", {})
     # Per-panel "has TimeSeries property currently active" flag,
     # derived from ui_active_array_by_rep_by_view via the change
     # handler in active_array.py. Drives the per-view TimeControl

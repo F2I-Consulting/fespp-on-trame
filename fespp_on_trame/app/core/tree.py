@@ -1,3 +1,6 @@
+import re
+import unicodedata
+
 from trame.app import get_server
 
 from fespp_on_trame.app.ui.drawer.config.tree_icons import get_primary_icon
@@ -8,6 +11,37 @@ state = server.state
 state.setdefault("ui_subtree_reservoir", [])
 state.setdefault("ui_subtree_surface", [])
 state.setdefault("ui_subtree_well", [])
+
+
+_NATURAL_SPLIT_RE = re.compile(r"(\d+)")
+_PARTIAL_PREFIX = "!!!PARTIAL!!!"
+
+
+def _sibling_sort_key(node):
+    """Case-insensitive, natural (numeric-aware) sort key for a treeview
+    node dict, by its display title — so siblings render alphabetically
+    at every level, and 'Grid2' sorts before 'Grid10'. The
+    '!!!PARTIAL!!!' display marker is stripped so a partial stub sorts by
+    its real name among its siblings.
+
+    PRESENTATIONAL ONLY: this reorders the emitted `ui_subtree_*` dicts
+    (what the VTreeview renders). Node identity everywhere else is by
+    `id` / `path`, never by sibling list position (the C++ assembly walk,
+    `find_*`, dataset/partition indexing, MR/timeseries, selection are all
+    order-independent), so reordering these dicts is safe."""
+    title = str(node.get("title") or "")
+    if title.startswith(_PARTIAL_PREFIX):
+        title = title[len(_PARTIAL_PREFIX):]
+    # Strip accents (NFKD → drop combining marks) so 'Éclair' sorts with
+    # 'E' rather than after 'Z' — dependency-free, no locale needed.
+    title = "".join(
+        c for c in unicodedata.normalize("NFKD", title.strip())
+        if not unicodedata.combining(c)
+    ).casefold()
+    return [
+        int(part) if part.isdigit() else part
+        for part in _NATURAL_SPLIT_RE.split(title)
+    ]
 
 
 class Tree():
@@ -25,7 +59,13 @@ class Tree():
         # Kinds that count as "representations" — i.e. have a VTK source
         # behind them. Used by find_representation_node() to walk up
         # from a leaf (Property, Marker, ...) to its rep parent.
-        self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'partial']
+        # NOTE: 'Wellbore' (the WellboreFeature, e.g. "55/33-3") is NOT a
+        # representation — it's a pure folder (C++: isGroupingType /
+        # MapperType::Folder, no geometry of its own). It stays a grouping
+        # via is_grouping/_GROUPING_KINDS (expand/collapse + bulk-select);
+        # only its child Trajectory/Frame/Marker/Completion reps carry an
+        # eye + colour.
+        self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'partial']
 
     def add_subtreeview_data(self, parent_id: int, child_index: int, treeview_type, disabled=False) -> None:
         """Recursive walker that builds the nested treeview dict for a
@@ -41,6 +81,17 @@ class Tree():
         node_prop_kind = self._data_assembly.GetAttributeOrDefault(node_id, "propKind", None)
         node_path = self._data_assembly.GetNodePath(node_id)
 
+        # Mark ANY partial node (a partial rep stub OR a partial property
+        # leaf, e.g. a WellboreChannel with no data) regardless of the
+        # inherited treeview_type. Use a per-node LOCAL flag — do NOT
+        # mutate the function-scoped `disabled` that is forwarded to
+        # children (line ~116), else a partial rep's real descendants
+        # would be wrongly disabled. A partial object has only Title +
+        # UUID, no data → it must show "!!!PARTIAL!!!" and be uncheckable.
+        node_is_partial = node_type in ('partial', 'Partial')
+        if node_is_partial and not (node_title or '').startswith('!!!PARTIAL!!!'):
+            node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
+
         if treeview_type == "unknown":
             if node_type in ['IjkGrid', 'UnstructuredGrid']:
                 treeview_type = "reservoir"
@@ -48,17 +99,15 @@ class Tree():
                 treeview_type = "well"
             elif node_type in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                 treeview_type = "surface"
-            elif node_type in ['partial', 'Partial']:
-                disabled = True
+            elif node_is_partial:
+                # Route a top-level partial stub to the right tab via its
+                # supporttype attribute (the title is already marked above).
                 node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", None)
                 if node_supportType in ['IjkGrid', 'UnstructuredGrid']:
-                    node_title = '!!!PARTIAL!!! ' + (node_title or "")
                     treeview_type = "reservoir"
-                elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
-                    node_title = node_label
+                elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'WellboreChannel']:
                     treeview_type = "well"
                 elif node_supportType in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
-                    node_title = node_label
                     treeview_type = "surface"
 
         # rep_path: the path of the enclosing representation node, so
@@ -69,13 +118,25 @@ class Tree():
         rep_ancestor_id = self.find_representation_node(node_id)
         rep_path_attr = self.find_path(rep_ancestor_id) if rep_ancestor_id is not None else None
 
-        # is_grouping: pure organisational node (no VTK source behind
-        # it) — Collection / Wellbore / Feature / Interpretation /
-        # Partial. The custom tree checkbox renders a tri-state
-        # indicator (marked / minus-box / blank) on these, derived
-        # from descendant_ids ∩ ui_select_node_*.
+        # is_grouping: node that behaves as a FOLDER in the tree — the
+        # custom checkbox renders a tri-state indicator (marked /
+        # minus-box / blank) from descendant_ids ∩ ui_select_node_*, and
+        # checking it bulk-selects its children.
+        #
+        # Two sub-cases:
+        #   - pure organisational nodes (Collection / Wellbore / Feature /
+        #     Interpretation / Partial) — no VTK source of their own.
+        #   - frames (Frame = WellboreFrame logs, MarkerFrame = marker
+        #     set): these DO own a per-view source (C++ MapperSet), but in
+        #     the TREE they are folders — no eye of their own, checking
+        #     them selects every child log / marker. They stay in
+        #     `_representation_type_in` so `find_representation_node` on a
+        #     channel/marker leaf still resolves UP to the frame (the
+        #     rendering anchor hosting the per-(rep, view) extractor).
+        #     i.e. "folder for the tree, representation for the source".
         is_grouping = node_type in (
             "Collection", "Wellbore", "Feature", "Interpretation", "Partial",
+            "Frame", "MarkerFrame",
         )
 
         data = {}
@@ -95,8 +156,10 @@ class Tree():
         if is_grouping:
             # Only populated for groupings — the leaves / reps don't
             # need it (their checkbox is binary on their own id).
-            data["treeview"]["descendant_ids"] = self.find_all_descendant_ids(node_id)
-        if disabled:
+            # Exclude partial descendants so the grouping's tri-state can
+            # still reach "all selected" (a partial can never be selected).
+            data["treeview"]["descendant_ids"] = self.find_all_selectable_descendant_ids(node_id)
+        if disabled or node_is_partial:
             data["treeview"]["disabled"] = True
 
         data["treeview_type"] = treeview_type
@@ -110,6 +173,8 @@ class Tree():
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                 data["treeview"]["children"].append(subTreeview["treeview"])
                 data["treeview_type"] = subTreeview["treeview_type"]
+            # Alphabetical sibling order at this level (hierarchy kept).
+            data["treeview"]["children"].sort(key=_sibling_sort_key)
         return data
 
     def _resolve_dispatch_kind(self, node_id):
@@ -154,6 +219,13 @@ class Tree():
                 node_prop_kind = self._data_assembly.GetAttributeOrDefault(node_id, "propKind", None)
                 node_path = self._data_assembly.GetNodePath(node_id)
 
+                # Per-iteration reset — a previous partial sibling must
+                # not leave `disabled` latched True for the nodes after it.
+                disabled = False
+                node_is_partial = node_type in ('partial', 'Partial')
+                if node_is_partial and not (node_title or '').startswith('!!!PARTIAL!!!'):
+                    node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
+
                 # When the top-level node is a grouping inserted by an
                 # alternate tree-hierarchy mode (Feature /
                 # Interpretation), use the first real descendant's kind
@@ -170,18 +242,13 @@ class Tree():
                     treeview_type = "well"
                 elif dispatch_kind in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
                     treeview_type = "surface"
-                elif node_type in ['partial', 'Partial']:
-                    disabled = True
+                elif node_is_partial:
                     node_supportType = self._data_assembly.GetAttributeOrDefault(node_id, "supporttype", None)
-                    treeview["disabled"] = True,
                     if node_supportType in ['IjkGrid', 'UnstructuredGrid']:
-                        node_title = '!!!PARTIAL!!! ' + (node_title or "")
                         treeview_type = "reservoir"
-                    elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
-                        node_title = node_label
+                    elif node_supportType in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'WellboreChannel']:
                         treeview_type = "well"
                     elif node_supportType in ['Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet']:
-                        node_title = node_label
                         treeview_type = "surface"
                 # rep_path: enclosing rep's path. For a rep node itself
                 # this is its own path. See sibling add_subtreeview_data
@@ -199,7 +266,7 @@ class Tree():
                 treeview["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
                 treeview["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
                 treeview["parent_id"] = 0
-                if disabled:
+                if disabled or node_is_partial:
                     treeview["disabled"] = True
 
                 children_count = self._data_assembly.GetNumberOfChildren(node_id)
@@ -209,6 +276,8 @@ class Tree():
                         subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                         treeview["children"].append(subTreeview["treeview"])
                         treeview_type = subTreeview["treeview_type"]
+                    # Alphabetical sibling order under this top-level node.
+                    treeview["children"].sort(key=_sibling_sort_key)
                 if treeview_type == "reservoir":
                     if treeview and treeview not in self._data_hierarchy_reservoir:
                         self._data_hierarchy_reservoir.append(treeview)
@@ -218,6 +287,10 @@ class Tree():
                 elif treeview_type == "surface":
                     if treeview and treeview not in self._data_hierarchy_surface:
                         self._data_hierarchy_surface.append(treeview)
+            # Alphabetical order of the TOP-LEVEL siblings within each tab.
+            self._data_hierarchy_reservoir.sort(key=_sibling_sort_key)
+            self._data_hierarchy_well.sort(key=_sibling_sort_key)
+            self._data_hierarchy_surface.sort(key=_sibling_sort_key)
             state.ui_subtree_reservoir = list(self._data_hierarchy_reservoir)
             state.ui_subtree_well = list(self._data_hierarchy_well)
             state.ui_subtree_surface = list(self._data_hierarchy_surface)
@@ -284,6 +357,33 @@ class Tree():
                 return
             for i in range(n):
                 c = self._data_assembly.GetChild(nid, i)
+                out.append(c)
+                _walk(c)
+
+        _walk(node_id)
+        return out
+
+    def find_all_selectable_descendant_ids(self, node_id) -> list:
+        """Like `find_all_descendant_ids` but EXCLUDES partial nodes
+        (kind 'partial'/'Partial'). Used for a grouping's tri-state
+        universe and for bulk add/remove so a reference-only partial
+        stub is never pulled into the selection (it has no checkbox and
+        can't be loaded), and the parent grouping can still reach
+        'all selected'."""
+        if node_id is None or self._data_assembly is None:
+            return []
+        out = []
+
+        def _walk(nid):
+            try:
+                n = self._data_assembly.GetNumberOfChildren(nid)
+            except Exception:
+                return
+            for i in range(n):
+                c = self._data_assembly.GetChild(nid, i)
+                kind = self._data_assembly.GetAttributeOrDefault(c, "kind", None)
+                if kind in ('partial', 'Partial'):
+                    continue
                 out.append(c)
                 _walk(c)
 

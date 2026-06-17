@@ -140,6 +140,22 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # IjkGrid slicers + volume crops need the same bump (they
     # aren't in all_sources(); the canonical source is the
     # rep_data extractor only).
+    #
+    # Critical: the rep_data extractor AND each slicer need a full
+    # `UpdatePipeline()` (data pass) here, not just
+    # `UpdatePipelineInformation()` (metadata pass). Without the
+    # data pass, the slicer keeps the output it cached at creation
+    # time (set_node_id's Show() triggers a Render which pipelines
+    # the slicer BEFORE `OutputWholeExtent` is set) — a structurally
+    # valid `vtkExplicitStructuredGrid` with the right number of
+    # cells but **no `CellData` arrays**. The activator's later
+    # `_find_array_in_store` call then misses the property array
+    # even though it's present upstream on `rep_data`. Observed on
+    # TimeSeries IjkGrid (`dynamicDiscreteProp.epc`) since the
+    # `refactor(view-scenes): per-view scene ownership` commit
+    # (3fb95016): per-view IjkGrid creation invalidates the
+    # collector's MTime which makes the issue surface — pre-refactor
+    # the legacy IjkGrid alone never hit this code path.
     _t_ijk = _time.perf_counter()
     ijk_paths_in_selection = []
     for ijk in source_registry.ijk_grids():
@@ -153,6 +169,16 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         if not ijk_in_selection:
             continue
         try:
+            # First pipeline the rep_data extractor so its output
+            # type and CellData arrays settle before slicers pull
+            # from it.
+            try:
+                if ijk._src_extract_init is not None:
+                    ijk._src_extract_init.GetClientSideObject().Modified()
+                    ijk._src_extract_init.UpdatePipelineInformation()
+                    ijk._src_extract_init.UpdatePipeline()
+            except Exception:
+                pass
             slicer_sources = list(ijk._all_slice_sources())
             if ijk._src_slicer_volume is not None:
                 slicer_sources.append(ijk._src_slicer_volume)
@@ -160,6 +186,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                 try:
                     slc.GetClientSideObject().Modified()
                     slc.UpdatePipelineInformation()
+                    slc.UpdatePipeline()
                 except Exception:
                     pass
         except Exception:
@@ -182,7 +209,32 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
         state, tree, present_paths,
     )
+    _update_marker_tracking(state, tree, present_paths)
     _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
+
+    # --- SYNCHRONOUS teardown of DESELECTED reps' per-view pipelines ---
+    # A just-deselected rep's per-view RepInScene (UG: `_extractor`,
+    # IjkGrid: per-view slicers) is still Shown on the scene clone, but
+    # the C++ `UpdatePipeline()` at the top of run() already rebuilt the
+    # collector output WITHOUT that rep's partition. The normal teardown
+    # (scene_registry.sync_loaded_reps via @state.change("ui_loaded_rep_paths"),
+    # boot.py) is DEFERRED until AFTER run() returns — i.e. AFTER the
+    # activator render (refresh_active -> Render) below. Rendering that
+    # stale, still-visible source against a clone whose upstream
+    # partition is gone segfaults natively ("Connection Closed", no
+    # traceback). Hide+Delete the deselected reps' per-view pipelines
+    # NOW, before any render. REMOVE-ONLY: the add/eager-setup half
+    # stays on the deferred handler (idempotent once this has run). The
+    # clone is already consistent (UpdatePipeline'd above) so we do not
+    # touch it.
+    try:
+        scene_reg = getattr(server.context, "scene_registry", None)
+        if scene_reg is not None:
+            for scene in scene_reg.all_scenes():
+                for r_path in (set(scene._reps.keys()) - present_paths):
+                    scene.remove_rep(r_path)
+    except Exception as _e:
+        print(f"[WARNING] eager teardown of deselected reps failed: {_e}")
 
     controller.view_replace
     state.view_update = True
@@ -201,26 +253,12 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         state.view_reset_camera = True
         state.has_data_loaded_once = True
 
-    # Re-run the active handlers AFTER the load+sync so newly-loaded
-    # reps get their ColorBy / TimeControl wiring even when their
-    # @state.change active handler fired before this load handler
-    # (handler ordering between ui_select_node_* and ui_active_node_*
-    # is not guaranteed). Idempotent: a no-op if the active handler
-    # already ran successfully.
     if activator is not None:
         activator.refresh_active()
-
-    # Refresh the threshold UI: newly-loaded properties on the
-    # active grid now appear in CellData/PointData and should show
-    # up in the array picker.
     try:
         refresh_threshold_ui()
     except Exception as _e:
         print(f"[WARNING] threshold UI refresh after load failed: {_e}")
-
-    # Mirror the active grid's stored slicer/range state into the
-    # UI vars. Idempotent — when the active grid hasn't changed
-    # since the last push, this just re-asserts the same values.
     try:
         push_active_ijk_state()
     except Exception as _e:
@@ -228,10 +266,16 @@ def run(state, controller, server, view, tree, collector, etp_connector,
 
     # Single Render at the very end. The parent multiblock was
     # hidden earlier, so this only paints the new ExtractBlock reps
-    # + IJK slicers.
+    # + IJK slicers. Skipped when the selection is empty: rendering
+    # an empty pipeline after source_registry.sync tore everything
+    # down used to crash inside vtkPVRenderView until the threshold
+    # UI refresh got its early-return guard, but the Render skip
+    # remains as belt-and-braces (cheap no-op when there is
+    # nothing to paint anyway).
     _t = _time.perf_counter()
     state.view_update = True
-    pvsimple.Render(view=view)
+    if state.fespp_data_selectors:
+        pvsimple.Render(view=view)
     print(f"[PERF py] final Render: {_ms(_t)}ms")
     print(f"[PERF py] >>> TOTAL on_change_fespp_data_selectors: {_ms(_t_total_start)}ms <<<")
 
@@ -326,6 +370,49 @@ def _update_data_array_tracking(state, tree, present_paths):
     if loaded_arrays != prev_loaded_arrays:
         state.ui_loaded_array_paths = loaded_arrays
     return last_array_for_rep, prev_loaded_set
+
+
+def _update_marker_tracking(state, tree, present_paths):
+    """Recompute `ui_loaded_marker_paths`: every WellboreMarker leaf
+    (C++ runtime kind 'Marker') whose MarkerFrame rep is loaded.
+
+    Markers display MULTIPLE at a time (unlike single-select log
+    channels), so they get their own per-marker visibility eye rather
+    than a data-array eye. This list only decides WHICH leaves render an
+    eye; the per-view shown set lives in
+    `ui_visible_marker_paths_by_view` and is mutated by
+    `visibility.toggle_marker_visibility`. Also prune the per-view shown
+    buckets of markers whose frame is no longer loaded so they don't
+    ghost-show on a future reload."""
+    loaded_markers = []
+    loaded_set = set()
+    for sel in state.fespp_data_selectors or []:
+        n_id = tree.find_node_id(sel)
+        if n_id is None:
+            continue
+        if (tree.find_type(n_id) or "") != "Marker":
+            continue
+        r_id = tree.find_representation_node(n_id)
+        r_path = tree.find_path(r_id) if r_id is not None else None
+        if not r_path or r_path not in present_paths:
+            continue
+        if sel not in loaded_set:
+            loaded_markers.append(sel)
+            loaded_set.add(sel)
+    if loaded_markers != list(state.ui_loaded_marker_paths or []):
+        state.ui_loaded_marker_paths = loaded_markers
+    # Prune shown-marker buckets so an unloaded marker doesn't ghost.
+    by_view = state.ui_visible_marker_paths_by_view or {}
+    if by_view:
+        updated = {}
+        changed = False
+        for pid, paths in by_view.items():
+            kept = [p for p in (paths or []) if p in loaded_set]
+            updated[pid] = kept
+            if kept != list(paths or []):
+                changed = True
+        if changed:
+            state.ui_visible_marker_paths_by_view = updated
 
 
 def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set):

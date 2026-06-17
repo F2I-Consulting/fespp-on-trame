@@ -25,14 +25,10 @@ NaN handling: each row chains `Threshold(Between(-inf,+inf))` to drop
 NaN cells before `DescriptiveStatistics`, so kurtosis / skewness /
 moments stay meaningful instead of degenerating to NaN.
 """
-import re
-
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import source_resolver, realization_dispatch
-
-
-_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +189,7 @@ def _compute_one_variable(input_source, array_name):
     if assoc is None:
         return None
 
-    safe_name = _NAME_INVALID_RE.sub("", array_name)
+    safe_name = make_valid_vtk_name(array_name)
     threshold_proxy = None
     stats_proxy = None
     total = _total_count_for_assoc(input_source, assoc)
@@ -436,7 +432,7 @@ def _resolve_vtk_name(tree, array_path, real_idx=None):
     title, kind = _title_and_kind(tree, array_path)
     if not title:
         return "", "", ""
-    sanitized = _NAME_INVALID_RE.sub("", title)
+    sanitized = make_valid_vtk_name(title)
     if kind in ("MultiRealization", "MultiRealizationTimeSeries") and real_idx is not None:
         return title, kind, realization_dispatch.suffixed_array_name(
             sanitized, int(real_idx),
@@ -485,15 +481,60 @@ def _ts_label_for_idx(tree, ts_idx):
 # ---------------------------------------------------------------------------
 
 
+def _original_source_and_name(state, source_registry, tree,
+                              array_path, rep_path, vtk_name, title):
+    """Resolve the source + REAL VTK array name for an Original row,
+    returning `(source, name, restore)`.
+
+    Wellbore-frame CHANNELS are the special case: the legacy frame
+    source (`source_registry.get(rep_path)`) does NOT carry the
+    channel's array — it lives only on the channel's OWN per-channel
+    EnergisticsExtractor (created on demand even when hidden). We read it
+    DIRECTLY (no retarget, no restore — each channel owns a persistent
+    source), picking the real name off it. Non-channels: the legacy
+    source + sanitized name. `restore` is always a no-op now (kept in the
+    signature so callers stay unchanged)."""
+    legacy = source_registry.get(rep_path) if source_registry is not None else None
+    noop = (lambda: None)
+    try:
+        node_id = tree.find_node_id(array_path)
+        r_id = tree.find_representation_node(node_id) if node_id is not None else None
+        is_channel = (
+            r_id is not None and r_id != node_id
+            and (tree.find_type(r_id) or "") == "Frame"
+        )
+    except Exception:
+        is_channel = False
+    if not is_channel:
+        return legacy, vtk_name, noop
+    try:
+        ext = source_resolver.channel_source_for(array_path)
+        if ext is None:
+            return legacy, vtk_name, noop
+        # Real name: prefer the sanitized name (channels are sanitized
+        # since the C++ MakeValidNodeName fix); fall back to the raw title
+        # defensively (un-rebuilt plugin).
+        real_name = vtk_name
+        for cand in (vtk_name, title):
+            if cand and _resolve_assoc(ext, cand) is not None:
+                real_name = cand
+                break
+        return ext, real_name, noop
+    except Exception:
+        return legacy, vtk_name, noop
+
+
 def _build_original_row(state, source_registry, tree,
                         array_path, rep_path,
                         original_entry):
     """Compute one Original row for the property.
 
-    Anchors on the rep's unfiltered legacy source
-    (`source_registry.get(rep_path)`) — Original rows show the
+    Anchors on the rep's unfiltered source — Original rows show the
     property's baseline distribution, independent of any view's
-    slicer / clip / threshold.
+    slicer / clip / threshold. For a wellbore-frame CHANNEL the legacy
+    frame source lacks the channel array, so `_original_source_and_name`
+    reads the per-view extractor retargeted at the channel instead (and
+    restores it afterwards).
 
     `original_entry` carries `id` (UI-stable), `pinned` bool, and
     `real_idx` / `ts_idx` (None → fall back to defaults).
@@ -502,14 +543,16 @@ def _build_original_row(state, source_registry, tree,
     temporarily moved to that timestep so the source's pipeline
     emits data at that time. Saved / restored around the compute so
     the rest of the engine doesn't see the transient time shift."""
-    source = source_registry.get(rep_path) if source_registry is not None else None
-    if source is None:
-        return None
     real_idx = original_entry.get("real_idx")
     if real_idx is None:
         real_idx = _default_real_idx(state, tree, array_path)
     title, kind, vtk_name = _resolve_vtk_name(tree, array_path, real_idx)
     if not vtk_name:
+        return None
+    source, vtk_name, _restore_channel = _original_source_and_name(
+        state, source_registry, tree, array_path, rep_path, vtk_name, title,
+    )
+    if source is None:
         return None
     is_ts_kind = kind in ("TimeSeries", "MultiRealizationTimeSeries")
     ts_idx = original_entry.get("ts_idx")
@@ -548,6 +591,9 @@ def _build_original_row(state, source_registry, tree,
                 source.UpdatePipeline(saved_time)
             except Exception:
                 pass
+        # Restore the channel extractor's ExtractPath (no-op for
+        # non-channels) so the live render is left untouched.
+        _restore_channel()
     if row is None:
         return None
     ts_label = _ts_label_for_idx(tree, ts_idx) if is_ts_kind else ""

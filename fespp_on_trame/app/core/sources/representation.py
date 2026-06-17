@@ -13,19 +13,13 @@ REFACTOR_PLAN.md progresses it will also gain:
     the multi-slicer IjkGrid case).
 
 For now: keep this module intentionally minimal."""
-import re
-
 from paraview import servermanager as _sm
 
-
-_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
-
-
-def _sanitize(name: str) -> str:
-    """Replace any character that VTK / ParaView would reject in a
-    registration name. Used to derive deterministic proxy ids from
-    arbitrary RESQML paths and property titles."""
-    return _NAME_INVALID_RE.sub("_", name or "")
+# Re-export under the legacy name so existing call sites
+# (extract_block, ijkgrid, rep_in_scene, …) keep working without an
+# import churn. The canonical home for both sanitizers is
+# `fespp_on_trame.app.utils.naming`. New code should import from there.
+from fespp_on_trame.app.utils.naming import sanitize_proxy_name as _sanitize  # noqa: F401
 
 
 def _find_registered_proxy(reg_name: str):

@@ -12,8 +12,6 @@ Two modes, derived from the active node type (no manual toggle):
 State (keyed by rep path):
 - solid_color_by_rep : {path: "#RRGGBBAA"} — solid color picked by the user.
 """
-import re
-
 from trame.app import get_server
 from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
@@ -22,12 +20,6 @@ from .color_editor import _FesppColorOpacityEditor, _apply_nan_color_to_lut
 from .categorical_color_editor import CategoricalColorEditor
 
 from fespp_on_trame.app.core.engine import source_resolver
-
-
-# Same sanitizer the FESPP plugin applies to VTK array names — strip
-# chars outside [-.0-9A-Z_a-z]. Mirrors the regex used by
-# `representation.py` and `threshold_dispatch.py`.
-_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
 
 server = get_server()
 state = server.state
@@ -54,64 +46,31 @@ def _hex_to_alpha(hex_str):
     return 1.0
 
 
-def _rep_display(rep_path):
-    source = controller.get_rep_source(rep_path) if hasattr(controller, "get_rep_source") else None
-    if source is None:
-        return None, None, None
-    view = pvsimple.GetActiveView()
-    if view is None:
-        return None, None, source
-    display = pvsimple.GetDisplayProperties(source, view=view)
-    return display, view, source
-
-
-def _ijkgrid_displays():
-    """For IjkGrid reps there is no ExtractBlock — display is fanned out across
-    several ParaView sources (slicervolume, sliceri/j/k_*, IjkGrid_*) plus any
-    chain proxies (registration name starts with `thr_`). Return
-    [(display, source), ...] for every one of them present in the active view."""
-    view = pvsimple.GetActiveView()
-    if view is None:
-        return [], None
-    out = []
-    for source_id, src in pvsimple.GetSources().items():
-        name = source_id[0]
-        if (
-            name == 'slicervolume'
-            or name.startswith(('sliceri_', 'slicerj_', 'slicerk_', 'IjkGrid_'))
-            or name.startswith('thr_')
-        ):
-            disp = pvsimple.GetDisplayProperties(src, view=view)
-            if disp is not None:
-                out.append((disp, src))
-    return out, view
-
-
 def _displays_for_rep(rep_path):
-    """Resolve every (display, source, view) the active rep is rendered through.
-    Single entry for ExtractBlock-backed reps, plus all chain proxies attached
-    to the rep. Multiple entries for IjkGrid."""
-    if state.ui_active_node_reservoir_type_rep == 'IjkGrid':
-        pairs, view = _ijkgrid_displays()
-        return [(d, s, view) for (d, s) in pairs]
-    display, view, source = _rep_display(rep_path)
-    out = []
-    if display is not None:
-        out.append((display, source, view))
-    # Fan out onto every chain proxy for this non-IjkGrid rep.
-    if view is not None and hasattr(controller, "get_rep_chain_proxies"):
-        try:
-            chain_proxies = controller.get_rep_chain_proxies(rep_path) or []
-        except Exception:
-            chain_proxies = []
-        for p in chain_proxies:
-            try:
-                d = pvsimple.GetDisplayProperties(p, view=view)
-                if d is not None:
-                    out.append((d, p, view))
-            except Exception:
-                pass
-    return out
+    """Resolve every (display, source, view) the active rep is rendered through,
+    via the PER-VIEW resolver in the drawer-target view — the same path
+    ColorBy uses (visibility → apply_color_array → displays_for_rep_path).
+
+    This is the proxy set that actually PAINTS the rep in the target panel:
+    the per-(rep, view) EnergisticsExtractor (+ its threshold chain + clip
+    output) for non-IjkGrid reps (e.g. a WellboreTrajectory polyline), and the
+    per-view slicers/volume/threshold leaves for IjkGrid reps. The legacy
+    shared ExtractBlock source returned by `controller.get_rep_source` is
+    explicitly `Hide()`n in the render view by `RepInScene._ensure_extractor`,
+    so writing the tint there changed nothing on screen."""
+    from trame.app import get_server as _gs
+    source_registry = getattr(_gs().context, "source_registry", None)
+    if source_registry is None:
+        return []
+    pv_view, _panel = source_resolver.target_view_and_panel()
+    if pv_view is None:
+        pv_view = pvsimple.GetActiveView()
+    if pv_view is None:
+        return []
+    displays = source_resolver.displays_for_rep_path(
+        source_registry, rep_path, view=pv_view,
+    )
+    return [(d, None, pv_view) for d in displays]
 
 
 def _apply_solid(rep_path, color_hex):
@@ -121,6 +80,22 @@ def _apply_solid(rep_path, color_hex):
     and the diffuse color is dormant; when the eye is barred, this color
     is what the user sees."""
     targets = _displays_for_rep(rep_path)
+    # MarkerFrame: the display(s) `_displays_for_rep` returns are the
+    # frame's MAIN extractor, permanently hidden for a marker frame
+    # (`_channelless_frame`). The VISIBLE markers render via SEPARATE
+    # per-marker extractors — fan the tint onto those too, or the
+    # on-screen marker colour never changes. (Markers shown LATER pick
+    # up `solid_color_by_rep` at creation in `_create_marker_extractor`.)
+    pv_view, _panel = source_resolver.target_view_and_panel()
+    if pv_view is None:
+        pv_view = pvsimple.GetActiveView()
+    ris = source_resolver._scene_rep_for_view(rep_path, pv_view) if pv_view is not None else None
+    if ris is not None:
+        try:
+            for d in ris.visible_marker_displays():
+                targets.append((d, None, pv_view))
+        except Exception:
+            pass
     if not targets:
         return
     r, g, b = _hex_to_rgb01(color_hex)
@@ -131,6 +106,77 @@ def _apply_solid(rep_path, color_hex):
         display.Opacity = a
     # Render + push on the drawer target view (pinned mode pushes
     # to the wrong panel via `view_update` alone).
+    source_resolver.render_and_push_target(controller)
+
+
+# ------------------------------------------------------------------
+# Per-marker SolidColor — markers display MULTIPLE at a time, each
+# independently recolourable. `active_representation_path` collapses a
+# marker to its MarkerFrame, so the SINGLE-marker identity is read from
+# `ui_active_node_well[0]`; the MARKER SET (frame) node recolours all.
+
+def _engine_tree():
+    from fespp_on_trame.app.core import engine as _engine_pkg
+    return getattr(_engine_pkg, "_tree", None)
+
+
+def _active_marker_path():
+    """Path of the active well node WHEN it is a single 'Marker', else
+    None (frame/set or any non-marker active node)."""
+    tree = _engine_tree()
+    nodes = state.ui_active_node_well or []
+    if tree is None or not nodes:
+        return None
+    nid = nodes[0]
+    try:
+        if (tree.find_type(nid) or "") != "Marker":
+            return None
+        return tree.find_path(nid)
+    except Exception:
+        return None
+
+
+def _is_marker_frame_path(path):
+    tree = _engine_tree()
+    if tree is None or not path:
+        return False
+    try:
+        nid = tree.find_node_id(path)
+        return (tree.find_type(nid) or "") == "MarkerFrame"
+    except Exception:
+        return False
+
+
+def _markers_of_frame(frame_path):
+    """Loaded marker paths whose MarkerFrame rep is `frame_path`."""
+    tree = _engine_tree()
+    if tree is None or not frame_path:
+        return []
+    out = []
+    for m in (state.ui_loaded_marker_paths or []):
+        try:
+            nid = tree.find_node_id(m)
+            r_id = tree.find_representation_node(nid) if nid is not None else None
+            if r_id is not None and tree.find_path(r_id) == frame_path:
+                out.append(m)
+        except Exception:
+            pass
+    return out
+
+
+def _apply_marker_solid(rep_path, marker_path, color_hex):
+    """Push a SolidColor tint onto ONE marker's display in the drawer
+    target view (the persisted `solid_color_by_marker` entry covers the
+    not-yet-shown case via `_create_marker_extractor`)."""
+    pv_view, _panel = source_resolver.target_view_and_panel()
+    if pv_view is None:
+        pv_view = pvsimple.GetActiveView()
+    ris = source_resolver._scene_rep_for_view(rep_path, pv_view) if pv_view is not None else None
+    if ris is not None:
+        try:
+            ris.set_marker_color(marker_path, color_hex)
+        except Exception:
+            pass
     source_resolver.render_and_push_target(controller)
 
 
@@ -150,6 +196,10 @@ class SolidColorPanel(html.Div):
         state.setdefault("active_representation_path", "")
         state.setdefault("active_representation_has_properties", False)
         state.setdefault("solid_color_by_rep", {})
+        # Per-marker solid colour {marker_path: "#RRGGBBAA"} — markers
+        # are recoloured individually; falls back to solid_color_by_rep
+        # [frame] (uniform default) when a marker has no own colour.
+        state.setdefault("solid_color_by_marker", {})
         state.setdefault("solid_color_next_idx", 0)
         state.setdefault("solid_color", "#808080FF")
         # Drives the per-tree-node color chip. Read by tree_views.py templates.
@@ -236,26 +286,39 @@ class SolidColorPanel(html.Div):
             return sr.get_scene(_target_panel_id())
 
         def _resolve_base_array_name(raw_name):
-            """Step 1: title → suffixed for MR properties. Non-MR /
-            empty / unknown raw names pass through."""
+            """Step 1: title → REAL VTK array name on the per-view source,
+            suffixed for MR properties. The render path keys its per-view
+            scoped LUT on whichever name actually exists — the SANITIZED
+            name for grid / surface properties, but the RAW title for a
+            wellbore CHANNEL (its POINT array is named with the verbatim
+            title). The COE MUST resolve the SAME key, else the continuous
+            editor reads a different, never-coloured LUT (empty graph).
+            `source_resolver.real_base_name` probes the source so both
+            cases converge (the discrete / categorical editor already
+            resolves via `resolve_target_scoped_lut`, which is why it
+            worked)."""
             if not raw_name:
                 return raw_name
             from fespp_on_trame.app.core import engine as _engine_pkg
             from fespp_on_trame.app.core.engine import realization_dispatch
+            pv_view, _panel = source_resolver.target_view_and_panel()
+            base = source_resolver.real_base_name(
+                raw_name, state.active_representation_path or "", pv_view,
+            )
             tree = getattr(_engine_pkg, "_tree", None)
             if tree is None:
-                return raw_name
+                return base
             active_nodes = state.ui_active_node_reservoir or []
             if not active_nodes:
-                return raw_name
+                return base
             try:
                 array_path = tree.find_path(active_nodes[0])
             except Exception:
                 array_path = None
             if not array_path:
-                return raw_name
+                return base
             if not realization_dispatch.is_multirealization_property(tree, array_path):
-                return raw_name
+                return base
             panel_id = _target_panel_id()
             idx = realization_dispatch.get_active_realization_for_view(
                 state, panel_id, array_path,
@@ -265,8 +328,8 @@ class SolidColorPanel(html.Div):
                     state, tree, array_path,
                 )
             if idx is None:
-                return raw_name
-            return realization_dispatch.suffixed_array_name(raw_name, int(idx))
+                return base
+            return realization_dispatch.suffixed_array_name(base, int(idx))
 
         def _resolve_coe_lut(raw_name):
             """Resolve raw_name → (base_name, scoped_lut, scoped_name)
@@ -329,8 +392,16 @@ class SolidColorPanel(html.Div):
                     return None
                 from trame.app import get_server as _gs
                 ctx = _gs().context
-                source = None
-                scene_registry = getattr(ctx, "scene_registry", None)
+                # Wellbore channel: read its OWN per-channel extractor
+                # (materialised even when hidden) — the frame's primary
+                # source() carries no channel array. None for non-channels
+                # → fall through to the normal per-view / legacy source.
+                source = source_resolver.channel_source_for(
+                    getattr(state, "active_color_array_path", "") or ""
+                )
+                scene_registry = (
+                    getattr(ctx, "scene_registry", None) if source is None else None
+                )
                 if scene_registry is not None:
                     panel_id = (
                         getattr(state, "drawer_target_view_id", "") or ""
@@ -406,6 +477,14 @@ class SolidColorPanel(html.Div):
             if lut is None:
                 return
             data_range = _data_range_for_active_array(base)
+            if data_range is not None:
+                # Widen a degenerate range (constant / all-NaN→0 log) so
+                # the LUT/PWF aren't rescaled to zero width — which would
+                # make the COE gradient divide by zero (addColorStop
+                # non-finite). Keep it in lockstep with update_scalar_range.
+                data_range = source_resolver.nondegenerate_range(
+                    data_range[0], data_range[1],
+                )
             if data_range is not None and len(lut.RGBPoints) >= 4:
                 try:
                     cur_min = float(lut.RGBPoints[0])
@@ -499,37 +578,100 @@ class SolidColorPanel(html.Div):
                 return
             _update_color_editor(name)
 
-        @state.change("active_representation_path")
+        @state.change("active_representation_path", "ui_active_node_well")
         def _on_path_change(active_representation_path, **_):
-            # Sync the picker value to whatever solid color this rep has
-            # (default tint assigned at load if none picked yet).
-            if not active_representation_path:
+            # Sync the picker value to whatever solid color the active
+            # node has. Also fires on `ui_active_node_well` so switching
+            # between markers of the SAME frame (active_representation_path
+            # stays the frame) re-seeds the wheel from the marker's own
+            # colour. Default tint assigned at load if none picked yet.
+            path = state.active_representation_path
+            if not path:
                 return
-            color = (state.solid_color_by_rep or {}).get(active_representation_path, "#808080FF")
-            state.solid_color = color
+            marker_path = _active_marker_path()
+            if marker_path is not None:
+                by_marker = state.solid_color_by_marker or {}
+                frame_default = (state.solid_color_by_rep or {}).get(path, "#808080FF")
+                state.solid_color = by_marker.get(marker_path, frame_default)
+                return
+            state.solid_color = (state.solid_color_by_rep or {}).get(path, "#808080FF")
 
         @state.change("solid_color")
         def _on_color_change(solid_color, **_):
             path = state.active_representation_path
             if not path:
                 return
+            marker_path = _active_marker_path()
+            if marker_path is not None:
+                # SINGLE marker active → recolour ONLY this marker.
+                by_marker = dict(state.solid_color_by_marker or {})
+                by_marker[marker_path] = solid_color
+                state.solid_color_by_marker = by_marker
+                _apply_marker_solid(path, marker_path, solid_color)
+                return
+            if _is_marker_frame_path(path):
+                # MARKER SET active → recolour ALL its markers uniformly
+                # (the frame colour is the default for markers shown later).
+                colors = dict(state.solid_color_by_rep or {})
+                colors[path] = solid_color
+                state.solid_color_by_rep = colors
+                by_marker = dict(state.solid_color_by_marker or {})
+                for m in _markers_of_frame(path):
+                    by_marker[m] = solid_color
+                state.solid_color_by_marker = by_marker
+                _apply_solid(path, solid_color)   # fans onto every visible marker
+                return
+            # Non-marker rep — unchanged.
             colors = dict(state.solid_color_by_rep or {})
             colors[path] = solid_color
             state.solid_color_by_rep = colors
             _apply_solid(path, solid_color)
 
-        @state.change("solid_color_by_rep", "ui_active_array_by_rep")
+        @state.change("solid_color_by_rep", "ui_active_array_by_rep", "solid_color_by_marker")
         def _refresh_tree_chip_colors(solid_color_by_rep, ui_active_array_by_rep, **_):
             # Tree chip:
             # - "PROPERTY" sentinel (rainbow gradient) when an array is the
             #   active eye on the rep (i.e. the rep is colored by data).
+            # - "MULTICOLOR" sentinel on a MarkerFrame whose child markers
+            #   carry 2+ distinct colours; the shared colour when uniform.
             # - Solid hex color otherwise.
             colors = solid_color_by_rep or {}
             active_map = ui_active_array_by_rep or {}
+            by_marker = state.solid_color_by_marker or {}
             chips = {}
             for path, color in colors.items():
                 if path in active_map:
                     chips[path] = "PROPERTY"
                 else:
                     chips[path] = color
+            # MarkerFrame nodes: uniform-vs-multicolor from the EFFECTIVE
+            # colour of every loaded marker (explicit per-marker colour, or
+            # the frame default for un-edited ones). Only frames that have
+            # at least one individually-coloured marker are recomputed; a
+            # frame with no per-marker entry keeps its existing single
+            # solid_color_by_rep swatch above.
+            tree = _engine_tree()
+            if tree is not None and by_marker:
+                frames = set()
+                for m_path in by_marker:
+                    try:
+                        nid = tree.find_node_id(m_path)
+                        r_id = tree.find_representation_node(nid) if nid is not None else None
+                        if r_id is None or (tree.find_type(r_id) or "") != "MarkerFrame":
+                            continue
+                        f_path = tree.find_path(r_id)
+                    except Exception:
+                        continue
+                    if f_path:
+                        frames.add(f_path)
+                for f_path in frames:
+                    frame_default = colors.get(f_path) or "#808080FF"
+                    eff = set(
+                        (by_marker.get(m) or frame_default)
+                        for m in _markers_of_frame(f_path)
+                    )
+                    if len(eff) >= 2:
+                        chips[f_path] = "MULTICOLOR"
+                    elif len(eff) == 1:
+                        chips[f_path] = next(iter(eff))
             state.tree_chip_color_by_path = chips

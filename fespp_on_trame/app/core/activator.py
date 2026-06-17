@@ -1,4 +1,3 @@
-import re
 import time
 
 from trame.app import get_server
@@ -6,31 +5,22 @@ from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.tree import Tree
 from fespp_on_trame.app.core.engine import source_resolver
-
-
-# Mirror of FESPP's C++ MakeValidNodeName. FESPP strips characters
-# outside [-.0-9A-Z_a-z] from property titles before using them as VTK
-# array names; the tree's `title` attribute keeps the original RESQML
-# title (with spaces, parentheses, etc.), so a direct GetArray(title)
-# lookup fails when the title contains stripped characters. This regex
-# produces the sanitized variant used to retry the lookup.
-_VTK_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
-
-
-def _make_valid_vtk_name(name: str) -> str:
-    if not name:
-        return ""
-    return _VTK_NAME_INVALID_RE.sub("", name)
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 
 def _find_array_in_store(store, name):
-    """Look up a VTK array by name with fallback to the sanitized variant."""
+    """Look up a VTK array by name with fallback to the sanitized
+    variant. FESPP's C++ side names arrays via `MakeValidNodeName`
+    (strip chars outside `[-.0-9A-Z_a-z]`); the tree's `title`
+    attribute keeps the original RESQML title with spaces / parens /
+    etc., so a direct lookup by title may miss the array. Retry with
+    the sanitized name to catch that case."""
     if store is None or not name:
         return None
     arr = store.GetArray(name)
     if arr is not None:
         return arr
-    sanitized = _make_valid_vtk_name(name)
+    sanitized = make_valid_vtk_name(name)
     if sanitized != name:
         return store.GetArray(sanitized)
     return None
@@ -41,15 +31,29 @@ state = server.state
 controller = server.controller
 
 
+# Grouping kinds (mirror of tree_views.py grouping list / C++ enum.h
+# isGroupingType). A grouping / representation node may legitimately
+# become active by virtue of a checked DESCENDANT; a property leaf may
+# NOT — it has to be checked on its own id. Duplicated here (rather than
+# imported from the UI module) to avoid a circular import.
+# 'Frame'/'MarkerFrame' are folders-for-selection (see tree_views.py):
+# they become active via a checked child log/marker, so include them.
+_GROUPING_KINDS = (
+    "Collection", "Wellbore", "Partial", "Feature", "Interpretation",
+    "Frame", "MarkerFrame",
+)
+
+
 def _nan_opacity_from_state():
-    """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.2."""
+    """Read NaN opacity from state.nan_color (#RRGGBBAA), default 0.0
+    (NaN cells fully transparent unless the user dials in an alpha)."""
     try:
         hex_val = (state.nan_color or "").lstrip("#")
         if len(hex_val) >= 8:
             return int(hex_val[6:8], 16) / 255
     except (ValueError, IndexError):
         pass
-    return 0.2
+    return 0.0
 
 
 def _all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None,
@@ -188,31 +192,49 @@ class Activator:
             self._handle_well_change(ui_active_node_well)
 
     def _is_node_active_able(self, node_id, select_list):
-        """Return True when the active candidate belongs to a
-        currently-checked subtree. Catches both directions:
-          - node_id is or under a selected node;
-          - node_id is an ancestor of a selected node (e.g. user
-            checks a property and clicks the parent rep — the rep
-            loads as a side effect).
-        Works in both auto and manual load modes since the select
-        list is the raw checkbox state (`ui_select_node_*`)."""
+        """Return True when `node_id` may become the active node given
+        the current checkbox state (`select_list` = `ui_select_node_*`,
+        a list of TREE NODE IDS).
+
+        Semantics (per user requirement 2026-06-05):
+          - A PROPERTY leaf (Property* / TimeSeries / MultiRealization*)
+            is activatable ONLY when its OWN id is checked. Being under
+            a checked rep is NOT enough: the dependency expansion
+            (`tree_views._expand_selection_with_deps`) auto-adds the rep
+            id to the select list whenever ANY one of its properties is
+            checked, so an "under a checked rep" rule would let every
+            unchecked sibling property activate — the reported bug.
+          - A REP / grouping / intermediate node is activatable when it
+            is checked, OR sits under a checked grouping/rep, OR has a
+            checked descendant (the "check a property, click its parent
+            rep" case — the rep loads as a side effect).
+        Works in both auto and manual load modes since the select list
+        is the raw checkbox state."""
         if not select_list or node_id is None or node_id == 0:
             return False
-        rep_node_id = self._tree.find_representation_node(node_id)
-        anchor = rep_node_id if rep_node_id is not None else node_id
-        anchor_path = self._tree.find_path(anchor)
-        if not anchor_path:
+        self_path = self._tree.find_path(node_id)
+        if not self_path:
             return False
-        for sel_id in select_list:
-            sel_path = self._tree.find_path(sel_id)
-            if not sel_path:
-                continue
-            if sel_path == anchor_path:
-                return True
-            if sel_path.startswith(anchor_path + "/"):
-                return True
-            if anchor_path.startswith(sel_path + "/"):
-                return True
+        sel_paths = [p for p in (self._tree.find_path(s) for s in select_list) if p]
+        # The node itself is checked → always activatable.
+        if self_path in sel_paths:
+            return True
+        kind = self._tree.find_type(node_id) or ""
+        is_property = (
+            "Property" in kind
+            or kind in ("TimeSeries", "MultiRealization", "MultiRealizationTimeSeries")
+        )
+        if is_property:
+            # Property leaf must be checked on its own id (handled above).
+            return False
+        # Rep / grouping / intermediate node.
+        is_rep = self._tree.find_representation_node(node_id) == node_id
+        is_rep_or_group = is_rep or (kind in _GROUPING_KINDS)
+        for sel_path in sel_paths:
+            if self_path.startswith(sel_path + "/"):
+                return True                       # node under a checked grouping/rep
+            if is_rep_or_group and sel_path.startswith(self_path + "/"):
+                return True                       # rep/group whose checked descendant loaded it
         return False
 
     def _handle_reservoir_change(self, ui_active_node_reservoir):
@@ -289,6 +311,10 @@ class Activator:
                 "active_property_kind": property_kind,
                 "ptc_show_vcr": is_ts_property,
                 "active_color_array_name": "" if not is_property else state.active_color_array_name,
+                # Active node path (used by the COE channel retarget; a no-op
+                # for grid properties, but kept current so a stale wellbore
+                # channel path doesn't linger).
+                "active_color_array_path": (self._tree.find_path(node_id) or "") if is_property else "",
                 "coe_panels": [] if not is_property else state.coe_panels,
             })
 
@@ -713,6 +739,61 @@ class Activator:
         except Exception as _e:
             print(f"[DEBUG active.reservoir] upstream inspect failed: {_e}")
 
+    def _publish_active_color_state(self, node_id):
+        """Publish the COE-mode state (`active_color_array_name` /
+        `active_property_kind`) for the active node of the WELL / SURFACE
+        tab — mirroring what `_handle_reservoir_change` does inline.
+
+        The COE / SolidColor panel reads `active_color_array_name` to
+        decide colormap-vs-solid mode; without this a wellbore LOG
+        channel (a property leaf living in the WELL tree) shows as
+        SolidColor even though its eye colors the tube. For a property
+        leaf we set the kind + array name and push the per-view LUT into
+        the COE; for anything else (frame folder, marker, wellbore,
+        trajectory geometry) we clear so the panel falls back to Solid.
+
+        The actual ColorBy for a channel is done by
+        `toggle_dataarray_color` (the eye), so this only publishes the
+        editor STATE — it does not re-color."""
+        type_node = self._tree.find_type(node_id) or ""
+        is_multireal = type_node in ("MultiRealization", "MultiRealizationTimeSeries")
+        is_property = bool(
+            type_node and (
+                "Property" in type_node or is_multireal or type_node == "TimeSeries"
+            )
+        )
+        if not is_property:
+            state.active_color_array_name = ""
+            state.active_property_kind = ""
+            state.active_color_array_path = ""
+            return
+        # The active NODE's own path — drives the COE's read-only channel
+        # retarget so a wellbore-channel node shows ITS data even when a
+        # sibling channel of the same frame is the one displayed.
+        try:
+            state.active_color_array_path = self._tree.find_path(node_id) or ""
+        except Exception:
+            state.active_color_array_path = ""
+        property_kind = ""
+        if type_node in ("ContinuousProperty", "DiscreteProperty", "CategoricalProperty"):
+            property_kind = type_node
+        elif type_node in ("TimeSeries", "MultiRealization", "MultiRealizationTimeSeries"):
+            pk = self._tree.find_attribute_value(node_id, "propKind")
+            if pk:
+                property_kind = pk
+        array_name = self._tree.find_title(node_id) or ""
+        if is_multireal:
+            prop_title = self._tree.find_attribute_value(node_id, "propTitle")
+            if prop_title:
+                array_name = prop_title
+        state.active_property_kind = property_kind
+        state.active_color_array_name = array_name
+        if array_name:
+            try:
+                controller.update_color_editor(array_name)
+            except Exception as exc:
+                print(f"[WARNING] update_color_editor({array_name}) (well/surface): {exc}")
+
     def _handle_surface_change(self, ui_active_node_surface):
         if ui_active_node_surface and len(ui_active_node_surface) > 0:
             node_id = ui_active_node_surface[0]
@@ -722,10 +803,14 @@ class Activator:
             type_node = self._tree.find_type(node_id)
             state.update({"ui_active_node_surface_type": type_node})
             self._activate_rep_source(node_id)
+            self._publish_active_color_state(node_id)
         else:
             state.update({"ui_active_node_surface_type": ""})
             state.active_representation_path = ""
             state.active_representation_has_properties = False
+            state.active_color_array_name = ""
+            state.active_property_kind = ""
+            state.active_color_array_path = ""
 
     def _handle_well_change(self, ui_active_node_well):
         if ui_active_node_well and len(ui_active_node_well) > 0:
@@ -736,10 +821,13 @@ class Activator:
             type_node = self._tree.find_type(node_id)
             state.update({"ui_active_node_well_type": type_node})
             self._activate_rep_source(node_id)
+            self._publish_active_color_state(node_id)
         else:
             state.update({"ui_active_node_well_type": ""})
             state.active_representation_path = ""
             state.active_representation_has_properties = False
+            state.active_color_array_name = ""
+            state.active_property_kind = ""
 
     def notify_active_reps(self, current_rep_paths):
         """Hide stale color bars left behind when a rep is no longer in

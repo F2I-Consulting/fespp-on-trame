@@ -188,6 +188,18 @@ class SceneRegistry:
             print(f"[SCENE_REG] eager source({scene.view_id}/{rep_path}): {exc}")
             return
 
+        # (1b) A rep the engine flagged hidden in THIS view's bucket
+        # (every NON-active panel at first load) is BUILT above but must
+        # not RENDER here — so a newly-selected rep appears only in the
+        # active view. The non-IJK extractor already honoured the bucket
+        # inside `_ensure_extractor`; this also covers the IJK per-view
+        # pipeline (whose `IjkGrid.show()` always re-shows its slicers).
+        try:
+            if rep._hidden_in_scene():
+                rep.hide_in_scene_view()
+        except Exception as exc:
+            print(f"[SCENE_REG] eager hide({scene.view_id}/{rep_path}): {exc}")
+
         # (2) Replicate the active view's ColorBy for this rep onto
         #     the new scene. The bind point per rep is stored in
         #     `ui_active_array_by_rep_by_view[active_panel_id][rep_path]`.
@@ -210,6 +222,18 @@ class SceneRegistry:
             new_by_view = dict(by_view)
             new_by_view[new_bucket_key] = new_panel_map
             state.ui_active_array_by_rep_by_view = new_by_view
+
+            # Wellbore frame: SHOW the active channel in the new view via
+            # its OWN per-channel extractor (exclusive) so a split inherits
+            # the displayed log; apply_color_array then ColorBy's the
+            # now-visible channel extractor. Gated on the hidden-in-scene
+            # bucket so a FIRST selection's channel appears only in the
+            # active view (non-active panels build but don't render it).
+            try:
+                if rep._is_wellbore_frame() and not rep._hidden_in_scene():
+                    rep.set_channel_visible(active_array_path, True)
+            except Exception:
+                pass
 
             # Fan ColorBy onto the new view's per-view extractor +
             # chain. Mirrors the per-realization handling so the
@@ -237,6 +261,44 @@ class SceneRegistry:
             return getattr(get_server().context, "source_registry", None)
         except Exception:
             return None
+
+    def apply_visible_markers(self, view_id) -> None:
+        """Show every marker listed in `ui_visible_marker_paths_by_view`
+        for `view_id` in that scene — used after a view split so the new
+        view inherits the source view's visible markers (each rendered
+        via its own per-marker EnergisticsExtractor). No-op when the
+        bucket is empty."""
+        view_id = str(view_id)
+        scene = self.get_scene(view_id)
+        if scene is None:
+            return
+        try:
+            from trame.app import get_server
+            state = get_server().state
+            markers = list(
+                (state.ui_visible_marker_paths_by_view or {}).get(view_id, []) or []
+            )
+        except Exception:
+            markers = []
+        if not markers:
+            return
+        for marker_path in markers:
+            try:
+                n_id = self.tree.find_node_id(marker_path)
+                r_id = self.tree.find_representation_node(n_id) if n_id is not None else None
+                r_path = self.tree.find_path(r_id) if r_id is not None else None
+            except Exception:
+                r_path = None
+            if not r_path:
+                continue
+            rep = scene.get_rep(r_path) or scene.add_rep(r_path)
+            if rep is None:
+                continue
+            try:
+                rep.set_marker_visible(marker_path, True)
+            except Exception as exc:
+                print(f"[SCENE_REG] apply_visible_markers"
+                      f"({view_id}/{marker_path}): {exc}")
 
     # ------------------------------------------------------------------
     # Phase 3b — per-view IjkGrid sync

@@ -35,7 +35,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     def __init__(self):
         # Force hexa format BEFORE the parent applies its #RRGGBB default.
-        state.setdefault("nan_color", "#FF000033")
+        # Alpha 00 → NaN cells fully transparent by default (the app
+        # convention: valid values get flat-1 opacity via the PWF, NaN
+        # cells are hidden unless the user dials in an alpha here). The
+        # red hue is kept so a user raising the alpha gets a visible
+        # "no data" marker.
+        state.setdefault("nan_color", "#FF000000")
         super().__init__()
 
     def build_content(self) -> None:
@@ -53,7 +58,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     "opacities",
                     self.make_linear_nodes([0, 1], [0, 1]),
                 ),
-                scalar_range=("scalar_range", [0, 0]),
+                scalar_range=("scalar_range", [0, 1]),
                 background_shape=("background_shape", "opacity"),
                 background_opacity=("background_opacity", True),
                 handle_radius=7,
@@ -126,12 +131,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         legacy shared `ExtractBlock` which doesn't carry them."""
         raw_name = self.state.active_color_array_name or ""
         if not raw_name:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
             return
         # Resolve the base VTK array name (MR title → `_real_<idx>`).
         base_name, scene_lut = source_resolver.resolve_target_scoped_lut(raw_name)
         if not base_name:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
             return
         # Prefer the per-view scene's RepInScene source for the array
         # info lookup (Phase 3a/3b — MR `_real_<idx>` arrays live on
@@ -143,13 +148,19 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             srv = get_server()
             st = srv.state
             ctx = srv.context
+            # Wellbore channel: read its OWN per-channel extractor
+            # (materialised even when hidden) — the frame's primary
+            # source() carries no channel array. None for non-channels.
+            source = source_resolver.channel_source_for(
+                getattr(st, "active_color_array_path", "") or ""
+            )
             target_panel = (
                 getattr(st, "drawer_target_view_id", "") or ""
                 or getattr(st, "fespp_active_panel_id", "") or ""
             )
             rep_path = st.active_representation_path or ""
             scene_registry = getattr(ctx, "scene_registry", None)
-            if scene_registry is not None and target_panel and rep_path:
+            if source is None and scene_registry is not None and target_panel and rep_path:
                 scene = scene_registry.get_scene(target_panel)
                 if scene is not None:
                     rep_in_scene = scene.get_rep(rep_path)
@@ -163,16 +174,30 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         if source is None:
             source = self.source_proxy
         if source is None:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
             return
         try:
-            source.UpdatePipelineInformation()
+            # Force a FULL pipeline pass (RequestData), not just the
+            # info pass — the per-view IjkGrid's rep_data extractor
+            # (`_src_extract_init`, returned by `RepInScene.source()`
+            # for IjkGrid reps) is built with only
+            # `UpdatePipelineInformation()` at creation time (see
+            # `IjkGrid.set_node_id` per-view path); without a data
+            # pass here `GetDataInformation()` reports
+            # `NumberOfCells=0` and `GetArrayInformation(base_name)`
+            # returns None even though the property array is present
+            # on the downstream slicers. Symptom: the
+            # ColorOpacityEditor widget shows no range / a flat
+            # histogram while the scalar bar and on-screen render
+            # are correct — observed on TimeSeries IjkGrid after a
+            # 2nd selector add.
+            source.UpdatePipeline()
             source_info = source.GetDataInformation()
         except Exception:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
             return
         if source_info is None:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
             return
         # Default to cells (FESPP arrays are CELLS today) — fall back
         # to points when not found.
@@ -191,7 +216,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             except Exception:
                 continue
         if array_info is None:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
             return
         lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(base_name)
         vector_component = 0
@@ -201,9 +226,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             vector_component = 0
         try:
             r = array_info.GetComponentRange(vector_component)
-            self.state.scalar_range = [r[0], r[1]]
+            # Widen a degenerate range (constant / all-NaN→0 log) so the
+            # COE gradient doesn't divide by zero (addColorStop non-finite).
+            lo, hi = source_resolver.nondegenerate_range(r[0], r[1])
+            self.state.scalar_range = [lo, hi]
         except Exception:
-            self.state.scalar_range = [0, 0]
+            self.state.scalar_range = [0, 1]
 
     @change("colors")
     def on_colors_changed(self, *args, **kwargs) -> None:

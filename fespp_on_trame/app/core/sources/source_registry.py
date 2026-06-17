@@ -425,6 +425,21 @@ class SourceRegistry:
             if not ijk_rep_path:
                 continue
             chosen_prop_for_grid.setdefault(ijk_rep_path, reservoir_node_id)
+        # Fallback: derive IjkGrid targets from `selectors` directly so
+        # sync stays self-sufficient when `state.ui_select_node_reservoir`
+        # hasn't flushed yet on the same tick (reselect-after-deselect-all
+        # path: `fespp_data_selectors` change fires before the reservoir
+        # state var is observed). Without this the IjkGrid branch sees
+        # an empty input and no-ops, leaving the rep unbuilt.
+        for sel in selectors or []:
+            rp = self._rep_path_for(sel)
+            if rp is None or self._rep_type_for(rp) != "IjkGrid":
+                continue
+            if rp in chosen_prop_for_grid:
+                continue
+            prop_node_id = self._tree.find_node_id(sel)
+            if prop_node_id is not None:
+                chosen_prop_for_grid[rp] = prop_node_id
         ijk_current = set(self._ijk_grids.keys())
         for gone in ijk_current - set(chosen_prop_for_grid.keys()):
             self.release(gone)

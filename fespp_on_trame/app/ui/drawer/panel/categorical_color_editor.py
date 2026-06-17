@@ -10,7 +10,6 @@ chosen color. We render one row per unique value with a `VColorPicker` (hexa
 NaN handling the user asked for).
 """
 import colorsys
-import re
 import time
 
 from trame.app import get_server
@@ -18,33 +17,23 @@ from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import source_resolver
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 server = get_server()
 state = server.state
 controller = server.controller
 
 
-# Mirror of FESPP's C++ MakeValidNodeName — see activator.py for
-# context. RESQML titles can contain characters (spaces, parens, ...)
-# that FESPP strips when naming VTK arrays. The Trame state holds the
-# original title; we may need the sanitized variant to look the array
-# up.
-_VTK_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
-
-
-def _make_valid_vtk_name(name: str) -> str:
-    if not name:
-        return ""
-    return _VTK_NAME_INVALID_RE.sub("", name)
-
-
 def _find_array_in_store(store, name):
+    """Look up a VTK array by `name`, with fallback to the
+    FESPP-sanitized variant — see `utils.naming.make_valid_vtk_name`
+    for the mirror of the C++ side."""
     if store is None or not name:
         return None
     arr = store.GetArray(name)
     if arr is not None:
         return arr
-    sanitized = _make_valid_vtk_name(name)
+    sanitized = make_valid_vtk_name(name)
     if sanitized != name:
         return store.GetArray(sanitized)
     return None

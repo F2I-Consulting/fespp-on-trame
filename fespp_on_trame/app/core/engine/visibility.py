@@ -72,12 +72,92 @@ def _clear_active_array(state, controller, server, source_registry, tree,
             pass
 
 
+def toggle_marker_visibility(state, controller, server, source_registry, tree,
+                             marker_path, panel_id=None):
+    """Tree eye on a WellboreMarker leaf.
+
+    Markers display MULTIPLE at a time (unlike single-select log
+    channels): each toggled marker renders via its OWN per-(rep, view)
+    EnergisticsExtractor pointed at the marker's assembly node. This
+    flips the marker in this panel's `ui_visible_marker_paths_by_view`
+    bucket and shows / hides its per-marker extractor in the target
+    view's RepInScene. Visibility-only — markers carry no colour array.
+    """
+    if not marker_path:
+        return
+    node_id = tree.find_node_id(marker_path)
+    if node_id is None:
+        return
+    r_id = tree.find_representation_node(node_id)
+    r_path = tree.find_path(r_id) if r_id is not None else None
+    if not r_path:
+        return
+    view, html_view = panel_resolver.resolve_view_and_html_view(server, panel_id)
+    bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
+
+    by_view = dict(state.ui_visible_marker_paths_by_view or {})
+    bucket = list(by_view.get(bucket_key, []) or [])
+    if marker_path in bucket:
+        bucket.remove(marker_path)
+        new_visible = False
+    else:
+        bucket.append(marker_path)
+        new_visible = True
+    by_view[bucket_key] = bucket
+    state.ui_visible_marker_paths_by_view = by_view
+
+    rep_in_scene = source_resolver._scene_rep_for_view(r_path, view)
+    if rep_in_scene is not None:
+        try:
+            rep_in_scene.set_marker_visible(marker_path, new_visible)
+        except Exception as exc:
+            print(f"[WARNING] set_marker_visible({marker_path}, {panel_id}): {exc}")
+    else:
+        print(f"[WARNING] toggle_marker_visibility({marker_path}, {panel_id}):"
+              f" no RepInScene for {r_path}")
+
+    if view is not None:
+        try:
+            pvsimple.Render(view=view)
+        except Exception:
+            pass
+    if html_view is not None:
+        try:
+            html_view.update()
+        except Exception:
+            pass
+    else:
+        try:
+            controller.view_update()
+        except Exception:
+            pass
+    print(
+        f"[VIS-MARKER] {marker_path} → {'show' if new_visible else 'hide'} "
+        f"(panel={panel_id or 'active'})"
+    )
+
+
 def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                           panel_id=None, tree=None):
     if not rep_path:
         return
     view, html_view = panel_resolver.resolve_view_and_html_view(server, panel_id)
     bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
+
+    # A wellbore frame has no own geometry — its only renderable content
+    # is the single selected channel tube. The 3-state "clear coloring,
+    # keep geometry" intermediate makes no sense there (it would leave
+    # the log painted in SolidColor instead of hiding it). Treat the
+    # frame's eye as a plain show/hide: skip the clear-coloring branch so
+    # the click goes straight to flipping the per-view extractor's
+    # visibility.
+    is_frame = False
+    if tree is not None:
+        try:
+            _nid = tree.find_node_id(rep_path)
+            is_frame = (tree.find_type(_nid) == 'Frame') if _nid is not None else False
+        except Exception:
+            is_frame = False
 
     # State (3) — array active on this rep in this panel → click means
     # "give up the coloring", not "hide the rep". Drop the array and
@@ -87,7 +167,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
     is_hidden_now = rep_path in (
         (state.ui_hidden_rep_paths_by_view or {}).get(bucket_key, []) or []
     )
-    if active_array_path and not is_hidden_now:
+    if active_array_path and not is_hidden_now and not is_frame:
         _clear_active_array(
             state, controller, server, source_registry, tree,
             rep_path, panel_id, view, html_view,

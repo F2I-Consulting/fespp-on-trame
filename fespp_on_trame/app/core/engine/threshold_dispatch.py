@@ -31,9 +31,9 @@ on `_resolve_assoc` (no array named "VOIL" exists).
 All functions in this module are free functions taking explicit
 dependencies. boot.py registers thin closure wrappers that capture
 the relevant deps from the engine init scope and forward."""
-import re
-
 from paraview import simple as pvsimple
+
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 from fespp_on_trame.app.core.engine import realization_dispatch
 
@@ -77,9 +77,6 @@ def _render_and_push(state, controller, fallback_view):
         pass
 
 
-_NAME_INVALID_RE = re.compile(r"[^\-.0-9A-Z_a-z]")
-
-
 def _active_view_id(state):
     """Best-effort target panel id for threshold-chain operations.
 
@@ -113,7 +110,7 @@ def _find_property_path_by_title(tree, rep_path, array_title):
     rep_id = tree.find_node_id(rep_path)
     if rep_id is None:
         return None
-    sanitized = _NAME_INVALID_RE.sub("", array_title)
+    sanitized = make_valid_vtk_name(array_title)
     if not sanitized:
         return None
     for child_id in tree.find_all_descendant_ids(rep_id):
@@ -129,7 +126,7 @@ def _find_property_path_by_title(tree, rep_path, array_title):
             pt = tree.find_attribute_value(child_id, "propTitle")
             if pt:
                 child_title = pt
-        if _NAME_INVALID_RE.sub("", child_title) == sanitized:
+        if make_valid_vtk_name(child_title) == sanitized:
             return tree.find_path(child_id)
     return None
 
@@ -191,7 +188,7 @@ def _resolve_vtk_array_name(state, tree, view_id, rep_path, array_title):
         )
     # Sanitize the title the same way the FESPP plugin does when
     # naming VTK arrays (strip chars outside [-.0-9A-Z_a-z]).
-    sanitized = _NAME_INVALID_RE.sub("", array_title)
+    sanitized = make_valid_vtk_name(array_title)
     return realization_dispatch.suffixed_array_name(sanitized, int(realization_idx))
 
 
@@ -295,6 +292,19 @@ def publish_threshold_chain(state, scene_registry, source_registry, view_id=None
 def refresh_threshold_ui_for_active_grid(state, scene_registry, source_registry, view_id=None):
     """Republish the chain + available arrays on grid switch /
     property load / active-view change."""
+    # When selection is empty, source_registry.sync has just torn
+    # down every rep, including the active grid the threshold UI
+    # was bound to. Reading the provider or its arrays after the
+    # underlying PV source has been Delete()d segfaults inside
+    # vtkPVRenderView (no Python traceback - the process drops).
+    # Guard by clearing the UI vars and bailing before any
+    # provider access.
+    if not (state.fespp_data_selectors or []):
+        state.update({
+            "ui_threshold_chain": [],
+            "ui_threshold_arrays_available": [],
+        })
+        return
     provider, rep_path = threshold_provider(state, scene_registry, source_registry, view_id=view_id)
     if provider is None:
         state.update({

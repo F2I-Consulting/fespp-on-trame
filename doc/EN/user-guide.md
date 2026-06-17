@@ -92,6 +92,11 @@ Each tab shows a different kind of object:
 Trees are independent: you can have items selected and visible in
 several tabs at once.
 
+Within each tree the items are sorted **alphabetically at every level**
+(the hierarchy is preserved — only siblings are ordered). Sorting is
+case- and accent-insensitive and number-aware, so `Grid2` comes before
+`Grid10`.
+
 ### Selecting Items
 
 Each row has a checkbox on the left. Checking a row tells FESPP to
@@ -139,6 +144,13 @@ active node:
 Active state is purely a UI concept — it does not change what's loaded
 or what's currently visible.
 
+> **A property must be checked to become active.** Clicking the label of
+> a property whose checkbox is unchecked does nothing — the Attributes
+> panel stays on whatever was active before. Check the property first
+> (which loads it), then click its label to edit its colours. A
+> representation or grouping node still activates when any of its
+> children is checked.
+
 ---
 
 ## Coloring & Opacity
@@ -166,6 +178,14 @@ can:
 - Click on the gradient to insert new stops.
 - Edit the scalar range by typing values in the min/max fields.
 - The NaN color is preserved between activations.
+
+By default a freshly-activated property has **flat opacity 1** across
+the whole value range (the grid is fully opaque) and **NaN cells are
+fully transparent** — cells with no value (inactive grid cells,
+uncovered partial properties, empty time-series steps) simply don't
+render. The two are independent: raise the NaN alpha in the NaN-color
+picker to make missing data visible again, and reshape the opacity
+curve for valid values without affecting the NaN handling.
 
 The LUT applies whenever the eye is open on the array. When the eye is
 closed you can still tweak the LUT (e.g. to prepare it before re-opening
@@ -596,6 +616,12 @@ preserved on the node icon.
 Activate one and the **Time controls** appear at the top of the 3D view
 (playback bar with play/pause, step-by-step buttons and a timeline).
 Time labels follow the time-series metadata.
+
+Not every property has a value at every time step (some carry a single
+step, e.g. a static region). Scrubbing onto a step where the active
+property has no data shows the grid as **fully transparent** (every
+cell is NaN-filled) — a clear "no data at this step" signal — and the
+data reappears when you scrub back to a step that has values.
 
 ---
 

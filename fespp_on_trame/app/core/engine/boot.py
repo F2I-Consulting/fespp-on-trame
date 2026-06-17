@@ -124,20 +124,22 @@ def initialize_fespp_engine(
     server.context.scene_registry = _scene_registry
 
     def _ijkgrid_by_rep_path(rep_path):
-        return _source_registry.get_ijk_grid(rep_path)
+        """Resolve the IjkGrid for `rep_path` PREFERRING the drawer
+        target view's per-view instance, falling back to the legacy
+        shared one.
 
-    def _active_ijkgrid():
-        """Resolve the IjkGrid driving the slicer panel UI: prefer the
-        Attributes drawer's target view's per-view IjkGrid (Phase 3b
-        owns slicer state per-view), fall back to the legacy shared
-        instance when the per-view hasn't been built yet (no property
-        picked, early boot, etc.).
-
-        The drawer target view is `drawer_target_view_id` (picker in
-        the Attributes toolbar, follows the active panel by default
-        unless pinned), with `fespp_active_panel_id` as the boot-window
-        fallback."""
-        rep_path = state.active_representation_path
+        This is the activator's `ijk_lookup`. It MUST return the
+        per-view IjkGrid (the one actually rendering in the panel),
+        not the legacy shared instance: the per-view rendering fix
+        Hides every legacy IjkGrid source in the panel's view, so the
+        activator's `_resolve_color_target_source` — which walks this
+        grid's sources looking for a VISIBLE one — would always get
+        None from the legacy grid and bail before calling
+        `update_color_editor`. That left `active_color_array_name`
+        stale and the Colors & Opacity panel stuck on the SolidColor
+        picker whenever the user activated a property node whose eye
+        was not the currently-colored one (active node = PRESSURE,
+        eye = PVTregion → COE showed SolidColor)."""
         if not rep_path:
             return None
         target_panel = (
@@ -156,6 +158,17 @@ def initialize_fespp_engine(
                 if ijk is not None:
                     return ijk
         return _source_registry.get_ijk_grid(rep_path)
+
+    def _active_ijkgrid():
+        """Resolve the IjkGrid driving the slicer panel UI for the
+        currently-active representation. Thin wrapper over
+        `_ijkgrid_by_rep_path` (which already prefers the drawer
+        target view's per-view instance) keyed on
+        `state.active_representation_path`."""
+        rep_path = state.active_representation_path
+        if not rep_path:
+            return None
+        return _ijkgrid_by_rep_path(rep_path)
 
     def _push_active_ijk_state_to_ui():
         """Mirror the currently-active IjkGrid's slicer/range state into
@@ -356,6 +369,13 @@ def initialize_fespp_engine(
         active_array.toggle_dataarray_color(
             state, controller, server, _source_registry, _tree,
             array_path, panel_id=panel_id,
+        )
+
+    @controller.set("toggle_marker_visibility")
+    def toggle_marker_visibility(marker_path, panel_id=None):
+        visibility.toggle_marker_visibility(
+            state, controller, server, _source_registry, _tree,
+            marker_path, panel_id=panel_id,
         )
 
     @controller.set("apply_panel_coloring")
