@@ -183,8 +183,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # render below. Rendering a stale, still-visible source against a
     # clone whose upstream partition is gone crashes natively, so
     # hide+delete the deselected reps' per-view pipelines NOW, before any
-    # render. Remove-only: the add/eager-setup half stays on the deferred
-    # handler. The clone is already consistent (UpdatePipeline'd above).
+    # render. The clone is already consistent (UpdatePipeline'd above).
     try:
         scene_reg = getattr(server.context, "scene_registry", None)
         if scene_reg is not None:
@@ -199,6 +198,19 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             for scene in scene_reg.all_scenes():
                 if scene.pv_view is not None:
                     source_resolver.hide_unused_scalar_bars(scene.pv_view)
+    except Exception:
+        pass
+
+    # Build the ADD / eager-setup half SYNCHRONOUSLY too — not only via the
+    # deferred @state.change("ui_loaded_rep_paths") handler. A newly-loaded
+    # rep's per-view display + ColorBy must exist BEFORE the view push below;
+    # otherwise the first push paints an empty client and the object only
+    # appears once the user nudges the camera (which forces a client-side
+    # re-render). Idempotent — the deferred handler then no-ops.
+    try:
+        scene_reg = getattr(server.context, "scene_registry", None)
+        if scene_reg is not None:
+            scene_reg.sync_loaded_reps(state.ui_loaded_rep_paths or [])
     except Exception:
         pass
 
