@@ -601,7 +601,7 @@ class IjkGrid:
             except Exception:
                 pass
 
-        deepest_leaf = self._deepest_visible_leaf()
+        tips = self._visible_leaf_tips()
 
         if self._range_mode == 'slice':
             if self._src_slicer_volume is not None:
@@ -619,14 +619,14 @@ class IjkGrid:
             ):
                 for idx, src in enumerate(axis_srcs):
                     visible = vis_list[idx] if idx < len(vis_list) else True
-                    self._show_source_or_chain(src, view, visible, deepest_leaf)
+                    self._show_source_or_chain(src, view, visible, tips)
                     if visible:
                         any_visible = True
 
             if self._src_extract_init is not None:
                 # Parent fallback: show rep_data when no slicer is visible.
                 self._show_source_or_chain(
-                    self._src_extract_init, view, not any_visible, deepest_leaf,
+                    self._src_extract_init, view, not any_visible, tips,
                 )
         else:
             for src in self._all_slice_sources():
@@ -644,27 +644,34 @@ class IjkGrid:
                     pvsimple.Hide(proxy=s, view=view)
                     self._hide_chain_for(s, view)
             if primary is not None:
-                self._show_source_or_chain(primary, view, volume_visible, deepest_leaf)
+                self._show_source_or_chain(primary, view, volume_visible, tips)
 
-    def _show_source_or_chain(self, src, view, visible, deepest_leaf):
-        """Show src OR its corresponding deepest visible threshold leaf,
-        gated by the user's eye state for that source."""
-        proxy = None
-        if deepest_leaf is not None:
-            proxy = deepest_leaf.pv_proxies.get(id(src))
-        if proxy is not None:
+    def _show_source_or_chain(self, src, view, visible, tips):
+        """Show src OR — when a threshold chain is active for this
+        upstream — EVERY visible tip leaf's proxy, gated by the user's
+        eye state for that source.
+
+        A linear (intersection) chain has a single tip, so this shows
+        just the deepest leaf. Sibling branches (union) each contribute
+        a tip, so all disjoint intervals render together instead of the
+        last one clobbering the rest. Non-tip chain proxies for this
+        upstream are always hidden."""
+        tip_proxies = [
+            p for p in (t.pv_proxies.get(id(src)) for t in (tips or []))
+            if p is not None
+        ]
+        if tip_proxies:
             pvsimple.Hide(proxy=src, view=view)
-            (pvsimple.Show if visible else pvsimple.Hide)(proxy=proxy, view=view)
-            # Hide intermediate chain entries' proxies for this upstream.
+            # Hide every non-tip chain proxy for this upstream first.
             for entry in self._chain:
-                if entry is deepest_leaf:
-                    continue
                 p = entry.pv_proxies.get(id(src))
-                if p is not None:
+                if p is not None and p not in tip_proxies:
                     try:
                         pvsimple.Hide(proxy=p, view=view)
                     except Exception:
                         pass
+            for p in tip_proxies:
+                (pvsimple.Show if visible else pvsimple.Hide)(proxy=p, view=view)
         else:
             self._hide_chain_for(src, view)
             (pvsimple.Show if visible else pvsimple.Hide)(proxy=src, view=view)
@@ -678,21 +685,24 @@ class IjkGrid:
                 except Exception:
                     pass
 
-    def _deepest_visible_leaf(self):
-        """The deepest visible chain entry (i.e. last one in chain
-        order whose own visibility is on AND every ancestor on the
-        path to root is visible). None if nothing is visible. The
-        chain's display always shows the deepest visible entry's
-        output — intermediate ones serve only as filters in the
-        pipeline."""
-        leaf = None
-        for entry in self._chain:
-            if not entry.visible:
-                continue
-            if not self._ancestors_all_visible(entry):
-                continue
-            leaf = entry
-        return leaf
+    def _visible_leaf_tips(self):
+        """Every visible chain TIP: entries that are visible, have every
+        ancestor on the path to root visible, AND have no visible child.
+
+        A linear chain (each threshold stacked on the previous =
+        intersection) has a single tip — the deepest entry. Sibling
+        branches off a shared parent (union of disjoint intervals) each
+        produce their own tip, so all of them render together. The
+        chain's display shows each tip's output; non-tip entries serve
+        only as upstream filters. Empty list when nothing is visible."""
+        visible = [
+            e for e in self._chain
+            if e.visible and self._ancestors_all_visible(e)
+        ]
+        parents_with_visible_child = {
+            e.parent_name for e in visible if e.parent_name
+        }
+        return [e for e in visible if e.name not in parents_with_visible_child]
 
     def _ancestors_all_visible(self, entry):
         cursor = self._entry_by_name(entry.parent_name)
@@ -841,11 +851,13 @@ class IjkGrid:
 
     def all_visible_threshold_proxies(self):
         """Every PV proxy that's actually rendering threshold output —
-        used by the engine for ColorBy fan-out / visibility scans."""
-        leaf = self._deepest_visible_leaf()
-        if leaf is None:
-            return []
-        return list(leaf.pv_proxies.values())
+        used by the engine for ColorBy fan-out / visibility scans. With
+        union branches active this spans every visible tip, not just the
+        deepest leaf."""
+        out = []
+        for tip in self._visible_leaf_tips():
+            out.extend(tip.pv_proxies.values())
+        return out
 
     def all_render_sources(self):
         """Every PV source proxy created by this grid: rep_data, the

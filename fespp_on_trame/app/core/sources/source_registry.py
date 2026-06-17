@@ -195,9 +195,9 @@ class SourceRegistry:
 
     def all_visible_thresholds(self, rep_path: str):
         """ExtractBlockRepresentation only — IjkGrid threshold
-        visibility is read per-upstream via the deepest-leaf logic
+        visibility is read per-upstream via the visible-tips logic
         inside IjkGrid itself; engine callers use
-        `get_ijk_grid(...)._deepest_visible_leaf()` for that."""
+        `get_ijk_grid(...)._visible_leaf_tips()` for that."""
         eb = self._extract_blocks.get(rep_path)
         return eb.all_visible_thresholds() if eb is not None else []
 

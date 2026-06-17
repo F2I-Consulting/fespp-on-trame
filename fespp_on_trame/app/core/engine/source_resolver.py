@@ -241,7 +241,7 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
     # Legacy shared IjkGrid fallback.
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
-        deepest_leaf = ijk._deepest_visible_leaf()
+        tips = ijk._visible_leaf_tips()
         grid_sources = list(ijk._all_slice_sources())
         if ijk._src_slicer_volume is not None:
             grid_sources.append(ijk._src_slicer_volume)
@@ -250,10 +250,11 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
         if ijk._src_extract_init is not None:
             grid_sources.append(ijk._src_extract_init)
         for s in grid_sources:
-            proxy = None
-            if deepest_leaf is not None:
-                proxy = deepest_leaf.pv_proxies.get(id(s))
-            out.append(proxy if proxy is not None else s)
+            tip_proxies = [
+                p for p in (t.pv_proxies.get(id(s)) for t in tips)
+                if p is not None
+            ]
+            out.extend(tip_proxies if tip_proxies else [s])
         return out, view
 
     eb = source_registry.get_extract_block(rep_path)

@@ -318,12 +318,14 @@ class IjkGridRep(GridRep):
 
     def rendered_sources(self, ris):
         """Every proxy the per-view IjkGrid renders (slicers + volume +
-        rep_data), with the deepest-visible-leaf proxy substituted. None →
-        fall through to the legacy shared IjkGrid."""
+        rep_data), with each upstream's visible-tip proxies substituted.
+        Union branches contribute multiple tips per upstream, so all
+        disjoint intervals render. None → fall through to the legacy
+        shared IjkGrid."""
         ijk = ris._ensure_per_view_ijk()
         if ijk is None or ijk.source is None:
             return None
-        deepest_leaf = ijk._deepest_visible_leaf()
+        tips = ijk._visible_leaf_tips()
         grid_sources = list(ijk._all_slice_sources())
         if ijk._src_slicer_volume is not None:
             grid_sources.append(ijk._src_slicer_volume)
@@ -331,8 +333,11 @@ class IjkGridRep(GridRep):
             grid_sources.append(ijk._src_extract_init)
         out = []
         for s in grid_sources:
-            proxy = deepest_leaf.pv_proxies.get(id(s)) if deepest_leaf is not None else None
-            out.append(proxy if proxy is not None else s)
+            tip_proxies = [
+                p for p in (t.pv_proxies.get(id(s)) for t in tips)
+                if p is not None
+            ]
+            out.extend(tip_proxies if tip_proxies else [s])
         return out
 
     def color_sources(self, ris):
