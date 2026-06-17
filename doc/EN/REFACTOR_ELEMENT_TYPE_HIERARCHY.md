@@ -1,6 +1,14 @@
 # Refactor — Element type hierarchy (ElementType)
 
-> Status: **proposal / design**. Nothing is implemented yet.
+> Status: **in progress** — **Steps 0, 1, 2, 3, 5 done** (the hierarchy +
+> resolver in the [element_type/](../../fespp_on_trame/app/core/element_type/) package,
+> and the tracking / eye / visibility-predicate / channel-detection layers
+> now DELEGATE to it; see §5). **Step 4 (moving BEHAVIOUR into the classes —
+> child management, visibility, source construction) is largely done (4.1–4.3)**
+> via the strategy pattern (Option A: `RepInScene` keeps the per-view state
+> and passes itself as `ris`); the IJK pipeline builder + threshold/resolver
+> delegation are follow-ups. Each landed step is a behaviour-preserving pure
+> refactor.
 > Goal: replace the scattered `if kind == ...` with a hierarchy of
 > classes by inheritance, so that a change to one type no longer breaks
 > the others.
@@ -170,30 +178,67 @@ and keeps the *per-view mechanics*.
 
 We do **not** rewrite all at once. Proposed order, each step testable on its own:
 
-1. **Step 0 — `element_type.py` + `ElementType.for_path()`**
-   Create the class hierarchy + a `kind → class` resolver. No caller
-   yet. *Zero behavior change.*
+1. **Step 0 — `element_type.py` + `ElementType.for_path()`** ✅ **done**
+   Class hierarchy + a `kind → class` resolver (`for_kind` / `for_path`),
+   stateless singletons, the declarative contract (`tree_role`,
+   `is_grouping`, `eye_descriptor`, `tracking_bucket`, `visibility_policy`,
+   `color_policy`, `primary_hidden`); `make_source` is a Step-4 placeholder.
+   No caller yet → *zero behaviour change*. Guarded by `test_element_type.py`
+   (incl. a sync check that `PropertyLeaf.KINDS == data_load._DATA_ARRAY_KINDS`).
 
-2. **Step 1 — Consolidate the tracking decisions** (data_load)
-   Replace `_DATA_ARRAY_KINDS` / `_update_marker_tracking` with
-   `element_type.tracking_bucket()`. A single place for "this kind feeds
-   which bucket".
+2. **Step 1 — Consolidate the tracking decisions** (data_load) ✅ **done**
+   `_DATA_ARRAY_KINDS` removed; `_update_data_array_tracking` /
+   `_update_marker_tracking` now test
+   `element_type.for_kind(kind).tracking_bucket()`. One place for "this
+   kind feeds which bucket".
 
-3. **Step 2 — Consolidate the eye** (tree_views + tree)
-   Replace the `is_loaded_rep / array / marker` conditions and the removal
-   `item.type !== 'MarkerFrame'` with `element_type.eye_descriptor()`.
+3. **Step 2 — Consolidate the eye** (tree_views + tree) ✅ **done**
+   `tree.py` emits a per-node `eye` token via `element_type.eye_descriptor()`
+   (and `is_grouping` via `element_type.is_grouping()`); the three tree-view
+   JS gates read `item.eye === 'rep'/'array'/'marker'` instead of the
+   `item.type !== 'Frame'` kind checks.
 
-4. **Step 3 — Consolidate visibility** (rep_in_scene + visibility)
-   Replace `_is_ijk_grid / _is_wellbore_frame / _is_marker_frame /
-   _channelless_frame` and the branches of `_ensure_extractor` /
-   `_refresh_parent_rep_visibility` with `visibility_policy()`.
+4. **Step 3 — Consolidate visibility** (rep_in_scene) ✅ **done**
+   `RepInScene` resolves `self.element_type` (lazy); `_is_ijk_grid` /
+   `_is_wellbore_frame` / `_is_marker_frame` / `_channelless_frame` now
+   delegate (`isinstance(…)` / `primary_hidden()`). Callers unchanged.
 
-5. **Step 4 — Consolidate the source** (rep_in_scene)
-   `source()` / `make_source()` delegates; `IjkGrid` and `ExtractBlockRepresentation`
-   become the `SourceHandle`s returned by `GridRep` / `SurfaceRep`.
+5. **Step 4 — Move BEHAVIOUR into the classes** (the strategy pattern,
+   Option A) — **largely done** (the classes were "too thin" with only
+   declarative tags; now they carry the per-type logic, `RepInScene` keeps
+   the state and passes itself as `ris`):
+   - **4.1 ✅ child management** — `ChannelFrameRep` / `MarkerFrameRep` own
+     `set_child_visible` (the EXCLUSIVE-vs-MULTI override boundary),
+     `child_source`, `visible_child_*`, `set_child_color`; the shared
+     `_create_child_extractor` is on `FrameRep`.
+   - **4.2 ✅ visibility** — `refresh_primary_visibility(ris)` /
+     `hide_in_view(ris)` per type (Representation standard / IjkGridRep IJK /
+     FrameRep force-hide); `RepInScene` keeps only the shared guards.
+   - **4.3 ✅ source** — `Representation.ensure_extractor(ris)` builds the
+     per-view extractor; `ensure_source(ris)` routes (IjkGridRep → the IJK
+     pipeline). `source()` no longer branches on `_is_ijk_grid`.
+   - **IJK pipeline ✅** — `_ensure_per_view_ijk` moved into
+     `IjkGridRep.ensure_per_view_ijk(ris)`; `RepInScene` keeps only the
+     `_hide_legacy_ijk` / `refresh_per_view_ijk_property` plumbing.
+   - **4b ✅ source_resolver** — `sources_for_rep_path` /
+     `color_sources_for_rep_path` / `resolve_array_for_path` delegate to
+     `rendered_sources(ris)` / `color_sources(ris)` /
+     `array_candidate_source(ris, path)` (0 predicate uses left in
+     source_resolver); the legacy registry fallbacks stay there.
+   - **4.4 threshold ⏭ skipped (low value)** — the threshold cluster already
+     dispatches via `_is_ijk_grid` (which delegates to
+     `isinstance(IjkGridRep)`); moving it to a `threshold_provider` wouldn't
+     make a class substantive (the local chain stays in `RepInScene`) and
+     would need recursion-avoiding renames. Left as-is.
 
-6. **Step 5 — Coloring** (active_array)
-   `is_channel` → `color_policy()` + `visibility_policy() == ONE_AT_A_TIME`.
+   Net: the type-string branching is eliminated except the predicate
+   *definitions* (the delegators) and the threshold cluster. All
+   behaviour-preserving.
+
+6. **Step 5 — Coloring** (active_array) ✅ **done**
+   `is_channel` now = `element_type.for_kind(rep_kind).visibility_policy()
+   == ONE_AT_A_TIME and r_id != node_id`; `_show_channel_active_view`
+   delegates the same way.
 
 After each step: the app must behave **exactly** as before
 (pure refactor). We keep the `_is_*` as deprecated aliases as long as a caller
@@ -239,7 +284,7 @@ frames code.
 | `data_load._update_marker_tracking` | `MarkerLeaf.tracking_bucket() == "marker"` |
 | `tree_views` is_loaded_rep/array/marker | `ElementType.eye_descriptor()` |
 | `active_array.is_channel` | `ChannelFrameRep` + `visibility_policy() == ONE_AT_A_TIME` |
-| `rep_in_scene._is_ijk_grid` | `isinstance(element_type, GridRep)` |
+| `rep_in_scene._is_ijk_grid` | `isinstance(element_type, IjkGridRep)` |
 | `rep_in_scene._is_wellbore_frame` | `isinstance(element_type, ChannelFrameRep)` |
 | `rep_in_scene._is_marker_frame` | `isinstance(element_type, MarkerFrameRep)` |
 | `rep_in_scene._channelless_frame` | `FrameRep.visibility_policy().primary_hidden()` |

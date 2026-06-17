@@ -35,6 +35,7 @@ import time as _time
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.utils.color_palette import color_for_index
+from fespp_on_trame.app.core import element_type
 
 
 def run(state, controller, server, view, tree, collector, etp_connector,
@@ -333,12 +334,6 @@ def _update_visibility_tracking(state, present_paths):
         state.ui_hidden_rep_paths_by_view = updated
 
 
-_DATA_ARRAY_KINDS = frozenset({
-    "ContinuousProperty", "DiscreteProperty", "CategoricalProperty",
-    "TimeSeries", "MultiRealization", "MultiRealizationTimeSeries",
-})
-
-
 def _update_data_array_tracking(state, tree, present_paths):
     """Recompute `ui_loaded_array_paths` and return
     `(last_array_for_rep, prev_loaded_array_set)` for downstream
@@ -356,8 +351,7 @@ def _update_data_array_tracking(state, tree, present_paths):
         n_id = tree.find_node_id(sel)
         if n_id is None:
             continue
-        kind = tree.find_type(n_id) or ""
-        if kind not in _DATA_ARRAY_KINDS:
+        if element_type.for_kind(tree.find_type(n_id)).tracking_bucket() != element_type.BUCKET_ARRAY:
             continue
         r_id = tree.find_representation_node(n_id)
         r_path = tree.find_path(r_id) if r_id is not None else None
@@ -390,7 +384,7 @@ def _update_marker_tracking(state, tree, present_paths):
         n_id = tree.find_node_id(sel)
         if n_id is None:
             continue
-        if (tree.find_type(n_id) or "") != "Marker":
+        if element_type.for_kind(tree.find_type(n_id)).tracking_bucket() != element_type.BUCKET_MARKER:
             continue
         r_id = tree.find_representation_node(n_id)
         r_path = tree.find_path(r_id) if r_id is not None else None

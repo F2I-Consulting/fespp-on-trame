@@ -231,36 +231,25 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
         view = pvsimple.GetActiveView()
     if view is None:
         return [], None
-    out = []
-    # Phase 3b: prefer the per-view IjkGrid for IJK reps in this view
-    # so visibility toggles operate on the per-view pipeline (not on
-    # the now-hidden legacy IjkGrid).
+    # Per-view: the ElementType decides what this rep RENDERS into a view —
+    # IJK slicers+volume+rep_data / the visible channel / the extractor with
+    # the deepest visible chain leaf. None → fall through to the legacy
+    # registry (no per-view pipeline built for this rep).
     rep_in_scene = _scene_rep_for_view(rep_path, view)
-    if rep_in_scene is not None and rep_in_scene._is_ijk_grid():
-        per_view_ijk = rep_in_scene._ensure_per_view_ijk()
-        if per_view_ijk is not None and per_view_ijk.source is not None:
-            deepest_leaf = per_view_ijk._deepest_visible_leaf()
-            grid_sources = list(per_view_ijk._all_slice_sources())
-            if per_view_ijk._src_slicer_volume is not None:
-                grid_sources.append(per_view_ijk._src_slicer_volume)
-            if per_view_ijk._src_extract_init is not None:
-                grid_sources.append(per_view_ijk._src_extract_init)
-            for s in grid_sources:
-                proxy = None
-                if deepest_leaf is not None:
-                    proxy = deepest_leaf.pv_proxies.get(id(s))
-                out.append(proxy if proxy is not None else s)
-            return out, view
-
+    if rep_in_scene is not None:
+        rendered = rep_in_scene.element_type.rendered_sources(rep_in_scene)
+        if rendered is not None:
+            return rendered, view
+    out = []
+    # Legacy shared IjkGrid fallback.
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
         deepest_leaf = ijk._deepest_visible_leaf()
         grid_sources = list(ijk._all_slice_sources())
         if ijk._src_slicer_volume is not None:
             grid_sources.append(ijk._src_slicer_volume)
-        # Include rep_data — it's the visible source in range mode at
-        # full extent, and including it in the hide path is harmless
-        # when already hidden in slice mode.
+        # Include rep_data — visible in range mode at full extent; harmless
+        # in the hide path when already hidden in slice mode.
         if ijk._src_extract_init is not None:
             grid_sources.append(ijk._src_extract_init)
         for s in grid_sources:
@@ -269,31 +258,6 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
                 proxy = deepest_leaf.pv_proxies.get(id(s))
             out.append(proxy if proxy is not None else s)
         return out, view
-
-    # Wellbore frame: the rendered geometry is the VISIBLE channel's OWN
-    # extractor (the primary stays hidden; the chain is N/A for logs).
-    if rep_in_scene is not None and rep_in_scene._is_wellbore_frame():
-        ch = rep_in_scene.visible_channel_extractor()
-        if ch is not None:
-            out.append(ch)
-        return out, view
-
-    # Phase 3a: non-IjkGrid reps own a per-view extractor + per-view
-    # chain. Substitute the per-view deepest visible chain leaf for
-    # the per-view extractor when the chain is active.
-    if rep_in_scene is not None:
-        per_view_src = None
-        try:
-            per_view_src = rep_in_scene._ensure_extractor()
-        except Exception:
-            per_view_src = None
-        if per_view_src is not None:
-            try:
-                visibles = rep_in_scene.all_visible_thresholds()
-            except Exception:
-                visibles = []
-            out.append(visibles[-1] if visibles else per_view_src)
-            return out, view
 
     eb = source_registry.get_extract_block(rep_path)
     if eb is not None:
@@ -340,24 +304,19 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
     rep_in_scene_clip_out = _scene_clip_output_for_view(rep_path, view)
     rep_in_scene = _scene_rep_for_view(rep_path, view)
 
-    # Phase 3b: IJK reps now own a per-view IjkGrid pipeline. Fan
-    # ColorBy onto the per-view slicers / volume / chain in THIS
-    # view's pipeline, NOT onto the legacy shared IjkGrid (which is
-    # hidden in this view by `_hide_legacy_ijk_in_scene_view`).
-    if rep_in_scene is not None and rep_in_scene._is_ijk_grid():
-        per_view_ijk = rep_in_scene._ensure_per_view_ijk()
-        if per_view_ijk is not None and per_view_ijk.source is not None:
-            out.extend(per_view_ijk._all_slice_sources())
-            if per_view_ijk._src_slicer_volume is not None:
-                out.append(per_view_ijk._src_slicer_volume)
-            try:
-                out.extend(per_view_ijk.all_threshold_sources())
-            except Exception:
-                pass
+    # Per-view: the ElementType decides what ColorBy fans onto for this rep
+    # — IJK slicers+volume+thresholds / the visible channel / the extractor
+    # + chain proxies. None → fall through to the legacy registry. The clip
+    # output (per-(rep,view)) is appended here in every case.
+    if rep_in_scene is not None:
+        colored = rep_in_scene.element_type.color_sources(rep_in_scene)
+        if colored is not None:
+            out = list(colored)
             if rep_in_scene_clip_out is not None:
                 out.append(rep_in_scene_clip_out)
             return out, view
 
+    # Legacy shared IjkGrid fallback.
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
         out.extend(ijk._all_slice_sources())
@@ -370,36 +329,6 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
         if rep_in_scene_clip_out is not None:
             out.append(rep_in_scene_clip_out)
         return out, view
-    # Wellbore frame: ColorBy the VISIBLE channel's OWN extractor (the
-    # log shown one-at-a-time); the primary stays hidden, the chain is
-    # N/A for logs.
-    if rep_in_scene is not None and rep_in_scene._is_wellbore_frame():
-        ch = rep_in_scene.visible_channel_extractor()
-        if ch is not None:
-            out.append(ch)
-        if rep_in_scene_clip_out is not None:
-            out.append(rep_in_scene_clip_out)
-        return out, view
-
-    # Phase 3a: non-IjkGrid reps own a per-view EnergisticsExtractor +
-    # per-view threshold chain. Fan ColorBy onto those (per-view), not
-    # onto the legacy shared ExtractBlock + shared chain.
-    rep_in_scene = _scene_rep_for_view(rep_path, view)
-    if rep_in_scene is not None:
-        per_view_src = None
-        try:
-            per_view_src = rep_in_scene._ensure_extractor()
-        except Exception:
-            per_view_src = None
-        if per_view_src is not None:
-            out.append(per_view_src)
-            try:
-                out.extend(rep_in_scene.all_chain_proxies())
-            except Exception:
-                pass
-            if rep_in_scene_clip_out is not None:
-                out.append(rep_in_scene_clip_out)
-            return out, view
 
     eb = source_registry.get_extract_block(rep_path)
     if eb is not None:
@@ -469,14 +398,14 @@ def resolve_array_for_path(source_registry, tree, rep_path, array_path,
         try:
             rep_in_scene = _scene_rep_for_view(rep_path, view)
             if rep_in_scene is not None:
-                if rep_in_scene._is_wellbore_frame():
-                    ch = rep_in_scene.channel_extractor_for(array_path, create=True)
-                    if ch is not None:
-                        candidate_sources.append(ch)
-                else:
-                    pv_src = rep_in_scene._ensure_extractor()
-                    if pv_src is not None:
-                        candidate_sources.append(pv_src)
+                # The ElementType decides which per-view source carries the
+                # array: a channel frame → the channel's own extractor;
+                # other reps → the primary extractor.
+                cand = rep_in_scene.element_type.array_candidate_source(
+                    rep_in_scene, array_path,
+                )
+                if cand is not None:
+                    candidate_sources.append(cand)
         except Exception:
             pass
     src = source_registry.get(rep_path)

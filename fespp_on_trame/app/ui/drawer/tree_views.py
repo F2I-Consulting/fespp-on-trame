@@ -386,18 +386,24 @@ def _eye_slot(controller):
     # A Frame (log set) / MarkerFrame (marker set) is a CONTAINER — it
     # carries no rep eye of its own; each child log gets a data-array eye
     # and each child marker gets a visibility eye (the blocks below).
-    # Exclude both frame kinds from the rep-eye gate.
+    # `item.eye` is the per-node eye token computed server-side from
+    # element_type.eye_descriptor() (tree.py): 'rep' on renderable reps,
+    # 'array' on property leaves, 'marker' on marker leaves, absent on the
+    # Frame/MarkerFrame folders + groupings. Gating each block on its eye
+    # token replaces the scattered `item.type !== 'Frame' …` kind checks.
     is_loaded_rep = (
         "ui_loaded_rep_paths && ui_loaded_rep_paths.indexOf(item.path) !== -1"
-        " && item.type !== 'MarkerFrame' && item.type !== 'Frame'"
+        " && item.eye === 'rep'"
     )
     is_loaded_array = (
         "ui_loaded_array_paths && ui_loaded_array_paths.indexOf(item.path) !== -1"
+        " && item.eye === 'array'"
     )
     # Marker leaves (WellboreMarker, runtime kind 'Marker') — MULTI-select
     # visibility, each independently toggleable per panel.
     is_loaded_marker = (
         "ui_loaded_marker_paths && ui_loaded_marker_paths.indexOf(item.path) !== -1"
+        " && item.eye === 'marker'"
     )
     marker_visible_in_panel = (
         "ui_visible_marker_paths_by_view"

@@ -605,6 +605,19 @@ collector source instead (logged `clone=shared`).
 
 #### `RepInScene`
 
+> **ElementType refactor (Option A).** `RepInScene` still owns the
+> per-(rep, view) STATE described below (`_extractor`, `_per_view_ijk`,
+> `_channel_extractors` / `_marker_extractors`, `_slice_plane` /
+> `_clip_plane`, `_chain`), but the per-type BEHAVIOUR (source construction,
+> visibility, channel/marker child management, rendered / colorable source
+> sets) is delegated to `self.element_type` — the `app/core/element_type/`
+> hierarchy, resolved via `for_path` — to which `RepInScene` passes itself as
+> `ris`. The methods below (`source()`, `_ensure_extractor`,
+> `_ensure_per_view_ijk`, `set_channel_visible`,
+> `_refresh_parent_rep_visibility`, …) are **thin delegators**. Details:
+> [REFACTOR_ELEMENT_TYPE_HIERARCHY.md](REFACTOR_ELEMENT_TYPE_HIERARCHY.md) +
+> [TYPES_PARTICULARITES.md](TYPES_PARTICULARITES.md).
+
 The heart of the per-(rep, view) refactor. Three responsibilities:
 
 1. **Source resolution.** `source()` returns the proxy that

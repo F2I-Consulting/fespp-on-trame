@@ -85,7 +85,7 @@ def _apply_solid(rep_path, color_hex):
     # (`_channelless_frame`). The VISIBLE markers render via SEPARATE
     # per-marker extractors — fan the tint onto those too, or the
     # on-screen marker colour never changes. (Markers shown LATER pick
-    # up `solid_color_by_rep` at creation in `_create_marker_extractor`.)
+    # up `solid_color_by_rep` at creation in MarkerFrameRep._create_child_extractor.)
     pv_view, _panel = source_resolver.target_view_and_panel()
     if pv_view is None:
         pv_view = pvsimple.GetActiveView()
@@ -167,7 +167,7 @@ def _markers_of_frame(frame_path):
 def _apply_marker_solid(rep_path, marker_path, color_hex):
     """Push a SolidColor tint onto ONE marker's display in the drawer
     target view (the persisted `solid_color_by_marker` entry covers the
-    not-yet-shown case via `_create_marker_extractor`)."""
+    not-yet-shown case via MarkerFrameRep._create_child_extractor)."""
     pv_view, _panel = source_resolver.target_view_and_panel()
     if pv_view is None:
         pv_view = pvsimple.GetActiveView()

@@ -29,6 +29,11 @@ scenes keep the rep visible.
 """
 from typing import Optional
 
+from fespp_on_trame.app.core import element_type as _element_type
+from fespp_on_trame.app.core.element_type import (
+    IjkGridRep, ChannelFrameRep, MarkerFrameRep,
+)
+
 
 class RepInScene:
     """Per-(rep, view) wrapper. See module docstring."""
@@ -90,189 +95,69 @@ class RepInScene:
         self._slice_plane = None
         self._clip_plane = None
 
-        # `_is_ijk_grid()` lookup result. None = not computed yet,
-        # otherwise a bool. The tree lookup is cheap but called from
-        # every public method; caching keeps the dispatch hot path
-        # branch-free after the first call.
-        self._is_ijk_cache: Optional[bool] = None
-
-        # `_is_wellbore_frame()` lookup result (same caching rationale).
-        self._is_frame_cache: Optional[bool] = None
-
-        # `_is_marker_frame()` lookup result (same caching rationale).
-        self._is_marker_frame_cache: Optional[bool] = None
+        # `element_type` resolution cache — lazy: resolved on first access
+        # by the `element_type` property below, then the per-kind
+        # predicates delegate to it (same "compute on first use" timing the
+        # old per-predicate caches had).
+        self._element_type_cache = None
 
     # ------------------------------------------------------------------
-    # Rep type — IjkGrid detection
+    # Rep type — delegated to the ElementType hierarchy
     #
-    # IjkGrid reps stay on the legacy shared pipeline (rep_data extractor
-    # + slicers + volume + chain owned by `IjkGrid` in `source_registry`).
-    # Phase 3b moves them over to per-view as well.
+    # The per-kind predicates below are the SINGLE consumers of the kind
+    # string on the source side; they delegate to `element_type` (the
+    # `ElementType` refactor — Step 3) instead of re-testing kind strings,
+    # so a behaviour shared by a family lives in one class, not scattered.
+
+    @property
+    def element_type(self):
+        """The `ElementType` for this rep — single source of truth for the
+        per-kind predicates (lazy + cached). Resolves the same
+        find_node_id→find_type lookup the predicates used to run, wrapped
+        in the same try/except→fallback (a not-yet-resolvable path yields a
+        generic standard Representation, matching the old except→False)."""
+        if self._element_type_cache is None:
+            self._element_type_cache = _element_type.for_path(
+                self.scene.tree, self.rep_path
+            )
+        return self._element_type_cache
 
     def _is_ijk_grid(self) -> bool:
-        if self._is_ijk_cache is not None:
-            return self._is_ijk_cache
-        try:
-            node_id = self.scene.tree.find_node_id(self.rep_path)
-            if node_id is None:
-                self._is_ijk_cache = False
-                return False
-            kind = self.scene.tree.find_type(node_id)
-            self._is_ijk_cache = (kind == "IjkGrid")
-        except Exception:
-            self._is_ijk_cache = False
-        return self._is_ijk_cache
+        """True iff this rep goes through the modal IjkGrid pipeline.
+        Delegates to the hierarchy (IjkGridRep — the only kind 'IjkGrid')."""
+        return isinstance(self.element_type, IjkGridRep)
 
     def _is_wellbore_frame(self) -> bool:
-        """True iff this rep is a WellboreFrameRepresentation ('Frame').
-
-        A wellbore frame is a CONTAINER of channel logs, each a separate
-        partition. It has no meaningful geometry of its own — only one
-        channel renders at a time, selected via the channel's data-array
-        eye (`set_extract_channel`). So unlike a surface/polyline rep, a
-        frame must NOT auto-render on load (the C++ extractor would
-        otherwise surface its first channel in every view). The exact
-        `== 'Frame'` test mirrors `active_array.is_channel`; 'MarkerFrame'
-        / 'SeismicWellboreFrame' are distinct strings and stay on the
-        normal auto-show path."""
-        if self._is_frame_cache is not None:
-            return self._is_frame_cache
-        try:
-            node_id = self.scene.tree.find_node_id(self.rep_path)
-            kind = self.scene.tree.find_type(node_id) if node_id is not None else None
-            self._is_frame_cache = (kind == "Frame")
-        except Exception:
-            self._is_frame_cache = False
-        return self._is_frame_cache
+        """True iff this rep is a WellboreFrameRepresentation ('Frame') — a
+        CONTAINER of channel logs, one shown at a time via its OWN
+        per-channel extractor; its primary stays hidden so the C++ side
+        never auto-surfaces the first channel. Delegates to ChannelFrameRep."""
+        return isinstance(self.element_type, ChannelFrameRep)
 
     def _is_marker_frame(self) -> bool:
         """True iff this rep is a WellboreMarkerFrameRepresentation
-        (runtime kind 'MarkerFrame'). Its own geometry is never rendered
-        directly — each child marker shows via its own per-marker
-        extractor (`set_marker_visible`), MULTIPLE at a time. So the
-        frame's primary `_extractor` stays hidden (see
-        `_channelless_frame`), exactly like a channel-less wellbore
-        frame, to avoid auto-surfacing the first marker partition."""
-        if self._is_marker_frame_cache is not None:
-            return self._is_marker_frame_cache
-        try:
-            node_id = self.scene.tree.find_node_id(self.rep_path)
-            kind = self.scene.tree.find_type(node_id) if node_id is not None else None
-            self._is_marker_frame_cache = (kind == "MarkerFrame")
-        except Exception:
-            self._is_marker_frame_cache = False
-        return self._is_marker_frame_cache
+        ('MarkerFrame') — markers render via their OWN per-marker
+        extractors, MULTIPLE at a time; the primary stays hidden. Delegates
+        to MarkerFrameRep."""
+        return isinstance(self.element_type, MarkerFrameRep)
 
     # ------------------------------------------------------------------
     # Source resolution
 
     def source(self):
-        """Head proxy used by ColorBy and the display layer.
-
-        Phase 3a/3b routing:
-          - IjkGrid reps → per-view IjkGrid's rep_data extractor when
-            available, falls back to legacy shared source otherwise.
-          - Non-IjkGrid reps → per-view EnergisticsExtractor when the
-            scene has a real `EPCCollectorClone`, falls back to the
-            legacy shared ExtractBlock source otherwise."""
-        if self._is_ijk_grid():
-            ijk = self._ensure_per_view_ijk()
-            if ijk is not None and ijk.source is not None:
-                return ijk.source
-            return self._fallback_legacy_source()
-        ext = self._ensure_extractor()
-        if ext is not None:
-            return ext
-        return self._fallback_legacy_source()
+        """Head proxy used by ColorBy and the display layer — DELEGATED to
+        the ElementType: IjkGridRep → the per-view IjkGrid's rep_data
+        extractor, other reps → the per-view EnergisticsExtractor, with the
+        legacy shared source as the Phase-2 fallback."""
+        return self.element_type.ensure_source(self)
 
     def _ensure_per_view_ijk(self):
-        """Lazily build a per-(rep, view) IjkGrid pipeline rooted on
-        the scene's clone. Mirrors the legacy IjkGrid's currently
-        selected property so the per-view variant renders the same
-        thing on first display. Returns None for non-IJK reps or when
-        the legacy IjkGrid hasn't been initialised yet (no property
-        selected → nothing to render)."""
-        if not self._is_ijk_grid():
-            return None
-        if self._per_view_ijk is not None:
-            return self._per_view_ijk
-        clone = getattr(self.scene, "clone", None)
-        if clone is None:
-            return None
-        collector = getattr(self.scene, "collector", None)
-        if collector is not None and clone is collector.get_source():
-            # Phase 2 fallback (no real EPCCollectorClone) — stay on
-            # the legacy path so we don't double-render.
-            return None
-        # Read the legacy IjkGrid's current property node id; we need
-        # it to drive `set_node_id` on the per-view instance.
-        legacy = None
-        try:
-            from trame.app import get_server
-            ctx = get_server().context
-            source_registry = getattr(ctx, "source_registry", None)
-            if source_registry is not None and hasattr(source_registry, "get_ijk_grid"):
-                legacy = source_registry.get_ijk_grid(self.rep_path)
-        except Exception:
-            legacy = None
-        if legacy is None or getattr(legacy, "_node_id", None) is None:
-            return None
-        # Resolve the legacy IjkGrid's *property* node id (the one the
-        # user activated) — IjkGrid stores `_property_path` for the
-        # current property, so we round-trip path → node_id.
-        prop_node_id = None
-        try:
-            prop_path = getattr(legacy, "_property_path", None)
-            if prop_path:
-                prop_node_id = self.scene.tree.find_node_id(prop_path)
-        except Exception:
-            prop_node_id = None
-        if prop_node_id is None:
-            # No property → can't drive the IjkGrid; skip until the
-            # next refresh (called from the engine on property change).
-            return None
-        try:
-            # CRITICAL: the per-view IjkGrid builds its rep_data
-            # extractor by chaining an `EnergisticsExtractor` on the
-            # scene's clone, then peeking at the clone's output
-            # assembly in `RequestDataObject` to determine the output
-            # data type (vtkExplicitStructuredGrid vs the default
-            # vtkPolyData placeholder). If the clone hasn't executed
-            # since the user uploaded their EPC, its assembly is empty
-            # — the peek returns null, the extractor falls back to
-            # vtkPolyData, and every downstream
-            # `ExplicitStructuredGridCrop` slicer rejects the input
-            # with "Input ... is of type vtkPolyData, but a
-            # vtkExplicitStructuredGrid is required". Pre-`3fb95016`
-            # there was no per-view path so this never surfaced.
-            # Force the clone to populate its assembly BEFORE the
-            # per-view IjkGrid creation runs.
-            try:
-                clone.UpdatePipeline()
-            except Exception:
-                pass
-            from fespp_on_trame.app.core.sources.ijkgrid import IjkGrid
-            self._per_view_ijk = IjkGrid(
-                collector, self.scene.tree,
-                view_id=self.scene.view_id,
-                clone=clone,
-                pv_view=self.scene.pv_view,
-            )
-            self._per_view_ijk.set_node_id(prop_node_id)
-            if self._per_view_ijk.source is None:
-                # Creation failed — drop the half-built instance so we
-                # retry on the next call.
-                self._per_view_ijk = None
-                return None
-            # Hide the legacy IjkGrid's rendered sources in THIS view
-            # so the per-view pipeline doesn't double-render with the
-            # legacy slicers / rep_data.
-            self._hide_legacy_ijk_in_scene_view(legacy)
-        except Exception as exc:
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" per-view IjkGrid create failed: {exc}")
-            self._per_view_ijk = None
-        return self._per_view_ijk
+        """The per-(rep, view) IjkGrid pipeline (IJK reps only), or None.
+        DELEGATED to IjkGridRep.ensure_per_view_ijk; the built instance is
+        cached on self._per_view_ijk. Kept as a method (not inlined) because
+        the slice/clip/threshold code + refresh_per_view_ijk_property all
+        call it."""
+        return self.element_type.ensure_per_view_ijk(self)
 
     def _hide_legacy_ijk_in_scene_view(self, legacy_ijk):
         """Hide every visible source of the legacy shared IjkGrid in
@@ -344,404 +229,45 @@ class RepInScene:
                   f" per-view IjkGrid refresh failed: {exc}")
 
     def _ensure_extractor(self):
-        """Lazily create the per-(rep, view) EnergisticsExtractor. Non-IjkGrid
-        only. Returns None when:
-          - the rep is IjkGrid (handled by the legacy pipeline);
-          - the scene's `clone` is the shared collector source (Phase 2
-            fallback path, e.g. plugin DLL out of date) — chaining a
-            per-view extractor on the shared collector would still
-            collide on id() across views, so we just stay on legacy.
+        """The per-(rep, view) EnergisticsExtractor (standard reps), or None
+        (IjkGrid / Phase-2 fallback). DELEGATED to the ElementType
+        (Representation.ensure_extractor builds + caches it on
+        self._extractor; IjkGridRep returns None)."""
+        return self.element_type.ensure_extractor(self)
 
-        Hides the freshly-created extractor in every view EXCEPT
-        `self.scene.pv_view` so a default-`Visibility=1` display
-        proxy doesn't paint a phantom outline elsewhere."""
-        if self._is_ijk_grid():
-            return None
-        if self._extractor is not None:
-            return self._extractor
-        clone = getattr(self.scene, "clone", None)
-        if clone is None:
-            return None
-        collector = getattr(self.scene, "collector", None)
-        if collector is not None and clone is collector.get_source():
-            # Phase 2 fallback — scene didn't get a real clone. Don't
-            # chain a per-view filter on the shared collector; the
-            # divergence wouldn't be real.
-            return None
-        try:
-            from paraview import simple as pvsimple
-            from paraview.servermanager import vtkSMPropertyHelper
-            from fespp_on_trame.app.core.sources.representation import (
-                _sanitize, _apply_default_tint, _create_plugin_filter_proxy,
-            )
-            from trame.app import get_server
-            state = get_server().state
-            reg_name = f"rep_{_sanitize(self.rep_path)}_v{self.scene.view_id}"
-            # Use the robust plugin-proxy helper — see
-            # PARAVIEW.md "LoadPlugin doesn't always refresh pvsimple
-            # namespace". `EnergisticsExtractor` is usually in the
-            # cache (older filter) but the fallback path costs
-            # nothing when it is and saves the rep when it isn't.
-            ext = _create_plugin_filter_proxy(
-                proxy_class="EnergisticsExtractor",
-                registration_name=reg_name,
-                inputs={"Input": clone},
-            )
-            if ext is None:
-                print(
-                    f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                    " EnergisticsExtractor not creatable — plugin missing?"
-                )
-                return None
-            # ExtractPath is `panel_visibility="never"` in the XML but
-            # still settable via the SMProperty API. The frame path
-            # (channels render via their own `_channel_extractors`, so
-            # the primary stays hidden for frames — `_channelless_frame`).
-            vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(self.rep_path)
-            ext.SMProxy.UpdateVTKObjects()
-            ext.UpdatePipelineInformation()
-
-            # Hide in every other view, then Show in the owning view
-            # with the user's representation type + tint already
-            # applied (PV defaults to Outline + grey, which would
-            # look broken until the next refresh).
-            #
-            # EXCEPTION — a wellbore frame (or marker frame) must NOT
-            # auto-show its PRIMARY: the C++ extractor would surface its
-            # first child partition (ExtractPath = frame path), painting
-            # the frame's first log/marker in EVERY view the moment the
-            # wellbore loads. Logs/markers render via their OWN per-child
-            # extractors (`_channel_extractors` / `_marker_extractors`),
-            # one shown where the user picks it — the primary stays hidden.
-            target_view = self.scene.pv_view
-            # Any wellbore frame or marker frame keeps its primary hidden
-            # (`_channelless_frame`); the children render via their own
-            # per-(child, view) extractors.
-            frame_no_channel = self._channelless_frame()
-            # A rep the engine flagged hidden in THIS view's bucket (every
-            # non-active panel at first load) is BUILT but not shown here,
-            # so a newly-selected rep appears only in the active view.
-            hidden_here = self._hidden_in_scene()
-            for v in pvsimple.GetViews():
-                if v is not target_view:
-                    try:
-                        pvsimple.Hide(proxy=ext, view=v)
-                    except Exception:
-                        pass
-            if target_view is not None:
-                disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
-                if disp is not None:
-                    disp.Representation = state.representation_active or "Surface"
-                    zs = self._current_z_scale()
-                    disp.Scale = [1.0, 1.0, zs]
-                    grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
-                    _apply_default_tint(disp, grid_color)
-                if frame_no_channel or hidden_here:
-                    pvsimple.Hide(proxy=ext, view=target_view)
-                else:
-                    pvsimple.Show(proxy=ext, view=target_view)
-                # The legacy `ExtractBlockRepresentation` Shows itself
-                # in the active view at creation time. With Phase 3a
-                # the per-view extractor renders the same data with the
-                # per-view ColorBy applied — the legacy EB's display in
-                # this view becomes a visual duplicate (worst case:
-                # Z-fighting with the per-view extractor). Hide it
-                # here so only the per-view extractor renders. Other
-                # views never get a legacy-EB Show() so they're
-                # implicitly safe; calling Hide() on a view that has
-                # no display proxy is a no-op.
-                legacy = self._fallback_legacy_source()
-                if legacy is not None and legacy is not ext:
-                    try:
-                        pvsimple.Hide(proxy=legacy, view=target_view)
-                    except Exception:
-                        pass
-            self._extractor = ext
-        except Exception as exc:
-            print(
-                f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                f" extractor create failed: {exc}"
-            )
-            self._extractor = None
-        return self._extractor
+    # ------------------------------------------------------------------
+    # Wellbore-frame CHILD management — DELEGATED to the ElementType.
+    #
+    # The per-(rep, view) STATE (the `_channel_extractors` /
+    # `_marker_extractors` dicts) lives HERE; the per-type BEHAVIOUR
+    # (exclusive log vs multi marker, build / tint a child extractor) lives
+    # in ChannelFrameRep / MarkerFrameRep, which receive `self` as `ris`
+    # (the strategy pattern, Option A). No-op for non-frame reps (the base
+    # ElementType child methods return None / []).
 
     def set_channel_visible(self, channel_path, visible):
-        """Show or hide a single wellbore-frame CHANNEL (by its leaf path)
-        in THIS scene's view. Channels display ONE-AT-A-TIME per frame:
-        each gets its OWN EnergisticsExtractor (ExtractPath = the channel
-        node), lazily created on first show, and showing channel B HIDES
-        every OTHER channel of this frame (exclusive). Mirrors the marker
-        infrastructure but exclusive instead of multi. The channel's
-        source PERSISTS once created (hidden when another is shown), so
-        its scoped LUT / COE / stats read directly with no retarget.
-        No-op for non-wellbore-frame reps."""
-        if not self._is_wellbore_frame() or not channel_path:
-            return
-        view = self.scene.pv_view
-        try:
-            from paraview import simple as pvsimple
-        except Exception:
-            return
-        if visible:
-            ext = self.channel_extractor_for(channel_path, create=True)
-            if ext is None:
-                return
-            if view is not None:
-                # Exclusive: hide every OTHER channel of this frame first.
-                for cp, other in self._channel_extractors.items():
-                    if cp != channel_path and other is not None:
-                        try:
-                            pvsimple.Hide(proxy=other, view=view)
-                        except Exception:
-                            pass
-                try:
-                    pvsimple.Show(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                          f" channel show {channel_path}: {exc}")
-        else:
-            ext = self._channel_extractors.get(channel_path)
-            if ext is not None and view is not None:
-                try:
-                    pvsimple.Hide(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                          f" channel hide {channel_path}: {exc}")
+        """Show/hide one log channel (EXCLUSIVE — one log at a time)."""
+        self.element_type.set_child_visible(self, channel_path, visible)
 
     def channel_extractor_for(self, channel_path, create=False):
-        """The per-(channel, view) EnergisticsExtractor for `channel_path`,
-        or None. With `create=True` it is MATERIALISED (hidden) if absent
-        — used by the COE / stats so the ACTIVE channel's data is readable
-        even when a DIFFERENT channel of the frame is the one displayed
-        (the channel's source always exists, it is just hidden)."""
-        if not self._is_wellbore_frame() or not channel_path:
-            return None
-        ext = self._channel_extractors.get(channel_path)
-        if ext is None and create:
-            ext = self._create_channel_extractor(channel_path)
-            if ext is not None:
-                self._channel_extractors[channel_path] = ext
-        return ext
+        """The channel's own extractor (materialised hidden when `create`)."""
+        return self.element_type.child_source(self, channel_path, create)
 
     def visible_channel_extractor(self):
-        """The channel extractor currently SHOWN in this scene's view
-        (Visibility=1), or None. A frame shows one channel at a time, so
-        this is the single visible one — used by the render / colour /
-        stats-view paths for a frame rep."""
-        view = self.scene.pv_view
-        if view is None or not self._channel_extractors:
-            return None
-        try:
-            from paraview import simple as pvsimple
-        except Exception:
-            return None
-        for ext in self._channel_extractors.values():
-            try:
-                d = pvsimple.GetDisplayProperties(ext, view=view)
-                if d is not None and getattr(d, "Visibility", 0):
-                    return ext
-            except Exception:
-                pass
-        return None
-
-    def _create_channel_extractor(self, channel_path):
-        """Build a per-(channel, view) EnergisticsExtractor pointed at a
-        single wellbore-frame CHANNEL leaf so only that log's tube + its
-        point array surfaces. Mirror of `_create_marker_extractor`. The
-        caller (`set_channel_visible`) does the Show; tint from the
-        frame's solid colour."""
-        clone = getattr(self.scene, "clone", None)
-        if clone is None:
-            return None
-        collector = getattr(self.scene, "collector", None)
-        if collector is not None and clone is collector.get_source():
-            return None
-        try:
-            from paraview import simple as pvsimple
-            from paraview.servermanager import vtkSMPropertyHelper
-            from fespp_on_trame.app.core.sources.representation import (
-                _sanitize, _apply_default_tint, _create_plugin_filter_proxy,
-            )
-            from trame.app import get_server
-            state = get_server().state
-            reg_name = f"chn_{_sanitize(channel_path)}_v{self.scene.view_id}"
-            ext = _create_plugin_filter_proxy(
-                proxy_class="EnergisticsExtractor",
-                registration_name=reg_name,
-                inputs={"Input": clone},
-            )
-            if ext is None:
-                print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                      f" channel EnergisticsExtractor not creatable — plugin missing?")
-                return None
-            vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(channel_path)
-            ext.SMProxy.UpdateVTKObjects()
-            ext.UpdatePipelineInformation()
-            target_view = self.scene.pv_view
-            for v in pvsimple.GetViews():
-                if v is not target_view:
-                    try:
-                        pvsimple.Hide(proxy=ext, view=v)
-                    except Exception:
-                        pass
-            if target_view is not None:
-                disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
-                if disp is not None:
-                    disp.Representation = state.representation_active or "Surface"
-                    zs = self._current_z_scale()
-                    disp.Scale = [1.0, 1.0, zs]
-                    grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
-                    _apply_default_tint(disp, grid_color)
-            return ext
-        except Exception as exc:
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" create channel extractor {channel_path}: {exc}")
-            return None
+        """The single shown channel extractor in this view, or None."""
+        return self.element_type.visible_child_source(self)
 
     def set_marker_visible(self, marker_path, visible):
-        """Show or hide a single WellboreMarker (by its assembly node
-        path) in THIS scene's view. Markers display MULTIPLE at a time:
-        each visible marker gets its OWN EnergisticsExtractor
-        (ExtractPath = the marker node) chained on the scene clone,
-        lazily created on first show and Show/Hide-toggled thereafter.
-        No-op for non-MarkerFrame reps."""
-        if not self._is_marker_frame() or not marker_path:
-            return
-        view = self.scene.pv_view
-        ext = self._marker_extractors.get(marker_path)
-        try:
-            from paraview import simple as pvsimple
-        except Exception:
-            return
-        if visible:
-            if ext is None:
-                ext = self._create_marker_extractor(marker_path)
-                if ext is None:
-                    return
-                self._marker_extractors[marker_path] = ext
-            if view is not None:
-                try:
-                    pvsimple.Show(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                          f" marker show {marker_path}: {exc}")
-        else:
-            if ext is not None and view is not None:
-                try:
-                    pvsimple.Hide(proxy=ext, view=view)
-                except Exception as exc:
-                    print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                          f" marker hide {marker_path}: {exc}")
-
-    def _create_marker_extractor(self, marker_path):
-        """Build a per-(marker, view) EnergisticsExtractor pointed at a
-        single WellboreMarker's assembly node so only that marker's
-        geometry surfaces. Mirrors `_ensure_extractor` (clone-rooted,
-        hidden in other views, representation + z-scale + tint applied)
-        but one per marker, NOT stored as the rep's primary `_extractor`.
-        Returns None when the scene has no real clone (Phase 2 fallback)
-        or the plugin proxy can't be created. The caller (`set_marker_
-        visible`) does the Show in the owning view."""
-        clone = getattr(self.scene, "clone", None)
-        if clone is None:
-            return None
-        collector = getattr(self.scene, "collector", None)
-        if collector is not None and clone is collector.get_source():
-            return None
-        try:
-            from paraview import simple as pvsimple
-            from paraview.servermanager import vtkSMPropertyHelper
-            from fespp_on_trame.app.core.sources.representation import (
-                _sanitize, _apply_default_tint, _create_plugin_filter_proxy,
-            )
-            from trame.app import get_server
-            state = get_server().state
-            reg_name = f"mrk_{_sanitize(marker_path)}_v{self.scene.view_id}"
-            ext = _create_plugin_filter_proxy(
-                proxy_class="EnergisticsExtractor",
-                registration_name=reg_name,
-                inputs={"Input": clone},
-            )
-            if ext is None:
-                print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                      f" marker EnergisticsExtractor not creatable — plugin missing?")
-                return None
-            vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(marker_path)
-            ext.SMProxy.UpdateVTKObjects()
-            ext.UpdatePipelineInformation()
-            target_view = self.scene.pv_view
-            for v in pvsimple.GetViews():
-                if v is not target_view:
-                    try:
-                        pvsimple.Hide(proxy=ext, view=v)
-                    except Exception:
-                        pass
-            if target_view is not None:
-                disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
-                if disp is not None:
-                    disp.Representation = state.representation_active or "Surface"
-                    zs = self._current_z_scale()
-                    disp.Scale = [1.0, 1.0, zs]
-                    # PER-marker colour first (so a marker shown later
-                    # keeps its own colour), falling back to the frame's
-                    # uniform default. Markers display MULTIPLE at a time,
-                    # each independently recolourable.
-                    by_marker = state.solid_color_by_marker or {}
-                    grid_color = (
-                        by_marker.get(marker_path)
-                        or (state.solid_color_by_rep or {}).get(self.rep_path)
-                    )
-                    _apply_default_tint(disp, grid_color)
-            return ext
-        except Exception as exc:
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" create marker extractor {marker_path}: {exc}")
-            return None
+        """Show/hide one marker (MULTI — independent of its siblings)."""
+        self.element_type.set_child_visible(self, marker_path, visible)
 
     def set_marker_color(self, marker_path, color_hex):
-        """Apply a SolidColor tint to ONE marker's extractor display in
-        this scene's view (DiffuseColor + AmbientColor + Opacity, never
-        ColorArrayName). No-op when that marker isn't currently shown —
-        the persisted `solid_color_by_marker` entry covers the deferred
-        case (re-read by `_create_marker_extractor` on next show)."""
-        view = self.scene.pv_view
-        ext = self._marker_extractors.get(marker_path)
-        if view is None or ext is None:
-            return
-        try:
-            from paraview import simple as pvsimple
-            from fespp_on_trame.app.core.sources.representation import _apply_default_tint
-            d = pvsimple.GetDisplayProperties(ext, view=view)
-            if d is not None and getattr(d, "Visibility", 0):
-                _apply_default_tint(d, color_hex)
-        except Exception as exc:
-            print(f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                  f" set_marker_color {marker_path}: {exc}")
+        """SolidColor tint on one shown marker's display."""
+        self.element_type.set_child_color(self, marker_path, color_hex)
 
     def visible_marker_displays(self):
-        """Display proxies for every per-marker extractor currently SHOWN
-        in this scene's view. The SolidColor fan-out targets these
-        because a marker frame's MAIN extractor stays hidden
-        (`_channelless_frame`) — the on-screen geometry is the per-marker
-        extractors, so a tint written only to the main extractor never
-        reaches the markers. Gated on the display's Visibility so a
-        toggled-off marker isn't re-shown by the tint write."""
-        view = self.scene.pv_view
-        if view is None or not self._marker_extractors:
-            return []
-        try:
-            from paraview import simple as pvsimple
-        except Exception:
-            return []
-        out = []
-        for ext in self._marker_extractors.values():
-            try:
-                d = pvsimple.GetDisplayProperties(ext, view=view)
-                if d is not None and getattr(d, "Visibility", 0):
-                    out.append(d)
-            except Exception:
-                pass
-        return out
+        """Display proxies of every shown marker (SolidColor fan-out)."""
+        return self.element_type.visible_child_displays(self)
 
     def _channelless_frame(self) -> bool:
         """True iff this rep's PRIMARY extractor must stay hidden: ANY
@@ -752,8 +278,10 @@ class RepInScene:
         generic visibility refreshers (`_refresh_parent_rep_visibility`,
         `_refresh_chain_visibility`) would otherwise `Show` it, which the
         C++ side resolves to the frame's first child partition,
-        re-surfacing a log / marker the user never picked."""
-        return self._is_marker_frame() or self._is_wellbore_frame()
+        re-surfacing a log / marker the user never picked. Delegates to the
+        hierarchy: `primary_hidden()` is True exactly on FrameRep subclasses
+        (Channel + Marker), i.e. the old `_is_marker_frame or _is_wellbore_frame`."""
+        return self.element_type.primary_hidden()
 
     def _hidden_in_scene(self) -> bool:
         """True iff the engine flagged this rep as hidden in THIS view's
@@ -786,40 +314,11 @@ class RepInScene:
         bucket so it's BUILT but not rendered here — symmetric with the
         on_active_array_change / toggle_rep_visibility paths that re-Show
         it later."""
-        view = self.scene.pv_view
-        if view is None:
+        if self.scene.pv_view is None:
             return
-        try:
-            from paraview import simple as pvsimple
-        except Exception:
-            return
-        if self._is_ijk_grid():
-            ijk = self._per_view_ijk
-            if ijk is None:
-                return
-            srcs = list(ijk._all_slice_sources())
-            if ijk._src_slicer_volume is not None:
-                srcs.append(ijk._src_slicer_volume)
-            if ijk._src_extract_init is not None:
-                srcs.append(ijk._src_extract_init)
-            try:
-                srcs.extend(ijk.all_threshold_sources())
-            except Exception:
-                pass
-            for s in srcs:
-                if s is None:
-                    continue
-                try:
-                    pvsimple.Hide(proxy=s, view=view)
-                except Exception:
-                    pass
-        else:
-            ext = self._extractor
-            if ext is not None:
-                try:
-                    pvsimple.Hide(proxy=ext, view=view)
-                except Exception:
-                    pass
+        # Per-type hide policy (IJK hides slicers/volume/rep_data/thresholds;
+        # other reps hide the primary extractor) lives on the ElementType.
+        self.element_type.hide_in_view(self)
 
     def _fallback_legacy_source(self):
         """Locate the legacy per-rep source via the engine's existing
@@ -1018,46 +517,19 @@ class RepInScene:
     # Parent rep visibility — per-view
 
     def _refresh_parent_rep_visibility(self):
-        """Hide this rep's primary source in THIS scene's pv_view when
-        slice or clip is enabled — each "replaces" the rep visually in
-        that view. Per-(rep, view) by design: each scene decides
-        independently.
-
-        Phase 3a: the primary source for non-IjkGrid is the per-view
-        `_extractor`; for IjkGrid it's the per-view IjkGrid's rep_data
-        extractor. The chain visibility resolver
-        (`_refresh_chain_visibility`) takes care of substituting chain
-        leaves when a chain is active — this method only manages the
-        rep's primary visibility.
-
-        Phase 3b note (IjkGrid): for IjkGrid reps the per-view IjkGrid
-        owns its own Show/Hide policy (slice vs range mode, per-axis
-        slicer visibility lists, volume crop, threshold leaves, and
-        the rep_data fallback when no slicer is visible). The
-        primary source returned by `self.source()` is the per-view
-        `_src_extract_init` extractor — `ijk.show()` Hides it as
-        soon as any slicer is visible (ijkgrid.py:619-623). Calling
-        `pvsimple.Show(_src_extract_init)` here would clobber that
-        Hide and rasterise the un-cropped full grid with the rep's
-        default SolidColor tint (set by `_apply_default_tint` at IjkGrid
-        creation, never bound to a `ColorArrayName` because
-        `color_sources_for_rep_path` intentionally excludes
-        `_src_extract_init` from the IJK colorable set). The user
-        observed this as a red SolidColor block Z-fighting the
-        property-colored slicers after a 2nd property selector was
-        added to the same IjkGrid (auto-activation flips
-        `state.ui_active_array_by_rep` to the newly-added array, which
-        fires `on_active_array_change` → `refresh_planes_after_property_change`
-        → this method). Delegate to `ijk.show(view=pv_view)` for the
-        IJK case so the per-view IjkGrid reasserts its full visibility
-        set from its stored state instead."""
+        """Re-assert this rep's PRIMARY source visibility in this scene's
+        pv_view. Per-(rep, view) by design. The shared guards (view +
+        per-view eye chip) are here; the per-type policy is delegated to
+        the ElementType — IjkGridRep defers to the per-view IjkGrid's own
+        show() (so it doesn't rasterise the un-cropped grid), FrameRep
+        force-hides the primary (children render apart), other reps do the
+        standard slice/clip/chain-aware show/hide."""
         view = getattr(self.scene, "pv_view", None)
         if view is None:
             return
 
-        # Per-view eye chip applies to BOTH IJK and non-IJK paths: if
-        # the user hid this rep in this panel, don't touch visibility
-        # at all (leave everything Hidden).
+        # Shared guard: the per-view eye chip applies to ALL rep types — if
+        # the user hid this rep in this panel, don't touch visibility at all.
         try:
             from trame.app import get_server
             hidden_by_view = (
@@ -1069,56 +541,11 @@ class RepInScene:
         except Exception:
             pass
 
-        # IjkGrid: defer to the per-view IjkGrid's own show(view=...).
-        # It is the authority on which sources render for the current
-        # range/slice mode.
-        if self._is_ijk_grid():
-            per_view_ijk = self._per_view_ijk
-            if per_view_ijk is None:
-                # Phase 2 fallback (no real clone) or not built yet —
-                # the legacy IjkGrid manages its own Show/Hide via
-                # `set_node_id → self.show()`; nothing to do here.
-                return
-            try:
-                per_view_ijk.show(view=view)
-            except Exception as exc:
-                print(
-                    f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                    f" per-view IjkGrid show: {exc}"
-                )
-            return
-
-        # Non-IjkGrid path — unchanged behaviour.
-        upstream = self.source()
-        if upstream is None:
-            return
-        # A wellbore / marker frame keeps its primary hidden — the
-        # children render via their own per-(child, view) extractors
-        # (`set_channel_visible` / `set_marker_visible`), not this generic
-        # refresh (else a fanned-out refresh re-shows the first child in
-        # every view).
-        if self._channelless_frame():
-            try:
-                from paraview import simple as pvsimple
-                pvsimple.Hide(proxy=upstream, view=view)
-            except Exception:
-                pass
-            return
-        slice_on = self._slice_plane is not None and self._slice_plane.enabled
-        clip_on = self._clip_plane is not None and self._clip_plane.enabled
-        chain_visible = any(e.visible for e in self._chain) if self._chain else False
-        should_hide = slice_on or clip_on or chain_visible
-        try:
-            from paraview import simple as pvsimple
-            if should_hide:
-                pvsimple.Hide(proxy=upstream, view=view)
-            else:
-                pvsimple.Show(proxy=upstream, view=view)
-        except Exception as exc:
-            print(
-                f"[RepInScene {self.scene.view_id}/{self.rep_path}]"
-                f" parent visibility refresh: {exc}"
-            )
+        # Per-type primary-visibility policy lives on the ElementType:
+        #   IjkGridRep        → defer to per-view IjkGrid.show()
+        #   FrameRep          → force-hide the primary (children render apart)
+        #   Representation     → standard slice/clip/chain-aware show/hide
+        self.element_type.refresh_primary_visibility(self)
 
     # ==================================================================
     # Threshold chain — per-(rep, view), non-IjkGrid only.

@@ -614,6 +614,19 @@ la place (journalisé `clone=shared`).
 
 #### `RepInScene`
 
+> **Refactor ElementType (Option A).** `RepInScene` détient toujours l'ÉTAT
+> par-(rep, vue) décrit ci-dessous (`_extractor`, `_per_view_ijk`,
+> `_channel_extractors` / `_marker_extractors`, `_slice_plane` / `_clip_plane`,
+> `_chain`), mais le COMPORTEMENT par-type (construction de la source,
+> visibilité, gestion des enfants channel/marker, sources rendues / colorées)
+> est délégué à `self.element_type` — la hiérarchie `app/core/element_type/`,
+> résolue via `for_path` — à qui `RepInScene` se passe en `ris`. Les méthodes
+> ci-dessous (`source()`, `_ensure_extractor`, `_ensure_per_view_ijk`,
+> `set_channel_visible`, `_refresh_parent_rep_visibility`…) sont des
+> **délégateurs minces**. Détails :
+> [REFACTOR_ELEMENT_TYPE_HIERARCHY.md](REFACTOR_ELEMENT_TYPE_HIERARCHY.md) +
+> [TYPES_PARTICULARITES.md](TYPES_PARTICULARITES.md).
+
 Le cœur du refactor par-(rep, vue). Trois responsabilités :
 
 1. **Résolution de source.** `source()` retourne le proxy qui

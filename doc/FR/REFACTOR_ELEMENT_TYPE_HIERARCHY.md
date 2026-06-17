@@ -1,6 +1,14 @@
 # Refactor — Hiérarchie de types d'éléments (ElementType)
 
-> Statut : **proposition / design**. Rien n'est encore implémenté.
+> Statut : **en cours** — **Étapes 0, 1, 2, 3, 5 faites** (la hiérarchie +
+> le résolveur dans le package [element_type/](../../fespp_on_trame/app/core/element_type/),
+> et les couches tracking / œil / prédicats de visibilité / détection de
+> channel y DÉLÈGUENT désormais ; voir §5). **L'Étape 4 (source) est
+> largement faite (4.1–4.3)** — déplacer le COMPORTEMENT dans les classes
+> (gestion des enfants, visibilité, construction de la source) via le pattern
+> stratégie (Option A : `RepInScene` garde l'état par-vue et se passe en
+> `ris`) ; le constructeur du pipeline IJK + la délégation threshold/resolver
+> sont des suites. Chaque étape livrée préserve le comportement.
 > Objectif : remplacer le `if kind == ...` éparpillé par une hiérarchie de
 > classes par héritage, pour qu'une modification sur un type ne casse plus
 > les autres.
@@ -170,30 +178,68 @@ et garde la *mécanique par-vue*.
 
 On ne réécrit **pas** d'un coup. Ordre proposé, chaque étape testable seule :
 
-1. **Étape 0 — `element_type.py` + `ElementType.for_path()`**
-   Créer la hiérarchie de classes + un résolveur `kind → classe`. Aucun appelant
-   encore. *Zéro changement de comportement.*
+1. **Étape 0 — `element_type.py` + `ElementType.for_path()`** ✅ **faite**
+   Hiérarchie de classes + résolveur `kind → classe` (`for_kind` /
+   `for_path`), singletons sans état, le contrat déclaratif (`tree_role`,
+   `is_grouping`, `eye_descriptor`, `tracking_bucket`, `visibility_policy`,
+   `color_policy`, `primary_hidden`) ; `make_source` est un placeholder
+   d'Étape 4. Aucun appelant encore → *zéro changement de comportement*.
+   Couvert par `test_element_type.py` (avec un test de synchro
+   `PropertyLeaf.KINDS == data_load._DATA_ARRAY_KINDS`).
 
-2. **Étape 1 — Consolider les décisions de tracking** (data_load)
-   Remplacer `_DATA_ARRAY_KINDS` / `_update_marker_tracking` par
-   `element_type.tracking_bucket()`. Un seul endroit pour « ce kind nourrit
-   quel bucket ».
+2. **Étape 1 — Consolider les décisions de tracking** (data_load) ✅ **faite**
+   `_DATA_ARRAY_KINDS` supprimé ; `_update_data_array_tracking` /
+   `_update_marker_tracking` testent désormais
+   `element_type.for_kind(kind).tracking_bucket()`. Un seul endroit pour
+   « ce kind nourrit quel bucket ».
 
-3. **Étape 2 — Consolider l'œil** (tree_views + tree)
-   Remplacer les conditions `is_loaded_rep / array / marker` et la suppression
-   `item.type !== 'MarkerFrame'` par `element_type.eye_descriptor()`.
+3. **Étape 2 — Consolider l'œil** (tree_views + tree) ✅ **faite**
+   `tree.py` émet un token `eye` par nœud via `element_type.eye_descriptor()`
+   (et `is_grouping` via `element_type.is_grouping()`) ; les trois gates JS
+   du tree view lisent `item.eye === 'rep'/'array'/'marker'` au lieu des
+   tests de kind `item.type !== 'Frame'`.
 
-4. **Étape 3 — Consolider la visibilité** (rep_in_scene + visibility)
-   Remplacer `_is_ijk_grid / _is_wellbore_frame / _is_marker_frame /
-   _channelless_frame` et les branches de `_ensure_extractor` /
-   `_refresh_parent_rep_visibility` par `visibility_policy()`.
+4. **Étape 3 — Consolider la visibilité** (rep_in_scene) ✅ **faite**
+   `RepInScene` résout `self.element_type` (lazy) ; `_is_ijk_grid` /
+   `_is_wellbore_frame` / `_is_marker_frame` / `_channelless_frame`
+   délèguent (`isinstance(…)` / `primary_hidden()`). Appelants inchangés.
 
-5. **Étape 4 — Consolider la source** (rep_in_scene)
-   `source()` / `make_source()` délègue ; `IjkGrid` et `ExtractBlockRepresentation`
-   deviennent les `SourceHandle` retournés par `GridRep` / `SurfaceRep`.
+5. **Étape 4 — Déplacer le COMPORTEMENT dans les classes** (pattern
+   stratégie, Option A) — **largement faite** (les classes étaient « trop
+   maigres » avec seulement des tags déclaratifs ; elles portent désormais
+   la logique par-type, `RepInScene` garde l'état et se passe en `ris`) :
+   - **4.1 ✅ enfants** — `ChannelFrameRep` / `MarkerFrameRep` portent
+     `set_child_visible` (la frontière d'override EXCLUSIF-vs-MULTI),
+     `child_source`, `visible_child_*`, `set_child_color` ; le
+     `_create_child_extractor` partagé est sur `FrameRep`.
+   - **4.2 ✅ visibilité** — `refresh_primary_visibility(ris)` /
+     `hide_in_view(ris)` par type (Representation standard / IjkGridRep IJK /
+     FrameRep force-hide) ; `RepInScene` ne garde que les gardes partagées.
+   - **4.3 ✅ source** — `Representation.ensure_extractor(ris)` construit
+     l'extracteur par-vue ; `ensure_source(ris)` route (IjkGridRep → le
+     pipeline IJK). `source()` ne branche plus sur `_is_ijk_grid`.
+   - **pipeline IJK ✅** — `_ensure_per_view_ijk` déplacé dans
+     `IjkGridRep.ensure_per_view_ijk(ris)` ; `RepInScene` ne garde que la
+     plomberie `_hide_legacy_ijk` / `refresh_per_view_ijk_property`.
+   - **4b ✅ source_resolver** — `sources_for_rep_path` /
+     `color_sources_for_rep_path` / `resolve_array_for_path` délèguent à
+     `rendered_sources(ris)` / `color_sources(ris)` /
+     `array_candidate_source(ris, path)` (0 prédicat restant dans
+     source_resolver) ; les fallbacks legacy y restent.
+   - **4.4 threshold ⏭ sautée (faible valeur)** — le cluster threshold
+     branche déjà via `_is_ijk_grid` (qui délègue à `isinstance(IjkGridRep)`) ;
+     le passer en `threshold_provider` ne rendrait pas une classe plus
+     substantielle (la chaîne locale resterait dans `RepInScene`) et
+     nécessiterait des renommages anti-récursion. Laissé tel quel.
 
-6. **Étape 5 — Coloration** (active_array)
-   `is_channel` → `color_policy()` + `visibility_policy() == ONE_AT_A_TIME`.
+   Bilan : le branchement par chaîne de type est éliminé sauf les
+   *définitions* des prédicats (les délégateurs) et le cluster threshold.
+   Tout préserve le comportement.
+
+6. **Étape 5 — Coloration** (active_array) ✅ **faite**
+   `is_channel` = `element_type.for_kind(rep_kind).visibility_policy()
+   == ONE_AT_A_TIME and r_id != node_id` ; `_show_channel_active_view`
+   délègue de la même façon.
 
 Après chaque étape : l'app doit se comporter **exactement** comme avant
 (refactor pur). On garde les `_is_*` comme alias dépréciés tant qu'un appelant
@@ -239,7 +285,7 @@ frames.
 | `data_load._update_marker_tracking` | `MarkerLeaf.tracking_bucket() == "marker"` |
 | `tree_views` is_loaded_rep/array/marker | `ElementType.eye_descriptor()` |
 | `active_array.is_channel` | `ChannelFrameRep` + `visibility_policy() == ONE_AT_A_TIME` |
-| `rep_in_scene._is_ijk_grid` | `isinstance(element_type, GridRep)` |
+| `rep_in_scene._is_ijk_grid` | `isinstance(element_type, IjkGridRep)` |
 | `rep_in_scene._is_wellbore_frame` | `isinstance(element_type, ChannelFrameRep)` |
 | `rep_in_scene._is_marker_frame` | `isinstance(element_type, MarkerFrameRep)` |
 | `rep_in_scene._channelless_frame` | `FrameRep.visibility_policy().primary_hidden()` |

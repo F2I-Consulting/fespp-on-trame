@@ -22,6 +22,14 @@ from paraview import simple as pvsimple
 from fespp_on_trame.app.core.engine import (
     panel_resolver, source_resolver, realization_dispatch,
 )
+from fespp_on_trame.app.core import element_type
+
+
+def _is_channel_rep(element_type_obj) -> bool:
+    """A wellbore-frame CHANNEL container = a rep whose visibility policy is
+    ONE_AT_A_TIME (only ChannelFrameRep). Replaces the `kind == 'Frame'`
+    check — the single source of truth is element_type now."""
+    return element_type_obj.visibility_policy() == element_type.VisibilityPolicy.ONE_AT_A_TIME
 
 
 def _show_channel_active_view(tree, rep_path, array_path, view):
@@ -32,7 +40,7 @@ def _show_channel_active_view(tree, rep_path, array_path, view):
     try:
         node_id = tree.find_node_id(array_path)
         r_id = tree.find_representation_node(node_id) if node_id is not None else None
-        if r_id is None or r_id == node_id or tree.find_type(r_id) != 'Frame':
+        if r_id is None or r_id == node_id or not _is_channel_rep(element_type.for_kind(tree.find_type(r_id))):
             return
         rep_in_scene = source_resolver._scene_rep_for_view(rep_path, view)
         if rep_in_scene is not None:
@@ -262,15 +270,14 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     if not r_path:
         return
 
-    # Wellbore-frame channel detection: the toggled node is a channel
-    # iff its rep ancestor is a 'Frame' AND the ancestor is not the node
-    # itself (a channel walks UP past its own property kind to 'Frame').
-    # 'SeismicWellboreFrame' / 'MarkerFrame' are distinct strings so the
-    # exact == 'Frame' test never false-positives. The channel leaf path
-    # == array_path (the tree eye node). Coloring one channel re-points
-    # the frame's per-view extractor at it → one log at a time.
+    # Wellbore-frame channel detection: the toggled node is a channel iff
+    # its rep ancestor is a ONE_AT_A_TIME frame (ChannelFrameRep) AND the
+    # ancestor is not the node itself (a channel walks UP past its own
+    # property kind to the Frame). MarkerFrame (MULTI) / SeismicWellboreFrame
+    # are different policies so they never false-positive. The channel leaf
+    # path == array_path; showing one channel exclusively shows that log.
     rep_kind = tree.find_type(r_id) if r_id is not None else None
-    is_channel = rep_kind == 'Frame' and r_id != node_id
+    is_channel = _is_channel_rep(element_type.for_kind(rep_kind)) and r_id != node_id
 
     view, html_view = panel_resolver.resolve_view_and_html_view(server, panel_id)
     bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"

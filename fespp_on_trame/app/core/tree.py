@@ -3,6 +3,7 @@ import unicodedata
 
 from trame.app import get_server
 
+from fespp_on_trame.app.core import element_type as _et
 from fespp_on_trame.app.ui.drawer.config.tree_icons import get_primary_icon
 
 server = get_server()
@@ -42,6 +43,18 @@ def _sibling_sort_key(node):
         int(part) if part.isdigit() else part
         for part in _NATURAL_SPLIT_RE.split(title)
     ]
+
+
+def _eye_field(element_type):
+    """Map an ElementType to the per-node `eye` token the tree view reads
+    to decide which eye block (rep / array / marker) to render.
+
+    Returns the EyeKind value string ('rep' / 'array' / 'marker') or None
+    when the node carries no eye of its own (groupings, Frame/MarkerFrame
+    folders — their children carry the eyes). This is the single source of
+    truth that replaces the scattered `item.type !== 'Frame' …` JS gates."""
+    desc = element_type.eye_descriptor()
+    return desc.kind.value if desc is not None else None
 
 
 class Tree():
@@ -134,10 +147,9 @@ class Tree():
         #     channel/marker leaf still resolves UP to the frame (the
         #     rendering anchor hosting the per-(rep, view) extractor).
         #     i.e. "folder for the tree, representation for the source".
-        is_grouping = node_type in (
-            "Collection", "Wellbore", "Feature", "Interpretation", "Partial",
-            "Frame", "MarkerFrame",
-        )
+        et = _et.for_kind(node_type)
+        is_grouping = et.is_grouping()
+        eye = _eye_field(et)
 
         data = {}
         data["treeview"] = {}
@@ -153,6 +165,7 @@ class Tree():
         data["treeview"]["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
         data["treeview"]["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
         data["treeview"]["is_grouping"] = is_grouping
+        data["treeview"]["eye"] = eye
         if is_grouping:
             # Only populated for groupings — the leaves / reps don't
             # need it (their checkbox is binary on their own id).
@@ -265,6 +278,12 @@ class Tree():
                 treeview["icon"] = get_primary_icon(node_type, node_prop_kind)
                 treeview["is_ts"] = node_type in ("TimeSeries", "MultiRealizationTimeSeries")
                 treeview["is_mr"] = node_type in ("MultiRealization", "MultiRealizationTimeSeries")
+                # eye token (rep / array / marker / None) — drives which eye
+                # block the tree view renders. Keyed on the node's own kind
+                # (NOT dispatch_kind, which is only for tab routing). A
+                # top-level rep (e.g. a Flat-mode IjkGrid) must still get its
+                # eye even though set_tree omits is_grouping here.
+                treeview["eye"] = _eye_field(_et.for_kind(node_type))
                 treeview["parent_id"] = 0
                 if disabled or node_is_partial:
                     treeview["disabled"] = True
