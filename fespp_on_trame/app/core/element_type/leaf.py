@@ -29,6 +29,9 @@ class PropertyLeaf(Leaf):
         "TimeSeries", "MultiRealization", "MultiRealizationTimeSeries",
     )
 
+    def is_property(self) -> bool:
+        return True
+
     def eye_descriptor(self):
         return EYE_ARRAY
 

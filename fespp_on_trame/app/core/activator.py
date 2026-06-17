@@ -3,6 +3,7 @@ from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.tree import Tree
 from fespp_on_trame.app.core.engine import source_resolver
+from fespp_on_trame.app.core.element_type import for_kind
 from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 
@@ -107,10 +108,7 @@ class Activator:
         if self_path in sel_paths:
             return True
         kind = self._tree.find_type(node_id) or ""
-        is_property = (
-            "Property" in kind
-            or kind in ("TimeSeries", "MultiRealization", "MultiRealizationTimeSeries")
-        )
+        is_property = for_kind(kind).is_property()
         if is_property:
             # Property leaf must be checked on its own id (handled above).
             return False
@@ -154,13 +152,7 @@ class Activator:
         # array name lives in propTitle. Plain TimeSeries nodes are also
         # property leaves (one per property title).
         is_multireal = type_node in ("MultiRealization", "MultiRealizationTimeSeries")
-        is_property = bool(
-            type_node and (
-                "Property" in type_node
-                or is_multireal
-                or type_node == "TimeSeries"
-            )
-        )
+        is_property = for_kind(type_node).is_property()
         ts_ancestor_id = self._tree.find_parent_node_id_with_type(node_id, "TimeSeries")
         is_ts_property = is_property and (
             ts_ancestor_id is not None or type_node == "MultiRealizationTimeSeries"
@@ -228,7 +220,7 @@ class Activator:
             block_path = self._tree.find_path(rep_node_id)
             if block_path:
                 rep_block_path = block_path
-                if rep_type != 'IjkGrid' and self._source_registry is not None:
+                if not for_kind(rep_type).is_ijk_grid() and self._source_registry is not None:
                     rep_source = self._source_registry.get(block_path)
                     if rep_source is not None:
                         pvsimple.SetActiveSource(rep_source)
@@ -259,7 +251,7 @@ class Activator:
           3. slicervolume (cropped range mode).
         """
         target_source = None
-        if rep_type and rep_type != 'IjkGrid':
+        if rep_type and not for_kind(rep_type).is_ijk_grid():
             target_source = rep_source
             if (
                 active_view and target_source is not None
@@ -361,11 +353,7 @@ class Activator:
         is done by the eye (`toggle_dataarray_color`)."""
         type_node = self._tree.find_type(node_id) or ""
         is_multireal = type_node in ("MultiRealization", "MultiRealizationTimeSeries")
-        is_property = bool(
-            type_node and (
-                "Property" in type_node or is_multireal or type_node == "TimeSeries"
-            )
-        )
+        is_property = for_kind(type_node).is_property()
         if not is_property:
             state.active_color_array_name = ""
             state.active_property_kind = ""

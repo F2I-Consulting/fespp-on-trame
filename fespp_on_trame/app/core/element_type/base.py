@@ -55,6 +55,15 @@ class ElementType:
         show/hide. NOT a marker frame."""
         return False
 
+    def is_property(self) -> bool:
+        """True only for a data-array PROPERTY leaf (`PropertyLeaf`: the
+        Continuous / Discrete / Categorical / TimeSeries / MultiRealization
+        / MultiRealizationTimeSeries kinds). Replaces the scattered
+        ``'Property' in kind or kind in ('TimeSeries', 'MultiRealization',
+        …)`` classification — a property leaf colours its parent rep, it is
+        not a rep itself."""
+        return False
+
     def eye_descriptor(self):
         """The eye affordance (a singleton EyeDescriptor), or None when the
         node carries no eye (groupings, frames — their children carry it)."""

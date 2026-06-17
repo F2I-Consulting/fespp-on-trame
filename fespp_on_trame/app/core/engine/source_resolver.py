@@ -125,9 +125,11 @@ def channel_source_for(channel_path):
         tree = getattr(_engine_pkg, "_tree", None)
         if tree is None:
             return None
+        from fespp_on_trame.app.core import element_type
         node_id = tree.find_node_id(channel_path)
         r_id = tree.find_representation_node(node_id) if node_id is not None else None
-        if r_id is None or r_id == node_id or (tree.find_type(r_id) or "") != "Frame":
+        if (r_id is None or r_id == node_id
+                or not element_type.for_kind(tree.find_type(r_id)).is_channel_frame()):
             return None  # not a wellbore-frame channel
         rep_path = tree.find_path(r_id)
         pv_view, _panel = target_view_and_panel()

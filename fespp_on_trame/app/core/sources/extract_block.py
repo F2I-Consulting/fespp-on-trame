@@ -178,15 +178,13 @@ def _kind_from_tree(tree, rep_path, array_name):
     # don't have the suffix so this is a no-op for them.
     bare = re.sub(r"_real_\d+$", "", array_name)
     sanitized = make_valid_vtk_name(bare)
+    from fespp_on_trame.app.core import element_type
     for nid in tree.find_all_descendant_ids(rep_id):
         try:
             kind = tree.find_type(nid) or ""
         except Exception:
             continue
-        if kind not in (
-            "ContinuousProperty", "DiscreteProperty", "CategoricalProperty",
-            "MultiRealization", "MultiRealizationTimeSeries", "TimeSeries",
-        ):
+        if not element_type.for_kind(kind).is_property():
             continue
         title = tree.find_title(nid) or ""
         if kind in ("MultiRealization", "MultiRealizationTimeSeries"):

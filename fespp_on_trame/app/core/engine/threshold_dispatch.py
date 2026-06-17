@@ -33,6 +33,7 @@ from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 from fespp_on_trame.app.core.engine import realization_dispatch
 from fespp_on_trame.app.core.engine import view_routing
+from fespp_on_trame.app.core.element_type import for_kind
 
 
 def _render_and_push(state, controller, fallback_view):
@@ -74,11 +75,7 @@ def _find_property_path_by_title(tree, rep_path, array_title):
         return None
     for child_id in tree.find_all_descendant_ids(rep_id):
         kind = tree.find_type(child_id) or ""
-        is_prop = (
-            "Property" in kind
-            or kind in ("TimeSeries", "MultiRealization", "MultiRealizationTimeSeries")
-        )
-        if not is_prop:
+        if not for_kind(kind).is_property():
             continue
         child_title = tree.find_title(child_id) or ""
         if kind in ("MultiRealization", "MultiRealizationTimeSeries"):
@@ -183,7 +180,7 @@ def threshold_provider(state, scene_registry, source_registry, view_id=None):
             # no legacy fallback.
             if scene_registry.has_view(vid):
                 return None, None
-        if rep_type == "IjkGrid":
+        if for_kind(rep_type).is_ijk_grid():
             ijk = source_registry.get_ijk_grid(grid_path)
             return (ijk, grid_path) if ijk is not None else (None, None)
         # Fallback: `source_registry` itself is the provider; its compat

@@ -97,7 +97,7 @@ class Tree():
         # children, else a partial rep's real descendants would be wrongly
         # disabled. A partial object has only Title + UUID, no data → it
         # must show "!!!PARTIAL!!!" and be uncheckable.
-        node_is_partial = node_type in ('partial', 'Partial')
+        node_is_partial = not _et.for_kind(node_type).is_selectable()
         if node_is_partial and not (node_title or '').startswith('!!!PARTIAL!!!'):
             node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
 
@@ -226,7 +226,7 @@ class Tree():
                 # Per-iteration reset — a previous partial sibling must
                 # not leave `disabled` latched True for the nodes after it.
                 disabled = False
-                node_is_partial = node_type in ('partial', 'Partial')
+                node_is_partial = not _et.for_kind(node_type).is_selectable()
                 if node_is_partial and not (node_title or '').startswith('!!!PARTIAL!!!'):
                     node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
 
@@ -313,7 +313,7 @@ class Tree():
 
         node_type = self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
         if node_type:
-            if node_type == 'IjkGrid':
+            if _et.for_kind(node_type).is_ijk_grid():
                 return self._data_assembly.GetAttributeOrDefault(node_id, "label", None)
             else:
                 return self.find_ijkgrid(self._data_assembly.GetParent(node_id))
@@ -392,7 +392,7 @@ class Tree():
             for i in range(n):
                 c = self._data_assembly.GetChild(nid, i)
                 kind = self._data_assembly.GetAttributeOrDefault(c, "kind", None)
-                if kind in ('partial', 'Partial'):
+                if not _et.for_kind(kind).is_selectable():
                     continue
                 out.append(c)
                 _walk(c)
