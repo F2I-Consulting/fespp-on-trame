@@ -168,6 +168,20 @@ remembered per rep — reopen the same node later and the color reappears.
 The solid color is what you see when no data array is active on the rep
 (all dataArray eyes closed).
 
+### Marker Display (orientation & size)
+
+When the active node is a **marker** or a **Marker Set** (MarkerFrame), a
+**Marker display** panel appears (tagged **global**):
+
+- **Orientation** — when on, a marker that carries a RESQML *dip angle* +
+  *dip direction* is drawn as an **oriented disk** showing that
+  orientation; otherwise (or when off) it is a plain **sphere**.
+- **Size** — the disk/sphere radius.
+
+> ⚠️ These two settings are **global**: they apply to **every marker in
+> every view** (the marker geometry is built once by the loader and shared
+> across views). Per-marker / per-view variants aren't available.
+
 ### Property (LUT/PWF) Mode
 
 If the active node is a continuous data array, the panel shows the

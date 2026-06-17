@@ -438,8 +438,30 @@ This is the largest module. Responsibilities, by section:
 - **`@state.change("load_mode")`** — auto / manual.
 - **`controller.apply_pending_selection`** — manual mode's `Load`
   button entry point.
-- **`@state.change("ui_scale_z")`** — broadcasts Z-scale to every rep
-  source.
+- **Z-scale (vertical exaggeration) — single global source of truth
+  `state.ui_scale_z`.** The UI entry is `TransformationEditor` (the
+  Global settings ▸ Transformation Apply button); on Apply it WRITES
+  `state.ui_scale_z` (it is the only writer). That write does three
+  things: (1) `@state.change("ui_scale_z")` broadcasts the scale to
+  every rendered rep across all scenes; (2) every source-CREATION hook
+  reads `ui_scale_z` so an object built LATER (clone / IjkGrid /
+  per-view extractor / channel / marker) lands already-exaggerated; (3)
+  the on-load re-apply (`_sync_scene_registry_reps`) scales freshly
+  loaded reps. Before this, nothing wrote `ui_scale_z`, so the whole
+  creation + re-apply machinery read a constant 1.0 and only objects
+  *visible at Apply time* were scaled. Real geometry (reps, log-tube
+  channels, IjkGrid pipeline) gets `disp.Scale = [1,1,zs]`; markers are
+  SYMBOLIC, so they are TRANSLATED instead (`disp.Translation.z =
+  (zs-1)·z_center`, Scale left at 1) — a sphere/disk keeps its shape
+  instead of stretching into an "olive". NB: ParaView 5.13+ renamed the
+  display `Position` property to `Translation` (the old name raises
+  `NotSupportedException`, and even `hasattr(disp, "Position")` propagates
+  it — `hasattr` only swallows `AttributeError`); `apply_marker_z` tries
+  `Translation` then falls back to `Position`. Marker detection is
+  name-based (`mrk_` proxy registration prefix) so it survives the scene
+  registry not tracking the extractor. The Scale/Translation write
+  saves/restores ColorArrayName + LookupTable + DiffuseColor (it can
+  clobber the active coloring).
 - **Slicer handlers**, **realization handlers**, **time controls**,
   **camera reset**, **session lifecycle** (drop temp dirs on last
   client exit).

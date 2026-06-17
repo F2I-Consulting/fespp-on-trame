@@ -24,6 +24,7 @@ from fespp_on_trame.app.core.engine.vtk_log import (
 from fespp_on_trame.app.core.engine import (
     threshold_dispatch,
     slicer_dispatch,
+    marker_dispatch,
     slice_dispatch,
     clip_dispatch,
     time_realization,
@@ -303,6 +304,27 @@ def initialize_fespp_engine(
     def ui_scale_z_update(ui_scale_z, **kwargs):
         slicer_dispatch.apply_z_scale(state, controller, _source_registry, _view, ui_scale_z)
 
+    # Global wellbore-marker display options (orientation = oriented disk
+    # vs sphere; size = radius). GLOBAL — apply to every marker in every
+    # view via the EPC collector's MarkerOrientation / MarkerSize props.
+    state.setdefault("marker_orientation", True)
+    state.setdefault("marker_size", 10)
+
+    def _apply_marker_options(*args, **kwargs):
+        marker_dispatch.apply_marker_options(
+            _collector, _scene_registry, controller,
+            state.marker_orientation, state.marker_size,
+        )
+    controller.apply_marker_options = _apply_marker_options
+
+    # Orientation is a single toggle → apply on change. The SIZE slider
+    # applies on RELEASE only (its @end calls controller.apply_marker_options)
+    # — each apply re-runs the collector over the whole selection, so a
+    # per-step apply would be very laggy.
+    @state.change("marker_orientation")
+    def marker_orientation_update(**kwargs):
+        _apply_marker_options()
+
     @controller.set("get_rep_source")
     def get_rep_source(rep_path):
         """Resolve a rep path to its extracted ParaView source. Used by
@@ -324,6 +346,16 @@ def initialize_fespp_engine(
             _scene_registry.sync_loaded_reps(ui_loaded_rep_paths or [])
         except Exception as exc:
             print(f"[boot] scene_registry.sync_loaded_reps failed: {exc}")
+        # Re-apply the current Z exaggeration so a freshly-loaded object
+        # picks it up (its per-view extractor's display is created with the
+        # z-scale at build time, but a rep shown in a non-owning / split
+        # view, or re-shown after being hidden, would otherwise stay at 1).
+        try:
+            zs = float(getattr(state, "ui_scale_z", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            zs = 1.0
+        if zs != 1.0:
+            slicer_dispatch.apply_z_scale(state, controller, _source_registry, _view, zs)
 
 
     @state.change("diff_array_a_path", "diff_array_choices")

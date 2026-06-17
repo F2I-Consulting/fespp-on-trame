@@ -200,6 +200,35 @@ def update_slice_visibility(state, controller, source_registry, view,
     _render_and_push(state, controller, view)
 
 
+def _set_scale_preserving_color(disp, scale):
+    """Write `disp.Scale` while saving / restoring ColorArrayName +
+    LookupTable — the Scale write has been observed to clobber the active
+    coloring on some PV builds (same guard the TransformationEditor uses)."""
+    saved_color = None
+    saved_lut = None
+    try:
+        saved_color = disp.ColorArrayName
+    except Exception:
+        pass
+    try:
+        saved_lut = disp.LookupTable
+    except Exception:
+        pass
+    disp.Scale = scale
+    if saved_color is not None:
+        try:
+            if disp.ColorArrayName != saved_color:
+                disp.ColorArrayName = saved_color
+        except Exception:
+            pass
+    if saved_lut is not None:
+        try:
+            if disp.LookupTable != saved_lut:
+                disp.LookupTable = saved_lut
+        except Exception:
+            pass
+
+
 def apply_z_scale(state, controller, source_registry, view, zscale):
     """Broadcast the global vertical exaggeration to every extracted
     rep source and to every IjkGrid slicer / volume proxy.
@@ -211,7 +240,59 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
         zs = float(zscale or 1.0)
     except (TypeError, ValueError):
         zs = 1.0
-    source_registry.apply_z_scale(zs)
+    source_registry.apply_z_scale(zs)  # legacy ExtractBlocks
+    # Per-scene fan-out — the visible displays live on the per-(rep, view)
+    # proxies (extractor + chain + slice/clip + per-view IjkGrid + per-child
+    # marker/channel extractors), NOT on the legacy shared sources. Without
+    # this a z-scale change never reaches the actually-rendered objects.
+    # Mirrors `propagate_representation`.
+    from trame.app import get_server
+    scene_registry = getattr(get_server().context, "scene_registry", None)
+    scenes = []
+    if scene_registry is not None:
+        try:
+            scenes = list(scene_registry.all_scenes())
+        except Exception:
+            scenes = []
+    if scenes:
+        legacy = _collect_legacy_proxies(source_registry)
+        from fespp_on_trame.app.core.engine import marker_dispatch
+        for scene in scenes:
+            v = scene.pv_view
+            if v is None:
+                continue
+            for p in _collect_scene_proxies(scene) + legacy:
+                try:
+                    disp = pvsimple.GetRepresentation(proxy=p, view=v)
+                    if disp is not None:
+                        # Markers (mrk_*) TRANSLATE (round); everything else
+                        # SCALES. Name-based so it works even when the scene
+                        # registry didn't track the marker extractor.
+                        if marker_dispatch.is_marker_proxy(p):
+                            marker_dispatch.apply_marker_z(disp, p, zs)
+                        else:
+                            _set_scale_preserving_color(disp, [1.0, 1.0, zs])
+                except Exception:
+                    pass
+            # Markers are SYMBOLIC — TRANSLATE Z (keep the sphere round)
+            # instead of scaling, so a high z-scale doesn't yield an olive.
+            for _path, rep in scene.reps():
+                markers = getattr(rep, "_marker_extractors", None)
+                if not markers:
+                    continue
+                for ext in markers.values():
+                    if ext is None:
+                        continue
+                    try:
+                        disp = pvsimple.GetRepresentation(proxy=ext, view=v)
+                        marker_dispatch.apply_marker_z(disp, ext, zs)
+                    except Exception:
+                        pass
+            pvsimple.Render(view=v)
+        _push_all_panels(controller)
+        return
+
+    # Legacy fallback (Phase 2 — no per-view scenes yet).
     ijk_srcs = []
     for ijk in source_registry.ijk_grids():
         ijk_srcs.extend(ijk._all_slice_sources())
@@ -220,7 +301,7 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
     for src in ijk_srcs:
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
         if rep is not None:
-            rep.Scale = [1.0, 1.0, zs]
+            _set_scale_preserving_color(rep, [1.0, 1.0, zs])
     _render_and_push(state, controller, view)
 
 
@@ -237,6 +318,12 @@ def _collect_scene_proxies(scene):
     for _path, rep in scene.reps():
         if rep._extractor is not None:
             out.append(rep._extractor)
+        # Channel (log-tube) extractors are real geometry → scale Z like any
+        # rep. MARKER extractors are SYMBOLIC (sphere/disk) → NOT collected
+        # here; apply_z_scale TRANSLATES their Z instead (keeps the shape).
+        _ch = getattr(rep, "_channel_extractors", None)
+        if _ch:
+            out.extend(e for e in _ch.values() if e is not None)
         for entry in rep._chain:
             if getattr(entry, "proxy", None) is not None:
                 out.append(entry.proxy)

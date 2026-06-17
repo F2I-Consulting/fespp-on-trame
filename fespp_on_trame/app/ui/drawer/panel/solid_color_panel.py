@@ -206,6 +206,9 @@ class SolidColorPanel(html.Div):
         # Maps rep_path → "#color" (no array active on the rep, i.e. SolidColor)
         # or "PROPERTY" (an array eye is open on the rep).
         state.setdefault("tree_chip_color_by_path", {})
+        # True when the active node is a marker / MarkerFrame — drives the
+        # global "Marker display" panel (orientation + size) visibility.
+        state.setdefault("sc_active_is_marker", False)
 
         # "active node is a data-array" if the active_color_array_name is
         # non-empty. We use that as the panel-mode selector.
@@ -214,7 +217,7 @@ class SolidColorPanel(html.Div):
         )
 
         with self:
-            with vuetify3.VExpansionPanels(v_model=("sc_panels", [0]), multiple=True, elevation=0):
+            with vuetify3.VExpansionPanels(v_model=("sc_panels", [0, 1]), multiple=True, elevation=0):
                 with vuetify3.VExpansionPanel(elevation=0, value=0):
                     with vuetify3.VExpansionPanelTitle(classes="pa-2"):
                         html.Span("Colors & Opacity", classes="text-body-2 font-weight-medium")
@@ -256,6 +259,48 @@ class SolidColorPanel(html.Div):
                             classes="pa-0",
                         ):
                             CategoricalColorEditor()
+
+                # Marker display options (orientation + size). Shown only in
+                # a marker context. GLOBAL — clearly flagged so the user
+                # knows it applies to EVERY marker in EVERY view.
+                with vuetify3.VExpansionPanel(
+                    elevation=0, value=1, v_if="sc_active_is_marker",
+                ):
+                    with vuetify3.VExpansionPanelTitle(classes="pa-2"):
+                        html.Span("Marker display", classes="text-body-2 font-weight-medium")
+                        vuetify3.VSpacer()
+                        vuetify3.VChip(
+                            "global",
+                            size="x-small",
+                            variant="tonal",
+                            color="deep-orange",
+                            classes="font-italic mr-2",
+                        )
+                    with vuetify3.VExpansionPanelText(classes="pa-2"):
+                        html.Div(
+                            "S'applique à TOUS les markers (toutes les vues).",
+                            classes="text-caption text-medium-emphasis mb-3",
+                        )
+                        vuetify3.VSwitch(
+                            v_model=("marker_orientation",),
+                            label="Orientation (disque orienté dip/azimut, sinon sphère)",
+                            density="compact",
+                            hide_details=True,
+                            color="deep-orange",
+                            classes="mb-3",
+                        )
+                        vuetify3.VSlider(
+                            v_model=("marker_size",),
+                            label="Taille",
+                            min=1, max=200, step=1,
+                            thumb_label=True,
+                            density="compact",
+                            hide_details=True,
+                            color="deep-orange",
+                            # Apply on RELEASE only (rebuilding markers re-runs
+                            # the collector over the whole selection).
+                            end=(controller.apply_marker_options,),
+                        )
 
         # --- Override array-name lookup to use state instead of active source ---
         # The state-driven name carries the property TITLE for MR
@@ -586,6 +631,11 @@ class SolidColorPanel(html.Div):
             # stays the frame) re-seeds the wheel from the marker's own
             # colour. Default tint assigned at load if none picked yet.
             path = state.active_representation_path
+            # Marker context (a MarkerFrame selected, or a single Marker leaf)
+            # → show the global Marker-display panel (orientation + size).
+            state.sc_active_is_marker = bool(
+                path and (_is_marker_frame_path(path) or _active_marker_path() is not None)
+            )
             if not path:
                 return
             marker_path = _active_marker_path()

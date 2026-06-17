@@ -173,6 +173,21 @@ représentation — rouvrez le même nœud plus tard et la couleur réapparaît.
 La couleur unie est ce que vous voyez lorsqu'aucun tableau de données n'est
 actif sur la représentation (tous les yeux dataArray fermés).
 
+### Affichage des markers (orientation & taille)
+
+Quand le nœud actif est un **marker** ou un **Marker Set** (MarkerFrame),
+un panneau **Marker display** apparaît (tag **global**) :
+
+- **Orientation** — activée, un marker qui porte un *dip angle* + une *dip
+  direction* RESQML est dessiné comme un **disque orienté** montrant cette
+  orientation ; sinon (ou désactivée) c'est une simple **sphère**.
+- **Taille** — le rayon du disque/de la sphère.
+
+> ⚠️ Ces deux réglages sont **globaux** : ils s'appliquent à **tous les
+> markers de toutes les vues** (la géométrie du marker est construite une
+> seule fois par le loader et partagée entre les vues). Pas de variante
+> par-marker / par-vue.
+
 ### Mode propriété (LUT/PWF)
 
 Si le nœud actif est un tableau de données continu, le panneau affiche

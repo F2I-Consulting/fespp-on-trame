@@ -445,8 +445,30 @@ C'est le plus gros module. Responsabilités, par section :
 - **`@state.change("load_mode")`** — auto / manuel.
 - **`controller.apply_pending_selection`** — point d'entrée du bouton
   `Load` du mode manuel.
-- **`@state.change("ui_scale_z")`** — diffuse l'échelle Z à chaque source
-  de rep.
+- **Échelle Z (exagération verticale) — source de vérité globale unique
+  `state.ui_scale_z`.** L'entrée UI est `TransformationEditor` (bouton
+  Apply de Global settings ▸ Transformation) ; à l'Apply il ÉCRIT
+  `state.ui_scale_z` (seul rédacteur). Cette écriture fait trois choses :
+  (1) `@state.change("ui_scale_z")` diffuse l'échelle à chaque rep rendu
+  dans toutes les scènes ; (2) chaque hook de CRÉATION de source lit
+  `ui_scale_z` pour qu'un objet construit PLUS TARD (clone / IjkGrid /
+  extracteur par-vue / canal / marker) arrive déjà exagéré ; (3) le
+  re-apply au chargement (`_sync_scene_registry_reps`) met à l'échelle
+  les reps fraîchement chargés. Auparavant rien n'écrivait `ui_scale_z`,
+  donc toute la machinerie création + re-apply lisait une constante 1.0
+  et seuls les objets *visibles au moment de l'Apply* étaient mis à
+  l'échelle. La géométrie réelle (reps, canaux tube-log, pipeline
+  IjkGrid) reçoit `disp.Scale = [1,1,zs]` ; les markers sont SYMBOLIQUES,
+  donc TRANSLATÉS à la place (`disp.Translation.z = (zs-1)·z_centre`, Scale
+  laissé à 1) — une sphère/disque garde sa forme au lieu de s'étirer en
+  « olive ». NB : ParaView 5.13+ a renommé la propriété d'affichage
+  `Position` en `Translation` (l'ancien nom lève `NotSupportedException`,
+  et même `hasattr(disp, "Position")` le propage — `hasattr` n'avale que
+  `AttributeError`) ; `apply_marker_z` essaie `Translation` puis retombe
+  sur `Position`. La détection d'un marker est par NOM (préfixe `mrk_` du
+  proxy) pour survivre au scene_registry qui ne traque pas l'extracteur.
+  L'écriture Scale/Translation sauvegarde/restaure ColorArrayName +
+  LookupTable + DiffuseColor (elle peut écraser la coloration active).
 - **Gestionnaires de slicer**, **gestionnaires de réalisation**,
   **contrôles temporels**, **réinitialisation caméra**, **cycle de vie de
   la session** (suppression des répertoires temporaires à la sortie du

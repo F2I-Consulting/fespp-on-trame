@@ -130,6 +130,13 @@ class FrameRep(Representation):
         uniform colour; MarkerFrameRep overrides for per-marker colour."""
         return (state.solid_color_by_rep or {}).get(ris.rep_path)
 
+    def _apply_child_z(self, ris, disp, source, zs):
+        """Apply the global Z exaggeration to a child's display. Default
+        (CHANNELS = real log-tube geometry following the well): scale Z.
+        MarkerFrameRep overrides — markers TRANSLATE Z instead, so a sphere
+        stays a sphere (not an olive)."""
+        disp.Scale = [1.0, 1.0, zs]
+
     def _create_child_extractor(self, ris, child_path):
         """Build a per-(child, view) EnergisticsExtractor pointed at a single
         child partition (ExtractPath = the child leaf) so only that child's
@@ -176,7 +183,7 @@ class FrameRep(Representation):
                 disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
                 if disp is not None:
                     disp.Representation = state.representation_active or "Surface"
-                    disp.Scale = [1.0, 1.0, ris._current_z_scale()]
+                    self._apply_child_z(ris, disp, ext, ris._current_z_scale())
                     _apply_default_tint(disp, self._child_tint(ris, child_path, state))
             return ext
         except Exception as exc:
@@ -301,6 +308,11 @@ class MarkerFrameRep(FrameRep):
             by_marker.get(marker_path)
             or (state.solid_color_by_rep or {}).get(ris.rep_path)
         )
+
+    def _apply_child_z(self, ris, disp, source, zs):
+        """Markers TRANSLATE Z (keep the sphere round) rather than scale it."""
+        from fespp_on_trame.app.core.engine import marker_dispatch
+        marker_dispatch.apply_marker_z(disp, source, zs)
 
     def set_child_color(self, ris, marker_path, color_hex):
         """SolidColor tint on ONE shown marker's display (never a ColorArray).

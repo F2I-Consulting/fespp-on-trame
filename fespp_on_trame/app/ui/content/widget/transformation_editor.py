@@ -75,20 +75,86 @@ class TransformationEditor:
             if view is not None:
                 yield view
 
+    @staticmethod
+    def _proxy_reg_name(proxy):
+        """Registration name of a proxy (per-(marker,view) extractors are
+        registered as ``mrk_…``). Searches both groups the plugin uses."""
+        try:
+            from paraview import servermanager as _sm
+            pm = _sm.ProxyManager()
+            smp = getattr(proxy, "SMProxy", proxy)
+            for group in ("filters", "sources"):
+                n = pm.GetProxyName(group, smp)
+                if n:
+                    return n
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def _rep_is_marker(cls, rep, marker_ids):
+        """True when this raw PV representation is a marker glyph — so it
+        must TRANSLATE, not scale. Robust detection: either the input proxy's
+        GlobalID is in the scene-registry marker set, OR its registration
+        name carries the ``mrk_`` prefix (works even when the scene registry
+        hasn't tracked it)."""
+        try:
+            inp = rep.Input
+        except Exception:
+            return False
+        try:
+            if marker_ids and inp.SMProxy.GetGlobalID() in marker_ids:
+                return True
+        except Exception:
+            pass
+        name = cls._proxy_reg_name(inp)
+        return bool(name and name.startswith("mrk_"))
+
     def _apply_z_scale(self):
         """Apply the editor's Scale to every visible rep on every
         target view. Save / restore ColorArrayName + LookupTable
         around the Scale write so a side-effect on rep state doesn't
-        clobber the active coloring."""
+        clobber the active coloring.
+
+        Two extra responsibilities beyond the raw rep loop:
+          - PERSIST the Z exaggeration to ``state.ui_scale_z`` so a source
+            created LATER (a freshly-loaded clone / IjkGrid / extractor)
+            picks it up at build time (its creation hook reads ui_scale_z)
+            and the on-load re-apply scales it too. The Z-scale is GLOBAL,
+            so a single state var is the source of truth.
+          - MARKERS are symbolic: scaling their rep turns the sphere/disk
+            into an "olive". They are TRANSLATED in Z instead (handled by
+            marker_dispatch.apply_marker_z), never scaled."""
         try:
             scale_data = self._te.typed_state.data.scale
             scale = [scale_data.x.value, scale_data.y.value, scale_data.z.value]
         except Exception:
             return
+        zs = scale[2]
+        # Persist the GLOBAL exaggeration (the missing link: nothing wrote
+        # ui_scale_z before, so the creation hooks + on-load re-apply always
+        # read 1.0 and a later-loaded object stayed flat). The Z-scale is
+        # conceptually global, so a single state var is the source of truth
+        # that creation hooks + on-load re-apply read.
+        try:
+            self._state.ui_scale_z = zs
+        except Exception:
+            pass
+        # Recognise marker glyphs so they translate (round) rather than
+        # scale (olive).
+        from fespp_on_trame.app.core.engine import marker_dispatch
+        scene_registry = getattr(self._server.context, "scene_registry", None)
+        marker_ids = marker_dispatch.marker_proxy_ids(scene_registry)
         for view in self._target_views():
             reps = getattr(view, "Representations", None) or []
             for rep in reps:
                 if not getattr(rep, "Visibility", 0):
+                    continue
+                if self._rep_is_marker(rep, marker_ids):
+                    try:
+                        marker_dispatch.apply_marker_z(rep, rep.Input, zs)
+                    except Exception:
+                        pass
                     continue
                 saved_color = None
                 saved_lut = None

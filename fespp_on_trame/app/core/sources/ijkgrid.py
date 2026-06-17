@@ -176,6 +176,15 @@ class IjkGrid:
         from paraview import simple as pvsimple
         return pvsimple.GetActiveView()
 
+    def _current_z_scale(self) -> float:
+        """The global vertical exaggeration (state.ui_scale_z). Applied to
+        every display this grid creates so a grid added AFTER the user set a
+        z-scale still lands exaggerated like the rest of the scene."""
+        try:
+            return float(getattr(state, "ui_scale_z", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            return 1.0
+
     @property
     def rep_path(self):
         """This grid's assembly path, or empty string when no node
@@ -304,6 +313,7 @@ class IjkGrid:
         view = self._target_view()
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
         rep.Representation = state.representation_active or 'Surface'
+        rep.Scale = [1.0, 1.0, self._current_z_scale()]
         if self._title and self._current_array_type:
             self.update_colors(src, self._current_array_type, self._title,
                                self._current_property_type)
@@ -426,9 +436,11 @@ class IjkGrid:
 
             rep_type = state.representation_active or 'Surface'
             grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
+            zs = self._current_z_scale()
             for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
                 disp = pvsimple.GetRepresentation(proxy=src, view=view)
                 disp.Representation = rep_type
+                disp.Scale = [1.0, 1.0, zs]
                 _apply_default_tint(disp, grid_color)
 
             self.update_block_visibility()
@@ -581,6 +593,7 @@ class IjkGrid:
         # `view`.
         rep_type = state.representation_active or 'Surface'
         grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
+        zs = self._current_z_scale()
         for src in (
             list(self._all_slice_sources())
             + ([self._src_slicer_volume] if self._src_slicer_volume is not None else [])
@@ -590,6 +603,7 @@ class IjkGrid:
                 disp = pvsimple.GetRepresentation(proxy=src, view=view)
                 if disp is not None:
                     disp.Representation = rep_type
+                    disp.Scale = [1.0, 1.0, zs]
                     _apply_default_tint(disp, grid_color)
             except Exception:
                 pass
