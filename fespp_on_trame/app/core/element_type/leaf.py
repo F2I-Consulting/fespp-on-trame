@@ -22,12 +22,15 @@ class Leaf(ElementType):
 class PropertyLeaf(Leaf):
     """A property that COLOURS its parent rep. A log CHANNEL is a PropertyLeaf
     whose rep ancestor is a ChannelFrameRep — "channel-ness" is structural
-    (the parent), not a distinct kind. Purple data-array eye; array bucket."""
+    (the parent), not a distinct kind. Purple data-array eye; array bucket.
 
-    KINDS = (
-        "ContinuousProperty", "DiscreteProperty", "CategoricalProperty",
-        "TimeSeries", "MultiRealization", "MultiRealizationTimeSeries",
-    )
+    The three CONCRETE property kinds live here; the synthetic TimeSeries /
+    MultiRealization wrappers are subclasses below that add the
+    ``is_time_series`` / ``is_multi_realization`` predicates (same eye / bucket
+    / colour — they only differ in carrying a time slider / realization
+    picker)."""
+
+    KINDS = ("ContinuousProperty", "DiscreteProperty", "CategoricalProperty")
 
     def is_property(self) -> bool:
         return True
@@ -44,6 +47,39 @@ class PropertyLeaf(Leaf):
     def visibility_policy(self) -> VisibilityPolicy:
         # A property has no visibility of its own — it colours the rep.
         return VisibilityPolicy.NONE
+
+
+class TimeSeriesLeaf(PropertyLeaf):
+    """A time-series property (one value per time step). Same eye / bucket /
+    colour as a plain property; adds the time-slider predicate."""
+
+    KINDS = ("TimeSeries",)
+
+    def is_time_series(self) -> bool:
+        return True
+
+
+class MultiRealizationLeaf(PropertyLeaf):
+    """A multi-realization property (one value per realization). Adds the
+    realization-picker predicate."""
+
+    KINDS = ("MultiRealization",)
+
+    def is_multi_realization(self) -> bool:
+        return True
+
+
+class MultiRealizationTimeSeriesLeaf(PropertyLeaf):
+    """A property that is BOTH multi-realization AND time-series — carries
+    both the time slider and the realization picker."""
+
+    KINDS = ("MultiRealizationTimeSeries",)
+
+    def is_time_series(self) -> bool:
+        return True
+
+    def is_multi_realization(self) -> bool:
+        return True
 
 
 class MarkerLeaf(Leaf):

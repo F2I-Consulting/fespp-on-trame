@@ -56,12 +56,25 @@ class ElementType:
         return False
 
     def is_property(self) -> bool:
-        """True only for a data-array PROPERTY leaf (`PropertyLeaf`: the
-        Continuous / Discrete / Categorical / TimeSeries / MultiRealization
-        / MultiRealizationTimeSeries kinds). Replaces the scattered
-        ``'Property' in kind or kind in ('TimeSeries', 'MultiRealization',
-        …)`` classification — a property leaf colours its parent rep, it is
-        not a rep itself."""
+        """True only for a data-array PROPERTY leaf (`PropertyLeaf` + its
+        TimeSeries / MultiRealization subclasses: the Continuous / Discrete /
+        Categorical / TimeSeries / MultiRealization / MultiRealizationTimeSeries
+        kinds). Replaces the scattered ``'Property' in kind or kind in
+        ('TimeSeries', 'MultiRealization', …)`` classification — a property
+        leaf colours its parent rep, it is not a rep itself."""
+        return False
+
+    def is_time_series(self) -> bool:
+        """True for a time-series property leaf — the 'TimeSeries' and
+        'MultiRealizationTimeSeries' kinds (the time slider applies).
+        Replaces ``kind in ('TimeSeries', 'MultiRealizationTimeSeries')``."""
+        return False
+
+    def is_multi_realization(self) -> bool:
+        """True for a multi-realization property leaf — the 'MultiRealization'
+        and 'MultiRealizationTimeSeries' kinds (the realization picker
+        applies). Replaces ``kind in ('MultiRealization',
+        'MultiRealizationTimeSeries')``."""
         return False
 
     def eye_descriptor(self):

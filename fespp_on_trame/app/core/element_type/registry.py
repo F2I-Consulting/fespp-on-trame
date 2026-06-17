@@ -9,16 +9,21 @@ from .representation import (
 )
 from .grouping import Grouping, PartialType
 from .frames import ChannelFrameRep, MarkerFrameRep
-from .leaf import PropertyLeaf, MarkerLeaf
+from .leaf import (
+    PropertyLeaf, TimeSeriesLeaf, MultiRealizationLeaf,
+    MultiRealizationTimeSeriesLeaf, MarkerLeaf,
+)
 
 
 # Concrete classes — each instantiated ONCE (stateless singleton) and
-# registered under each of its KINDS. More-specific subclasses (IjkGridRep)
-# are listed before their base (GridRep) for clarity; kinds never overlap.
+# registered under each of its KINDS. More-specific subclasses (IjkGridRep,
+# the TimeSeries / MultiRealization property leaves) are listed before their
+# base for clarity; kinds never overlap.
 _CONCRETE = (
     Grouping, PartialType,
     IjkGridRep, GridRep, SurfaceRep, WellboreGeometryRep, SeismicFrameRep,
     ChannelFrameRep, MarkerFrameRep,
+    TimeSeriesLeaf, MultiRealizationLeaf, MultiRealizationTimeSeriesLeaf,
     PropertyLeaf, MarkerLeaf,
 )
 

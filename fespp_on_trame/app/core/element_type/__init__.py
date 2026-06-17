@@ -34,6 +34,9 @@ A parent that lives in another file is visible at a glance — e.g.
     leaf.py
         Leaf(ElementType)                    sub-element of a rep, not a rep itself
         PropertyLeaf(Leaf)                   colours the parent rep; a channel is this
+        TimeSeriesLeaf(PropertyLeaf)         TimeSeries property (time slider)
+        MultiRealizationLeaf(PropertyLeaf)   MultiRealization property (realization picker)
+        MultiRealizationTimeSeriesLeaf(PropertyLeaf)  both time + realization
         MarkerLeaf(Leaf)                     toggles ONE marker's visibility
     registry.py
         for_kind / for_path / registered_kinds   (+ _REGISTRY / _CONCRETE / _FALLBACK)
@@ -61,7 +64,10 @@ from .representation import (
     WellboreGeometryRep, SeismicFrameRep,
 )
 from .frames import FrameRep, ChannelFrameRep, MarkerFrameRep
-from .leaf import Leaf, PropertyLeaf, MarkerLeaf
+from .leaf import (
+    Leaf, PropertyLeaf, TimeSeriesLeaf, MultiRealizationLeaf,
+    MultiRealizationTimeSeriesLeaf, MarkerLeaf,
+)
 from .registry import (
     for_kind, for_path, registered_kinds,
     _CONCRETE, _REGISTRY, _FALLBACK,
@@ -78,7 +84,8 @@ __all__ = [
     "Representation", "GridRep", "IjkGridRep", "SurfaceRep",
     "WellboreGeometryRep", "SeismicFrameRep",
     "FrameRep", "ChannelFrameRep", "MarkerFrameRep",
-    "Leaf", "PropertyLeaf", "MarkerLeaf",
+    "Leaf", "PropertyLeaf", "TimeSeriesLeaf", "MultiRealizationLeaf",
+    "MultiRealizationTimeSeriesLeaf", "MarkerLeaf",
     # resolvers
     "for_kind", "for_path", "registered_kinds",
 ]

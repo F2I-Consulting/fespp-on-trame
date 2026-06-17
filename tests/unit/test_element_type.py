@@ -137,6 +137,30 @@ class TestContract:
         assert ed.color == "purple"
         assert ed.multi is False
 
+    @pytest.mark.parametrize("kind,ts,mr", [
+        ("ContinuousProperty", False, False),
+        ("DiscreteProperty", False, False),
+        ("CategoricalProperty", False, False),
+        ("TimeSeries", True, False),
+        ("MultiRealization", False, True),
+        ("MultiRealizationTimeSeries", True, True),
+    ])
+    def test_property_variant_predicates(self, kind, ts, mr):
+        # Every property leaf is_property(); the TS / MR wrappers add the
+        # time-series / multi-realization predicates (same eye / bucket).
+        e = et.for_kind(kind)
+        assert e.is_property() is True
+        assert e.is_time_series() is ts
+        assert e.is_multi_realization() is mr
+
+    @pytest.mark.parametrize("kind", ["IjkGrid", "Frame", "Marker", "Collection",
+                                      "Grid2d", "Trajectory"])
+    def test_non_properties_have_no_property_predicates(self, kind):
+        e = et.for_kind(kind)
+        assert e.is_property() is False
+        assert e.is_time_series() is False
+        assert e.is_multi_realization() is False
+
     def test_marker_leaf(self):
         e = et.for_kind("Marker")
         assert e.tree_role() == TR.LEAF
