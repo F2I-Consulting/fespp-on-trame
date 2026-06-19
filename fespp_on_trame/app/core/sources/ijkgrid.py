@@ -411,8 +411,22 @@ class IjkGrid:
                     return
                 self._src_extract_init = _find_registered_proxy(reg_name)
                 if self._src_extract_init is None:
-                    self._node_id = None
-                    return
+                    # Stale producer: a prior release() Delete'd the Python
+                    # proxy but the C++ collector still hands back its now-
+                    # dangling name. Force a fresh rebuild by toggling
+                    # ExtractRepPath (clear -> re-set) so the collector drops
+                    # the stale producer and registers a new one, then re-read.
+                    vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set("")
+                    coll_proxy.UpdateVTKObjects()
+                    coll_proxy.UpdatePropertyInformation()
+                    vtkSMPropertyHelper(coll_proxy, "ExtractRepPath").Set(ijkgrid_rep_path)
+                    coll_proxy.UpdateVTKObjects()
+                    coll_proxy.UpdatePropertyInformation()
+                    reg_name = vtkSMPropertyHelper(coll_proxy, "ExtractedRepProducerName").GetAsString()
+                    self._src_extract_init = _find_registered_proxy(reg_name) if reg_name else None
+                    if self._src_extract_init is None:
+                        self._node_id = None
+                        return
 
             view = self._target_view()
             for axis in ('i', 'j', 'k'):
@@ -428,6 +442,16 @@ class IjkGrid:
             )
 
             self._src_extract_init.UpdatePipelineInformation()
+            # Full data pass on rep_data BEFORE its display is created/Shown.
+            # rep_data is the sole visible source at the default range /
+            # full-extent view; if it is Shown against an info-only (unrealised)
+            # output its mapper paints empty on the first StillRender push and
+            # the geometry only appears after a camera nudge. Mirrors the
+            # surface ensure_extractor fix (materialise-then-show).
+            try:
+                self._src_extract_init.UpdatePipeline()
+            except Exception:
+                pass
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.UpdatePipelineInformation()
 
@@ -490,7 +514,7 @@ class IjkGrid:
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.UpdatePipelineInformation()
 
-            pvsimple.Hide(proxy=self._src_extract_init)
+            pvsimple.Hide(proxy=self._src_extract_init, view=self._target_view())
             self.show()
 
     def _is_range_full_extent(self):
