@@ -85,6 +85,18 @@ class Representation(ElementType):
             # No real clone — don't chain on the shared collector (id() would
             # collide across views). Fall back to the shared source.
             return None
+        # If the clone hasn't executed RequestData since upload, its output
+        # assembly is empty → the EnergisticsExtractor resolves ExtractPath
+        # against no data and emits an empty vtkPolyData placeholder. The
+        # display is then Shown but paints nothing, and (since the clone's
+        # input was already up-to-date when the clone was built) no later
+        # Render or camera move re-executes it — only a fresh collector
+        # UpdatePipeline does. Force the clone's data pass FIRST, mirroring
+        # IjkGridRep.ensure_per_view_ijk and marker_dispatch.
+        try:
+            clone.UpdatePipeline()
+        except Exception:
+            pass
         tag = f"[{type(self).__name__} {scene.view_id}/{ris.rep_path}]"
         try:
             from paraview import simple as pvsimple
@@ -107,6 +119,10 @@ class Representation(ElementType):
             vtkSMPropertyHelper(ext.SMProxy, "ExtractPath").Set(ris.rep_path)
             ext.SMProxy.UpdateVTKObjects()
             ext.UpdatePipelineInformation()
+            # Data pass so the extractor materialises real geometry from the
+            # (now-populated) clone before the first Show — without it the
+            # display renders the empty placeholder until a later load.
+            ext.UpdatePipeline()
             target_view = scene.pv_view
             # A frame keeps its primary hidden; a rep flagged hidden in this
             # view's bucket is BUILT but not shown (first selection appears
