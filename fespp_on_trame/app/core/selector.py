@@ -121,7 +121,21 @@ class Selector:
             path = self._tree.find_path(node_id)
             if path:
                 path_selectors.append(path)
-        self._selection_path_reservoir = path_selectors
+        # An IjkGrid property checked on its own (parent grid node NOT checked)
+        # must still pull the grid GEOMETRY. The C++ collector loads cells
+        # from the grid path; a property path alone yields only the array, so
+        # the rep_data extractor comes back empty and the grid is discarded
+        # (source is None → ensure_ijk_grid drops it). Prepend each selected
+        # property's IjkGrid ancestor path so the geometry is always loaded.
+        grid_paths = []
+        for node_id in list_selected:
+            ijk_id = self._tree.find_parent_node_id_with_type(node_id, "IjkGrid")
+            if ijk_id is None or ijk_id == node_id:
+                continue
+            ijk_path = self._tree.find_path(ijk_id)
+            if ijk_path and ijk_path not in path_selectors and ijk_path not in grid_paths:
+                grid_paths.append(ijk_path)
+        self._selection_path_reservoir = grid_paths + path_selectors
 
         # IjkGrid teardown on empty selection is handled implicitly by
         # the fespp_data_selectors change handler — when the reservoir
