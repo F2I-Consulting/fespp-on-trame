@@ -24,6 +24,7 @@ import time
 
 
 _vtk_log_queue: list = []
+_vtk_queue_consumed = 0  # high-water mark: queue entries already surfaced
 _vtk_stderr_tee_done = False
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHJA-Z]")
@@ -57,6 +58,14 @@ def setup_stderr_tee() -> None:
 
         def _reader():
             buf = b""
+            # A vtkLogger message spans several physical lines: only the
+            # first carries the "(..s)[..]LEVEL|" prefix; the rest are
+            # continuation lines (e.g. FESAPI's per-property warnings).
+            # `cur_idx` is the queue entry those continuations append to
+            # (-1 = none open); `suppressing` mutes a suppressed message and
+            # its continuations together.
+            cur_idx = -1
+            suppressing = False
             with os.fdopen(read_fd, "rb", buffering=0) as src, \
                  os.fdopen(orig_fd,  "wb", buffering=0) as dst:
                 while True:
@@ -73,27 +82,41 @@ def setup_stderr_tee() -> None:
                             "", raw_line.decode("utf-8", errors="replace")
                         ).strip()
                         m = _VTK_LINE_RE.search(clean) if clean else None
-                        text = m.group(2).strip() if m else ""
-                        suppress = any(
-                            p.search(text) for p in _SUPPRESS_PATTERNS
-                        ) if text else False
-                        if not suppress:
-                            # Forward to docker logs verbatim (with
-                            # the ANSI codes intact so colour-aware
-                            # log viewers still highlight WARN/ERR).
+                        if m:
+                            # New vtkLogger message — opens a fresh entry.
+                            text = m.group(2).strip()
+                            suppressing = any(
+                                p.search(text) for p in _SUPPRESS_PATTERNS
+                            )
+                            if suppressing:
+                                cur_idx = -1
+                                continue
+                            # Forward to docker logs verbatim (ANSI codes
+                            # intact so colour-aware log viewers highlight
+                            # WARN/ERR).
                             dst.write(raw_line)
                             dst.write(b"\n")
                             dst.flush()
-                            if m and text:
-                                level_tag = m.group(1)
-                                level = (
-                                    "error"   if "ERR"  in level_tag else
-                                    "warning" if "WARN" in level_tag else
-                                    "info"
-                                )
-                                _vtk_log_queue.append(
-                                    {"text": text, "level": level}
-                                )
+                            level_tag = m.group(1)
+                            level = (
+                                "error"   if "ERR"  in level_tag else
+                                "warning" if "WARN" in level_tag else
+                                "info"
+                            )
+                            _vtk_log_queue.append({"text": text, "level": level})
+                            cur_idx = len(_vtk_log_queue) - 1
+                        else:
+                            # Continuation of the open message (or noise when
+                            # none is open). Append to the open entry so the
+                            # in-app log shows the FULL multi-line message, not
+                            # just its first line.
+                            if suppressing:
+                                continue
+                            dst.write(raw_line)
+                            dst.write(b"\n")
+                            dst.flush()
+                            if clean and cur_idx >= 0:
+                                _vtk_log_queue[cur_idx]["text"] += "\n" + clean
 
         threading.Thread(target=_reader, daemon=True).start()
         _vtk_stderr_tee_done = True
@@ -107,15 +130,20 @@ def setup_stderr_tee() -> None:
 @contextlib.contextmanager
 def capture_vtk_messages(state, max_messages: int = 500):
     """Capture VTK messages emitted during the block into
-    `state.vtk_log_messages`. Slices the shared queue by index so a
-    single tee thread serves multiple concurrent sessions."""
+    `state.vtk_log_messages`. Consumes the shared queue past a monotonic
+    high-water mark so two overlapping/sequential capture windows never
+    surface the same entry twice (the reader thread appends asynchronously,
+    so a per-window `len()` snapshot alone races and duplicates)."""
+    global _vtk_queue_consumed
     start_seq = len(_vtk_log_queue)
     try:
         yield
     finally:
         # Let the reader thread flush the bytes already in the pipe.
         time.sleep(0.05)
-        new_messages = list(_vtk_log_queue[start_seq:])
+        begin = max(start_seq, _vtk_queue_consumed)
+        new_messages = list(_vtk_log_queue[begin:])
+        _vtk_queue_consumed = len(_vtk_log_queue)
         if new_messages:
             current = list(state.vtk_log_messages or [])
             state.vtk_log_messages = (current + new_messages)[-max_messages:]
