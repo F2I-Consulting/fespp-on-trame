@@ -173,6 +173,20 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     _update_marker_tracking(state, tree, present_paths)
     _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
 
+    # A rep that just gained a freshly-loaded array must be VISIBLE — a
+    # property's coloring can't show on a hidden rep, and the contract is
+    # "select a property = load + eye". Re-open the rep eye (drop it from the
+    # hidden sets) so loading a property overrides a stale manual hide from
+    # before the property was selected. Done BEFORE the synchronous
+    # sync_loaded_reps below, whose eager setup reads the per-view hidden
+    # bucket to decide Show/Hide.
+    newly_arrayed = {
+        r for r, a in last_array_for_rep.items()
+        if a is not None and a not in prev_loaded_set
+    }
+    if newly_arrayed:
+        _unhide_reps(state, newly_arrayed)
+
     # --- SYNCHRONOUS teardown of DESELECTED reps' per-view pipelines ---
     # A just-deselected rep's per-view RepInScene (UG: `_extractor`,
     # IjkGrid: per-view slicers) is still Shown on the scene clone, but
@@ -214,7 +228,27 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     except Exception:
         pass
 
-    state.view_update = True
+    # Re-show the per-view pipeline of every rep we just un-hid in the active
+    # scene. For an ALREADY-loaded rep the eager setup above is skipped (it
+    # only fires for newly-added reps), so nothing else re-Shows it after the
+    # eye was re-opened — without this the property loads + colors but the
+    # rep stays dark.
+    try:
+        scene_reg = getattr(server.context, "scene_registry", None)
+        if newly_arrayed and scene_reg is not None:
+            active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+            scene = scene_reg.get_scene(active_pid) if active_pid else None
+            if scene is not None:
+                for r in newly_arrayed:
+                    rep = scene.get_rep(r)
+                    if rep is None:
+                        continue
+                    try:
+                        rep.element_type.refresh_primary_visibility(rep)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
     # Set the FESPP source as active for ParaView dialogs that look
     # at it. We do NOT call active_source.show() here — that would
@@ -239,12 +273,41 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     except Exception:
         pass
 
-    # Single Render at the very end. The parent multiblock was hidden
-    # earlier, so this only paints the new ExtractBlock reps + IJK
-    # slicers. Skipped on an empty selection (nothing to paint).
     state.view_update = True
-    if state.fespp_data_selectors:
+    # Reliable client refresh — render the (possibly empty) scene and push a
+    # fresh frame to the client. Render UNCONDITIONALLY: an empty selection
+    # must repaint the now-empty scene so an unload clears without a manual
+    # view interaction. Push TWICE — a just-created representation's mapper is
+    # realised on the first StillRender and only appears in the image grabbed
+    # by the second.
+    try:
         pvsimple.Render(view=view)
+        push = getattr(server.controller, "view_update_all", None) or getattr(server.controller, "view_update", None)
+        if push is not None:
+            push()
+            push()
+    except Exception:
+        pass
+
+
+def _unhide_reps(state, reps):
+    """Re-open the rep eye for `reps` — drop them from the global
+    `ui_hidden_rep_paths` and the active panel's `ui_hidden_rep_paths_by_view`
+    bucket. Called when a rep gains a freshly-loaded array so selecting a
+    property always makes the (possibly previously-hidden) rep visible."""
+    reps = set(reps)
+    cur = list(state.ui_hidden_rep_paths or [])
+    kept = [p for p in cur if p not in reps]
+    if kept != cur:
+        state.ui_hidden_rep_paths = kept
+    active = getattr(state, "fespp_active_panel_id", "") or ""
+    by_view = dict(state.ui_hidden_rep_paths_by_view or {})
+    if active and active in by_view:
+        bucket = list(by_view.get(active) or [])
+        keep = [p for p in bucket if p not in reps]
+        if keep != bucket:
+            by_view[active] = keep
+            state.ui_hidden_rep_paths_by_view = by_view
 
 
 def _update_visibility_tracking(state, present_paths):
