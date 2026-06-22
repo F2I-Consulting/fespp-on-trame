@@ -338,6 +338,13 @@ def initialize_fespp_engine(
     @state.change("ui_loaded_array_paths")
     def _refresh_diff_choices(ui_loaded_array_paths, **_):
         diff.refresh_diff_choices(state, _tree, ui_loaded_array_paths)
+        # Drop pinned / compared stats for properties the user just
+        # deselected so the Stats view doesn't keep orphaned rows.
+        try:
+            if stats_dispatch.prune_unloaded(state, ui_loaded_array_paths):
+                _refresh_descriptive_stats()
+        except Exception:
+            pass
 
     @state.change("ui_loaded_rep_paths")
     def _sync_scene_registry_reps(ui_loaded_rep_paths, **_):

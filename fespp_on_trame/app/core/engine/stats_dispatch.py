@@ -932,6 +932,32 @@ def publish_descriptive_stats(state, scene_registry, source_registry, tree,
 # ---------------------------------------------------------------------------
 
 
+def prune_unloaded(state, loaded_array_paths) -> bool:
+    """Drop every pinned / compared property whose array path is no
+    longer loaded (the user deselected it). Keeps the Stats and
+    Compare-stats views in sync with the tree instead of showing
+    orphaned rows for data that's gone. Returns True when something
+    was removed (so the caller can republish the tables)."""
+    loaded = set(loaded_array_paths or [])
+    pinned = list(getattr(state, "ui_stats_pinned_paths", []) or [])
+    keep = [p for p in pinned if p in loaded]
+    if keep == pinned:
+        return False
+    dropped = set(pinned) - set(keep)
+    state.ui_stats_pinned_paths = keep
+    panel_state = dict(getattr(state, "ui_stats_panel_state", {}) or {})
+    if any(d in panel_state for d in dropped):
+        for d in dropped:
+            panel_state.pop(d, None)
+        state.ui_stats_panel_state = panel_state
+    compare = dict(getattr(state, "ui_stats_compare", {}) or {})
+    if any(d in compare for d in dropped):
+        for d in dropped:
+            compare.pop(d, None)
+        state.ui_stats_compare = compare
+    return True
+
+
 def toggle_stats_pinned(state, array_path):
     """Add or remove `array_path` in `state.ui_stats_pinned_paths`.
     No-op for empty path. Initialises the per-property panel state
