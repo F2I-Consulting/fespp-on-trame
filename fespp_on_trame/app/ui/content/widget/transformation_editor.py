@@ -111,6 +111,23 @@ class TransformationEditor:
         return bool(name and name.startswith("mrk_"))
 
     def _apply_z_scale(self):
+        """Apply the editor's Scale on the NEXT event-loop tick.
+
+        The ptc VNumberInput commits its typed value to state on blur;
+        clicking Apply blurs the field, but that blur→state sync races
+        with the Apply click trigger, so reading the typed value
+        synchronously here gets the PREVIOUS value — the user had to
+        click Apply twice. Deferring one tick lets the committed value
+        land first, so a single click applies the new exaggeration."""
+        import asyncio
+        try:
+            asyncio.get_event_loop().call_later(0.1, self._apply_z_scale_now)
+        except Exception:
+            # No running loop (shouldn't happen inside the trame server)
+            # — fall back to an immediate apply.
+            self._apply_z_scale_now()
+
+    def _apply_z_scale_now(self):
         """Apply the editor's Scale to every visible rep on every
         target view, saving / restoring ColorArrayName + LookupTable
         around the Scale write so the active coloring isn't clobbered.
