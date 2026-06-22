@@ -37,7 +37,9 @@ controller = server.controller
 # Layout-wide state defaults. The drawer width is set once; live
 # resize happens client-side (see shared/scripts.py) to avoid a
 # trame round-trip per drag step.
-state.dialog_visible = False
+# Boot with the Import Data dialog already open so a fresh session lands
+# straight on the file picker.
+state.dialog_visible = True
 state.execute_action = False
 state.ui_time_label = ""
 state.drawer_width = 500
@@ -103,7 +105,7 @@ def ui(server: Server, **kwargs) -> None:
         with vuetify3.VTooltip(location="left", open_delay=300, close_delay=0):
             with vuetify3.Template(v_slot_activator="{ props }"):
                 vuetify3.VBtn(
-                    icon="mdi-chevron-double-right",
+                    icon="mdi-chevron-double-down",
                     v_bind="props",
                     v_if="!toolbar_visible",
                     variant="tonal",
