@@ -11,16 +11,23 @@ class EmptyColorSnackbar:
     body text from the dynamic `state.empty_color_snackbar_text`."""
 
     def render(self):
+        # A WARNING (amber) snackbar, deliberately prominent — the previous
+        # muted blue-grey info toast was easy to miss. Bigger alert icon +
+        # bolder/larger text + a longer timeout so the user sees WHY the
+        # property didn't paint (and why the eye flipped back to SolidColor).
         with vuetify3.VSnackbar(
             v_model=("empty_color_snackbar_visible", False),
-            timeout=4000,
-            color="blue-grey-darken-1",
+            timeout=6000,
+            color="warning",
             location="bottom",
         ):
-            with html.Div(classes="d-flex align-center"):
+            with html.Div(
+                classes="d-flex align-center",
+                style="font-size: 1.05rem; font-weight: 600;",
+            ):
                 vuetify3.VIcon(
-                    "mdi-information-outline",
-                    size="small",
-                    classes="mr-2",
+                    "mdi-alert",
+                    size="large",
+                    classes="mr-3",
                 )
                 html.Span("{{ empty_color_snackbar_text }}")

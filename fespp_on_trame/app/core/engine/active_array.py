@@ -433,6 +433,27 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
         # snackbar (the var change is what triggers it).
         state.empty_color_snackbar_visible = False
         state.empty_color_snackbar_visible = True
+        # Roll the eye back to SolidColor: a property with no renderable data
+        # must not stay "active" (an open array-eye on an empty property).
+        # Drop it from the per-view + global active-array maps and release any
+        # MR realization slot it just claimed — same end state as an eye-OFF
+        # click, so the rep falls back to its own SolidColor representation.
+        panel_map.pop(r_path, None)
+        by_view[bucket_key] = panel_map
+        state.ui_active_array_by_rep_by_view = by_view
+        if active and active == bucket_key:
+            mirror = dict(state.ui_active_array_by_rep or {})
+            mirror.pop(r_path, None)
+            state.ui_active_array_by_rep = mirror
+        if new_is_mr:
+            realization_dispatch.clear_active_realization_for_view(
+                state, bucket_key, new_value,
+            )
+        if is_channel:
+            state.active_color_array_name = ""
+            state.active_property_kind = ""
+            state.active_color_array_path = ""
+        new_value = None  # treat as deactivated downstream
     # When deactivating (new_value is None), the scalar bar for the
     # old array is orphaned in this view — sweep stale bars so the
     # legend goes away when the rep flips back to SolidColor.
