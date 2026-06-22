@@ -227,16 +227,20 @@ class StatsComparePanel:
                 ),
             )
             # CSV download (data URL in csv_var)
-            vuetify3.VBtn(
-                icon="mdi-download", size="small", variant="text",
-                href=(self.csv_var,),
-                download="compare.csv",
-                # target=_blank so the data: URL can never navigate (and drop
-                # the websocket) the main SPA window — download still saves.
-                target="_blank",
-                disabled=("!" + self.csv_var,),
-                title="Download CSV of the compare matrix",
-            )
+            # TODO(release): CSV download is DISABLED for this release — the
+            # data-URL download drops the websocket ("Connection closed").
+            # RE-ENABLE once the download is reworked (e.g. server-streamed
+            # endpoint instead of an in-page data: URL). csv_var is still
+            # computed, so just restore the button:
+            #
+            # vuetify3.VBtn(
+            #     icon="mdi-download", size="small", variant="text",
+            #     href=(self.csv_var,),
+            #     download="compare.csv",
+            #     target="_blank",
+            #     disabled=("!" + self.csv_var,),
+            #     title="Download CSV of the compare matrix",
+            # )
 
     def _render_table(self):
         """Render the comparison matrix as a Vuetify table. The

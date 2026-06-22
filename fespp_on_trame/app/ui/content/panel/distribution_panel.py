@@ -254,22 +254,19 @@ class DistributionPanel:
                 title="Cells kept / total (NaN dropped)",
             )
             # --- export CSV ---
-            # VBtn renders as <a> when `href` is set, so download +
-            # the data URL kept in `ui_distribution_csv_<panel_id>`
-            # together produce a native browser save dialog with no
-            # server round-trip on click. The expression form of
-            # `disabled` greys the button out while the CSV var is
-            # empty (between panel spawn and first compute push).
-            vuetify3.VBtn(
-                icon="mdi-download",
-                size="small",
-                variant="text",
-                href=(self.csv_var,),
-                download="distribution.csv",
-                # target=_blank so the data: URL can never navigate (and
-                # drop the websocket) the main SPA window — the download
-                # attribute still saves the file.
-                target="_blank",
-                disabled=(f"!{self.csv_var}",),
-                title="Download bins as CSV",
-            )
+            # TODO(release): CSV download is DISABLED for this release — the
+            # data-URL download drops the websocket ("Connection closed").
+            # RE-ENABLE once the download is reworked (e.g. server-streamed
+            # endpoint instead of an in-page data: URL). The CSV payload var
+            # (self.csv_var) is still computed, so just restore the button:
+            #
+            # vuetify3.VBtn(
+            #     icon="mdi-download",
+            #     size="small",
+            #     variant="text",
+            #     href=(self.csv_var,),
+            #     download="distribution.csv",
+            #     target="_blank",
+            #     disabled=(f"!{self.csv_var}",),
+            #     title="Download bins as CSV",
+            # )
