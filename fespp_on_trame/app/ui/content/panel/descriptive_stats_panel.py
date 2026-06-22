@@ -62,6 +62,7 @@ _HAS_TS_KIND = "ui_stats_tables[array_path] && ui_stats_tables[array_path].is_ts
 # mirrors `_stat_columns_th` exactly.
 _COL_WIDTHS = {
     "cmp": 44,
+    "dist": 50,
     "source": 220,
     "real": 130,
     "ts": 150,
@@ -113,6 +114,14 @@ def _stat_columns_th():
             " panel; Show distributions button there opens the"
             " overlay)."
         ),
+    )
+    html.Th(
+        "Dist",
+        style=(
+            f"{_TH_STYLE_BASE} width: {_COL_WIDTHS['dist']}px;"
+            " text-align: center;"
+        ),
+        title="Open this row's value distribution (histogram)",
     )
     html.Th(
         "Source",
@@ -355,6 +364,7 @@ class DescriptiveStatsPanel:
                         ),
                     ):
                         self._render_row_compare_cell()
+                        self._render_row_distribution_cell()
                         self._render_row_source_cell()
                         self._render_row_realization_cell()
                         self._render_row_timestep_cell()
@@ -403,6 +413,28 @@ class DescriptiveStatsPanel:
                 ),
             )
 
+    def _render_row_distribution_cell(self):
+        """`Dist` column — a single icon button opening this row's value
+        distribution (histogram). Always present (every row has a
+        distribution), in its own column so it lines up across cards."""
+        with html.Td(
+            style=(
+                "padding: 0 4px;"
+                " border-bottom: 1px solid rgba(0,0,0,0.06);"
+                " text-align: center;"
+            ),
+        ):
+            vuetify3.VBtn(
+                icon="mdi-chart-histogram",
+                variant="text", density="compact", size="x-small",
+                color="indigo-darken-2",
+                title="Open this row's value distribution",
+                click=(
+                    "trigger('open_row_histogram',"
+                    " [array_path, row.kind, row.id])"
+                ),
+            )
+
     def _render_row_source_cell(self):
         """`Source` column — `row.label` (property name for an
         Original row, `<property> On <view title>` for a View row)
@@ -439,17 +471,6 @@ class DescriptiveStatsPanel:
                 style="gap: 6px; font-family: monospace;",
             ):
                 html.Span("{{ row.label }}")
-                vuetify3.VBtn(
-                    icon="mdi-eye-outline",
-                    variant="text", density="compact", size="x-small",
-                    color="indigo-darken-2",
-                    classes="ml-1",
-                    title="Open this row's value distribution",
-                    click=(
-                        "trigger('open_row_histogram',"
-                        " [array_path, row.kind, row.id])"
-                    ),
-                )
                 vuetify3.VBtn(
                     v_if=(f"({is_default}) && ({is_pinnable})",),
                     icon="mdi-pin-outline",
