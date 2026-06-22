@@ -45,6 +45,11 @@ class Drawer:
         # Default tab so v_show matches on first paint — otherwise the
         # Data Explorer body is empty until the user clicks a tab.
         state.setdefault("tab", "reservoir")
+        # Vertical split ratio between the Data Explorer card and the
+        # Attributes card. Drag the handle between them to change it; the
+        # two cards share `flex: ui_explorer_flex` / `2 - ui_explorer_flex`
+        # so the sum stays constant (default 1.0 = 50/50).
+        state.setdefault("ui_explorer_flex", 1.0)
 
     def render(self):
         UploadOverlay().render()
@@ -52,10 +57,28 @@ class Drawer:
         with vuetify3.VContainer(
             fluid=True,
             classes="pa-0",
+            id="fespp-drawer-cards",
             style="display: flex; flex-direction: column; height: 100%;",
         ):
             self._render_data_explorer_card()
+            self._render_card_resize_handle()
             self._render_attributes_card()
+
+    def _render_card_resize_handle(self):
+        """Draggable horizontal splitter between the Data Explorer and
+        Attributes cards — drag up/down to change their relative height.
+        Pure-JS drag (shared/scripts.py setupCardResize) writes the new
+        ratio to `ui_explorer_flex`; no per-step server round-trip."""
+        vuetify3.VSheet(
+            classes="fespp-card-resize-handle flex-grow-0 flex-shrink-0",
+            style=(
+                "flex-basis: 7px; cursor: ns-resize; z-index: 5;"
+                " background-color: rgba(0,0,0,0.06);"
+                " border-top: 1px solid rgba(0,0,0,0.12);"
+                " border-bottom: 1px solid rgba(0,0,0,0.12);"
+                " pointer-events: auto;"
+            ),
+        )
 
     def _render_resize_handle(self):
         """Thin draggable handle on the right edge of the drawer.
@@ -85,10 +108,9 @@ class Drawer:
             elevation=0,
             flat=True,
             tile=True,
-            style=(
-                "flex: 1; min-height: 0; overflow: hidden;"
-                " border-bottom: 1px solid rgba(0,0,0,0.12);"
-            ),
+            # Height driven by the drag handle (see _render_card_resize_handle):
+            # `flex` grows/shrinks against the Attributes card's `2 - ratio`.
+            style=("{ flex: ui_explorer_flex + ' 1 0', minHeight: '0', overflow: 'hidden' }",),
         ):
             self._render_data_explorer_title()
             self._render_data_explorer_tabs()
@@ -205,7 +227,9 @@ class Drawer:
             elevation=0,
             flat=True,
             tile=True,
-            style="flex: 1; min-height: 0; overflow: hidden;",
+            # Complementary flex to the Data Explorer card so the two always
+            # fill the column (sum of the flex grow factors stays 2).
+            style=("{ flex: (2 - ui_explorer_flex) + ' 1 0', minHeight: '0', overflow: 'hidden' }",),
         ):
             with vuetify3.VToolbar(
                 density="compact",

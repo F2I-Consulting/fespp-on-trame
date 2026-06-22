@@ -5,7 +5,9 @@ Pure-JS to avoid trame/server round-trips per drag step. Handles:
   - VTK log auto-scroll (MutationObserver keeps the scroll at the
     bottom as new lines arrive),
   - drawer resize handle (drag the right edge to resize the drawer,
-    width clamped to [200, 900]).
+    width clamped to [200, 900]),
+  - card resize handle (drag the splitter between the Data Explorer and
+    Attributes cards to change their relative height).
 
 `trame_client.Script` injects a real executable <script> element
 (unlike `html.Script`, which is rendered as text)."""
@@ -52,7 +54,53 @@ _CLIENT_JS = """
 
         setupLogScroll();
         setupDrawerResize();
+        setupCardResize();
         setupStatsMinimize();
+    }
+
+    // ---- Vertical resize between the Data Explorer and Attributes cards ----
+    // Drag the handle between them to change their relative height. Pure JS:
+    // writes the new flex ratio to `ui_explorer_flex` (the two cards bind
+    // `flex: ratio` / `flex: 2 - ratio`). Delegated on document so a Vue
+    // re-mount of the handle doesn't orphan the listener.
+    function setupCardResize() {
+        var dragging = false;
+
+        document.addEventListener('mousedown', function (e) {
+            if (!e.target || !e.target.closest) return;
+            if (!e.target.closest('.fespp-card-resize-handle')) return;
+            dragging = true;
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function (e) {
+            if (!dragging) return;
+            var c = document.getElementById('fespp-drawer-cards');
+            if (!c) return;
+            var r = c.getBoundingClientRect();
+            if (r.height <= 0) return;
+            // Fraction of the column height above the handle = Data Explorer
+            // share. Clamp so neither card collapses entirely.
+            var frac = (e.clientY - r.top) / r.height;
+            frac = Math.max(0.12, Math.min(0.88, frac));
+            var ratio = 2 * frac;  // data-explorer flex; attributes = 2 - ratio
+            if (
+                window.trame
+                && window.trame.state
+                && typeof window.trame.state.set === 'function'
+            ) {
+                window.trame.state.set('ui_explorer_flex', ratio);
+            }
+        });
+
+        document.addEventListener('mouseup', function () {
+            if (!dragging) return;
+            dragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
     }
 
     // ---- Drawer resize handle (pure JS — zero trame/server round-trips) ----
