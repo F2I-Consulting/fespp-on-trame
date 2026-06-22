@@ -289,11 +289,11 @@ Two cross-cutting design decisions pervade this code and a forker must internali
 **Responsibility.** The top app-bar: a collapse chevron and the "Import data" button that opens the import dialog.
 
 **Key classes / functions.**
-- `class Toolbar` — `__init__(self, local_file_manager, import_dialog)` stores both. `render()` draws a left chevron (`click="toolbar_visible = false"`) and a right-side "Import data" `VBtn` (`click="dialog_visible = true"`), then calls `self.import_dialog.render()`.
+- `class Toolbar` — `__init__(self, local_file_manager, import_dialog)` stores both. `render()` draws a right-side "Import data" `VBtn` (`click="dialog_visible = true"`) followed by a top-right **double-up** chevron (`mdi-chevron-double-up`, `click="toolbar_visible = false"`), then calls `self.import_dialog.render()`. The collapse chevron sits in the same corner as its show mirror, so the toggle keeps the button in one place: up = collapse, down = expand.
 
 **State.** Writes `toolbar_visible`, `dialog_visible` (both via inline JS).
 
-**Collaborators.** Holds an `ImportDialog` (renders it). The mirror show-button for `toolbar_visible` lives in `app_layout.py`.
+**Collaborators.** Holds an `ImportDialog` (renders it). The mirror show-button for `toolbar_visible` — a **double-down** chevron (`mdi-chevron-double-down`) pinned to the same top-right corner — lives in `app_layout.py`.
 
 **Gotchas.** `local_file_manager` is stored but unused here — local upload is handled entirely by the import dialog's inline JS. The Load button and view actions deliberately live elsewhere (drawer band / content area), per the docstring.
 
@@ -371,11 +371,11 @@ Two cross-cutting design decisions pervade this code and a forker must internali
 ---
 
 ### `fespp_on_trame/app/ui/shared/widget/empty_color_snackbar.py`
-**Responsibility.** Bottom snackbar shown when a tree eye-toggle activates a property that resolves to no VTK array on the rep's rendered source (empty/partial property, or a log on a discarded partition).
+**Responsibility.** Bottom snackbar shown when a tree eye-toggle activates a property that resolves to no VTK array on the rep's rendered source (empty/partial property, or a log on a discarded partition). When this fires the engine also rolls the eye back to SolidColor (the property never stays "active" with no data to paint).
 
 **Key classes / functions.**
-- `class EmptyColorSnackbar` — `render()` draws a 4000ms blue-grey `VSnackbar` bound to `empty_color_snackbar_visible`, body text from the dynamic `empty_color_snackbar_text`.
+- `class EmptyColorSnackbar` — `render()` draws a prominent **warning** (amber) `VSnackbar` (6000ms timeout, `mdi-alert` large icon, bold/larger text) bound to `empty_color_snackbar_visible`, body text from the dynamic `empty_color_snackbar_text`. Deliberately loud — the earlier muted blue-grey info toast was easy to miss.
 
 **State.** Reads `empty_color_snackbar_visible`, `empty_color_snackbar_text`.
 
-**Collaborators.** Both state vars are set by the engine's color/visibility logic when a ColorBy resolves to nothing.
+**Collaborators.** Both state vars are set by the engine's color/visibility logic (`active_array.toggle_dataarray_color`) when a ColorBy resolves to nothing — the same branch that deactivates the array and reverts to SolidColor.
