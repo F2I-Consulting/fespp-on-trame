@@ -801,6 +801,10 @@ class TreeViews:
             color="primary",
             open_on_click=False,
             selectable=False,
+            # Pass item.disabled through so Vuetify greys partial nodes —
+            # matches the reservoir tree (without it, a partial loses its
+            # checkbox but the row text stays un-dimmed).
+            item_props=True,
             indent_lines="default",
             separate_roots=True,
         ):
@@ -849,6 +853,10 @@ class TreeViews:
             color="primary",
             open_on_click=False,
             selectable=False,
+            # Pass item.disabled through so Vuetify greys partial nodes —
+            # matches the reservoir tree (without it, a partial loses its
+            # checkbox but the row text stays un-dimmed).
+            item_props=True,
             indent_lines="default",
             separate_roots=True,
         ):
