@@ -170,7 +170,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
         state, tree, present_paths,
     )
-    _update_marker_tracking(state, tree, present_paths)
+    newly_markers = _update_marker_tracking(state, tree, present_paths)
     _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
 
     # A rep that just gained a freshly-loaded array must be VISIBLE — a
@@ -245,6 +245,28 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                         continue
                     try:
                         rep.element_type.refresh_primary_visibility(rep)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # Show markers freshly loaded this run in the active scene. Their per-view
+    # extractor is built on demand by set_marker_visible, so a checked
+    # MarkerFrame (all its markers) / a selected marker appears immediately
+    # instead of needing a manual eye click.
+    try:
+        scene_reg = getattr(server.context, "scene_registry", None)
+        active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+        scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
+        if scene is not None and newly_markers:
+            for marker_path in newly_markers:
+                n_id = tree.find_node_id(marker_path)
+                r_id = tree.find_representation_node(n_id) if n_id is not None else None
+                r_path = tree.find_path(r_id) if r_id is not None else None
+                rep = scene.get_rep(r_path) if r_path else None
+                if rep is not None:
+                    try:
+                        rep.set_marker_visible(marker_path, True)
                     except Exception:
                         pass
     except Exception:
@@ -422,20 +444,33 @@ def _update_marker_tracking(state, tree, present_paths):
         if sel not in loaded_set:
             loaded_markers.append(sel)
             loaded_set.add(sel)
+    prev_loaded = set(state.ui_loaded_marker_paths or [])
     if loaded_markers != list(state.ui_loaded_marker_paths or []):
         state.ui_loaded_marker_paths = loaded_markers
-    # Prune shown-marker buckets so an unloaded marker doesn't ghost.
-    by_view = state.ui_visible_marker_paths_by_view or {}
-    if by_view:
-        updated = {}
-        changed = False
-        for pid, paths in by_view.items():
-            kept = [p for p in (paths or []) if p in loaded_set]
-            updated[pid] = kept
-            if kept != list(paths or []):
-                changed = True
-        if changed:
-            state.ui_visible_marker_paths_by_view = updated
+    newly_loaded = [m for m in loaded_markers if m not in prev_loaded]
+    # Prune shown-marker buckets (drop unloaded so they don't ghost) AND
+    # auto-show markers freshly loaded this run in the ACTIVE panel: selecting
+    # a marker / checking a MarkerFrame must display them without an extra eye
+    # click (markers default to visible on load, like a property auto-colors).
+    active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+    by_view = dict(state.ui_visible_marker_paths_by_view or {})
+    updated = {}
+    changed = False
+    for pid, paths in by_view.items():
+        kept = [p for p in (paths or []) if p in loaded_set]
+        if pid == active_pid:
+            for m in newly_loaded:
+                if m not in kept:
+                    kept.append(m)
+        updated[pid] = kept
+        if kept != list(paths or []):
+            changed = True
+    if active_pid and active_pid not in updated and newly_loaded:
+        updated[active_pid] = list(newly_loaded)
+        changed = True
+    if changed:
+        state.ui_visible_marker_paths_by_view = updated
+    return newly_loaded
 
 
 def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set):
