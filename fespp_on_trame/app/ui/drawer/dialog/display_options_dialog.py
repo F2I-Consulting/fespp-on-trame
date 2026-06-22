@@ -73,7 +73,7 @@ class DisplayOptionsDialog:
         selection / visibility / coloring state — see the snackbar at
         the layout bottom for user confirmation."""
         html.Div(
-            "Tree Hierarchy",
+            "Feature-Interpretation-Representation (FIR) Hierarchy",
             classes="text-caption text-uppercase font-weight-bold mb-2",
         )
         with vuetify3.VBtnToggle(
@@ -84,9 +84,9 @@ class DisplayOptionsDialog:
             divided=True,
             classes="mb-3 w-100",
         ):
-            vuetify3.VBtn("Flat", value="flat", size="small")
-            vuetify3.VBtn("By Interp.", value="by_interpretation", size="small")
-            vuetify3.VBtn("By Feat.+Interp.", value="by_feature_and_interpretation", size="small")
+            vuetify3.VBtn("only Reps", value="flat", size="small")
+            vuetify3.VBtn("Interps + Reps", value="by_interpretation", size="small")
+            vuetify3.VBtn("All", value="by_feature_and_interpretation", size="small")
 
     def _render_hierarchy_warning(self):
         with html.Div(classes="d-flex align-start mb-1"):
