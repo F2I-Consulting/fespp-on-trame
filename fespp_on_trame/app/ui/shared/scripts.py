@@ -7,7 +7,9 @@ Pure-JS to avoid trame/server round-trips per drag step. Handles:
   - drawer resize handle (drag the right edge to resize the drawer,
     width clamped to [200, 900]),
   - card resize handle (drag the splitter between the Data Explorer and
-    Attributes cards to change their relative height).
+    Attributes cards to change their relative height),
+  - stray file-drop guard (a file dropped outside the Import drop zone would
+    otherwise make Firefox navigate to it and drop the websocket).
 
 `trame_client.Script` injects a real executable <script> element
 (unlike `html.Script`, which is rendered as text)."""
@@ -56,6 +58,32 @@ _CLIENT_JS = """
         setupDrawerResize();
         setupCardResize();
         setupStatsMinimize();
+        setupFileDropGuard();
+    }
+
+    // ---- Block stray OS file drops (Firefox "connection timeout" guard) ----
+    // A file dragged from the OS and dropped anywhere that ISN'T a real drop
+    // target makes the browser open it: Firefox navigates to the file:// URL,
+    // replacing the page and dropping the websocket ("connection timeout");
+    // Edge just ignores it. Only intercept genuine FILE drags (so dockview
+    // panel drag-and-drop and other in-app DnD stay untouched), and skip file
+    // inputs so the Import dialog's native <input type="file"> keeps accepting
+    // drops — everywhere else, preventDefault to block the navigation.
+    function setupFileDropGuard() {
+        function isFileDrag(e) {
+            var t = e.dataTransfer && e.dataTransfer.types;
+            return t && Array.prototype.indexOf.call(t, 'Files') !== -1;
+        }
+        function guard(e) {
+            if (!isFileDrag(e)) return;
+            if (e.target && e.target.closest
+                && e.target.closest('input[type="file"]')) {
+                return; // real drop zone — let the browser handle it
+            }
+            e.preventDefault();
+        }
+        window.addEventListener('dragover', guard, false);
+        window.addEventListener('drop', guard, false);
     }
 
     // ---- Vertical resize between the Data Explorer and Attributes cards ----
