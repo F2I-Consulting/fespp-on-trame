@@ -13,10 +13,10 @@ else
     echo "=========================================="
     echo "GITHUB MODE: Cloning FESPP from GitHub"
     echo "=========================================="
-    echo "Repository: https://github.com/F2I-Consulting/fespp (branch: dev)"
+    echo "Repository: https://github.com/F2I-Consulting/fespp (branch: master)"
     git clone https://github.com/F2I-Consulting/fespp
     cd fespp
-    git checkout dev
+    git checkout master
     cd ${build_root_dir}
     echo "[OK] FESPP cloned from GitHub"
 fi
