@@ -9,6 +9,20 @@ Web-based viewer for **Energistics / RESQML** data (EPC + HDF5): ParaView with t
 
 ---
 
+## Screenshots
+
+A multi-object geoscience scene — an IJK reservoir grid (sliced) together with a
+surface and a wellbore, each coloured by its own property, in a single view:
+
+![FESPP-on-Trame — multi-object 3D scene](https://raw.githubusercontent.com/F2I-Consulting/fespp-on-trame/main/doc/img/Drogon_IJK_Slice_COE_Surface_COE_Wellbore.jpg)
+
+Built-in per-view **descriptive statistics** and **distribution histograms** side by
+side with the 3D view:
+
+![FESPP-on-Trame — statistics & distribution](https://raw.githubusercontent.com/F2I-Consulting/fespp-on-trame/main/doc/img/Drogon_IJK_Slice_COE_VIEW_STATS_DIST.jpg)
+
+---
+
 ## Quick start
 
 ```bash
@@ -20,7 +34,7 @@ docker pull f2iconsulting/fesppontrame
 docker run -d -p 8080:80 f2iconsulting/fesppontrame
 ```
 
-**GPU (NVIDIA, recommended):**
+**GPU (NVIDIA):**
 ```bash
 docker run -d --gpus all -p 8080:80 f2iconsulting/fesppontrame
 ```
@@ -33,47 +47,11 @@ Then open **http://localhost:8080/index.html**
 
 ---
 
-## GPU rendering
-
-The image already bakes the EGL graphics capability
-(`NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute`), so `--gpus all` is enough
-with the [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit).
-
-Useful environment variables:
-
-| Variable | Purpose |
-|----------|---------|
-| `VTK_EGL_DEVICE_INDEX=<n>` | Select a GPU on multi-GPU hosts (0-indexed among visible devices) |
-| `NVIDIA_VISIBLE_DEVICES=<ids>` | Restrict which GPUs the container sees |
-| `NVIDIA_DRIVER_CAPABILITIES=all` | Force all driver capabilities (already includes `graphics`) |
-
-Verify the GPU is actually used:
-```bash
-docker logs <container> | grep -A2 "EGL Status"
-# expect "NVIDIA ..."; "llvmpipe" means it fell back to CPU rendering
-```
-
-> Running under **podman + CDI** on a cluster (and hitting issues such as a missing
-> `/dev/nvidia-modeset`)? See the deployment notes in the GitHub repository.
-
----
-
 ## Sessions
 
 Each browser tab is an **independent, ephemeral** session. Imported data, settings
 and view state are **lost when the tab is closed or refreshed** — re-import your data
 for each session.
-
----
-
-## Screenshots
-
-<!-- Host PNGs in the repo under doc/img/ and reference them by RAW URL so they
-     render on Docker Hub (relative paths do NOT work here). -->
-<!--
-![Overview](https://raw.githubusercontent.com/F2I-Consulting/fespp-on-trame/main/doc/img/overview.png)
-![3D view](https://raw.githubusercontent.com/F2I-Consulting/fespp-on-trame/main/doc/img/view3d.png)
--->
 
 ---
 
