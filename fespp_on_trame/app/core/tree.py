@@ -505,3 +505,14 @@ class Tree():
             return attribute_value
 
         return self.find_parent_attribute_value(self._data_assembly.GetParent(node_id), attribute_name)
+
+    def find_ancestor_title_of_kind(self, node_id, kind):
+        """Walk up from `node_id` (inclusive) and return the title of the
+        nearest ancestor whose kind == `kind`, else None. Used to get the
+        WellboreFeature name (kind 'Wellbore') from a Trajectory node."""
+        if node_id is None or node_id == 0 or self._data_assembly is None:
+            return None
+        if self.find_type(node_id) == kind:
+            return self.find_title(node_id)
+        return self.find_ancestor_title_of_kind(
+            self._data_assembly.GetParent(node_id), kind)
