@@ -4,6 +4,8 @@
 
 This project creates a Kitware Trame-based Docker image that embeds ParaView for remote visualization with the FESPP plugin. FESPP (F2I Energistics Standard ParaView Plugin) is a specialized plugin for visualizing Energistics data.
 
+📦 **Pre-built image on Docker Hub:** [`f2iconsulting/fesppontrame`](https://hub.docker.com/r/f2iconsulting/fesppontrame) — pull and run it directly (see [Usage](#usage)), no build required.
+
 **What is FESPP?**
 FESPP is a ParaView plugin developed by F2I-Consulting that enables the visualization of Energistics data standard file formats. It provides support for various geoscience and petroleum engineering data formats, making it easier to visualize complex subsurface models and reservoir data directly in ParaView.
 
@@ -64,13 +66,13 @@ docker build -f Dockerfile -t fespp_on_trame:pv6.0.1 .
 #### CPU Mode
 
 ```bash
-docker run -p 8080:8080 fespp_on_trame:pv6.0.1
+docker run -p 8080:80 fespp_on_trame:pv6.0.1
 ```
 
 #### GPU Mode
 
 ```bash
-docker run --gpus all -p 8080:8080 fespp_on_trame:pv6.0.1
+docker run --gpus all -p 8080:80 fespp_on_trame:pv6.0.1
 ```
 
 ### Accessing the Application
@@ -82,6 +84,8 @@ http://localhost:8080/index.html
 ```
 
 You should see the ParaView interface with FESPP plugin capabilities available through the web browser.
+
+> **Port mapping:** the container serves the app on port **80** internally (Apache). `-p 8080:80` exposes it on host port `8080`; the host side is free to change (e.g. `-p 8090:80` → `http://<host>:8090`).
 
 ## Troubleshooting
 
