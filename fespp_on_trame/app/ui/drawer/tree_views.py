@@ -725,6 +725,50 @@ class TreeViews:
                 new_curr = list(curr) + [node_id]
             setattr(state, select_var, new_curr)
 
+        @controller.set("tree_select_kinds")
+        def tree_select_kinds(tab, kinds):
+            """Bulk-SELECT (load) every node whose kind is in `kinds`, in
+            `tab`, unioned with the current selection.
+
+            Walks `find_all_descendant_ids` (NOT the selectable-only variant)
+            so GROUPING folder kinds — e.g. `BlockedWellboreFolder` for the
+            "All blocked wellbores" entry — are matchable: partials carry the
+            kind `"partial"` and are never in a dropdown's `kinds`, so the
+            wider walk stays safe. Selecting a folder lets
+            `_expand_selection_with_deps` cascade to its children, so the
+            folder's tri-state cleanly loads / unloads the whole group.
+
+            Writes the FULLY dependency-expanded selection into
+            `ui_select_node_<tab>` in one shot. Pre-expanding here makes
+            the reactive `_wire_dependency_expansion` handler a no-op (it
+            already sees a fixed point), so the data load runs exactly
+            ONCE for the whole bulk instead of twice (raw set, then the
+            handler re-writing it with the rep ancestors)."""
+            if self._tree is None or not tab:
+                return
+            wanted = set(kinds or [])
+            if not wanted:
+                return
+            select_var = f"ui_select_node_{tab}"
+            roots = getattr(state, f"ui_subtree_{tab}", []) or []
+            prev = list(getattr(state, select_var, []) or [])
+            raw = list(prev)
+            seen = set(prev)
+            for root in roots:
+                rid = root.get("id")
+                if rid is None:
+                    continue
+                for nid in [rid] + self._tree.find_all_descendant_ids(rid):
+                    if nid in seen:
+                        continue
+                    if self._tree.find_type(nid) in wanted:
+                        raw.append(nid)
+                        seen.add(nid)
+            if len(raw) == len(prev):
+                return  # nothing new to select
+            expanded = _expand_selection_with_deps(raw, prev, self._tree)
+            setattr(state, select_var, expanded)
+
         @controller.set("init_opened_nodes")
         def init_opened_nodes(tree_data):
             """Return the ids of the first-level (root) nodes only —
@@ -800,9 +844,37 @@ class TreeViews:
                 if not hasattr(self.state, state_key):
                     setattr(self.state, state_key, [])
 
+    def _select_toolbar(self, tab, actions):
+        """A 'Select ▾' dropdown above a tree tab. Each entry in `actions`
+        is `(label, js_kinds_array)` and bulk-selects (loads) every node of
+        those kinds. Drives node SELECTION (data load), independent of the
+        per-view eyes."""
+        with html.Div(classes="px-1 pb-1"):
+            with vuetify3.VMenu(location="bottom start"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        "Select",
+                        v_bind="props",
+                        size="small",
+                        variant="tonal",
+                        density="comfortable",
+                        append_icon="mdi-menu-down",
+                    )
+                with vuetify3.VList(density="compact", min_width="210"):
+                    for label, kinds in actions:
+                        vuetify3.VListItem(
+                            title=label,
+                            prepend_icon="mdi-check-all",
+                            click=(self.controller.tree_select_kinds, f"['{tab}', {kinds}]"),
+                        )
+
     def reservoir_tree(self):
         """Render the Reservoir tab's tree (IjkGrid / UnstructuredGrid
         roots and their property descendants)."""
+        self._select_toolbar("reservoir", [
+            ("All grids", "['IjkGrid','UnstructuredGrid']"),
+            ("All blocked wellbores", "['BlockedWellboreFolder']"),
+        ])
         with vuetify3.VTreeview(
             slim=True,
             density="comfortable",
@@ -856,6 +928,9 @@ class TreeViews:
                 _eye_slot(self.controller)
 
     def surface_tree(self):
+        self._select_toolbar("surface", [
+            ("All surfaces", "['Grid2d','TriangulatedSet','PointSet','Polyline','PolylineSet']"),
+        ])
         with vuetify3.VTreeview(
             slim=True,
             density="compact",
@@ -908,6 +983,10 @@ class TreeViews:
                 _eye_slot(self.controller)
 
     def well_tree(self):
+        self._select_toolbar("well", [
+            ("All trajectories", "['Trajectory','WellboreTrajectory']"),
+            ("All markers", "['Marker','WellboreMarker']"),
+        ])
         with vuetify3.VTreeview(
             slim=True,
             density="compact",
