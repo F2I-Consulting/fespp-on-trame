@@ -61,14 +61,18 @@ def _resolve_esg_plugin(fallback):
     except Exception:
         pass
     for root in roots:
-        try:
-            for hit in sorted(root.glob(
-                "lib/paraview-*/plugins/ExplicitStructuredGrid/"
-                "ExplicitStructuredGrid.*")):
-                if hit.suffix in (".so", ".dll", ".dylib"):
-                    return str(hit)
-        except Exception:
-            pass
+        # Linux/container layout is lib/paraview-*; the Windows binary release
+        # puts plugins under bin/paraview-* — try both so boot is OS-portable.
+        for pattern in (
+            "lib/paraview-*/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.*",
+            "bin/paraview-*/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.*",
+        ):
+            try:
+                for hit in sorted(root.glob(pattern)):
+                    if hit.suffix in (".so", ".dll", ".dylib"):
+                        return str(hit)
+            except Exception:
+                pass
     return fallback
 
 
