@@ -30,6 +30,15 @@ class SlicerControls:
 
     def render_body(self):
         with html.Div(v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'"):
+            # Hide the native number spinner on the slicer steppers — we provide
+            # explicit -/+ buttons (reliable VBtn clicks) instead, so the arrows
+            # always commit and stay in range.
+            html.Style(
+                ".slicer-num input::-webkit-outer-spin-button,"
+                " .slicer-num input::-webkit-inner-spin-button"
+                " { -webkit-appearance: none; margin: 0; }"
+                " .slicer-num input[type=number] { -moz-appearance: textfield; }"
+            )
             # Header row hosts the Copy-from-view menu so the user can
             # snapshot another panel's IJK slicer / volume / mode state
             # onto the active panel.
@@ -67,6 +76,39 @@ class SlicerControls:
             self.MultiSlider("j")
             self.MultiSlider("k")
 
+    def _num_stepper(self, value_expr, make_assign, lo, hi, width="50px"):
+        """A reliable numeric stepper rendered as ``[-] [text] [+]``.
+
+        Every commit goes through a PROVEN trame event path — a VBtn ``click``
+        (the -/+ buttons) or the text field's ``blur`` / Enter — never the native
+        number spinner or a ``change`` event (which proved unreliable here). Each
+        commit is clamped to ``[lo, hi]``. ``make_assign(js)`` returns the
+        assignment expression that writes the clamped value ``js`` back to state;
+        ``value_expr`` / ``lo`` / ``hi`` are JS expressions."""
+        def clamp(v):
+            return f"Math.max({lo}, Math.min({hi}, {v}))"
+        with html.Div(classes="d-flex align-center", style="gap: 1px; flex-shrink: 0;"):
+            vuetify3.VBtn(
+                icon="mdi-minus", variant="text", density="compact", size="x-small",
+                style="min-width: 20px; width: 20px; height: 26px;",
+                click=make_assign(clamp(f"({value_expr}) - 1")),
+            )
+            vuetify3.VTextField(
+                model_value=(value_expr,),
+                classes="slicer-num",
+                # blur / Enter commit the typed value, clamped; NaN/empty -> lo.
+                blur=make_assign(clamp(f"(parseInt($event.target.value) || {lo})")),
+                keydown="$event.key === 'Enter' && $event.target.blur()",
+                density="compact", variant="outlined", hide_details=True,
+                style=f"width: {width}; font-size: 0.75rem;",
+                type="number", single_line=True,
+            )
+            vuetify3.VBtn(
+                icon="mdi-plus", variant="text", density="compact", size="x-small",
+                style="min-width: 20px; width: 20px; height: 26px;",
+                click=make_assign(clamp(f"({value_expr}) + 1")),
+            )
+
     def RangeSlider(self, index: Literal["i", "j", "k"]):
         """Range slider for the volume crop on the given axis."""
         range_var = f"ui_range_{index}"
@@ -97,29 +139,19 @@ class SlicerControls:
                         style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
                     )
 
-                    vuetify3.VTextField(
-                        model_value=(f"{slices_range_var}[0]",),
-                        blur=f"{slices_range_var} = [parseInt($event.target.value), {slices_range_var}[1]]",
-                        keydown=f"$event.key === 'Enter' && ({slices_range_var} = [parseInt($event.target.value), {slices_range_var}[1]])",
-                        density="compact",
-                        variant="outlined",
-                        hide_details=True,
-                        style="width: 80px; font-size: 0.75rem;",
-                        type="number",
-                        single_line=True,
+                    # min of the crop: clamp to [grid-min, current-max]
+                    self._num_stepper(
+                        f"{slices_range_var}[0]",
+                        lambda v: f"{slices_range_var} = [{v}, {slices_range_var}[1]]",
+                        f"{range_var}[0]", f"{slices_range_var}[1]",
                     )
 
             with html.Template(v_slot_append=""):
-                vuetify3.VTextField(
-                    model_value=(f"{slices_range_var}[1]",),
-                    blur=f"{slices_range_var} = [{slices_range_var}[0], parseInt($event.target.value)]",
-                    keydown=f"$event.key === 'Enter' && ({slices_range_var} = [{slices_range_var}[0], parseInt($event.target.value)])",
-                    density="compact",
-                    variant="outlined",
-                    hide_details=True,
-                    style="width: 80px; font-size: 0.75rem;",
-                    type="number",
-                    single_line=True,
+                # max of the crop: clamp to [current-min, grid-max]
+                self._num_stepper(
+                    f"{slices_range_var}[1]",
+                    lambda v: f"{slices_range_var} = [{slices_range_var}[0], {v}]",
+                    f"{slices_range_var}[0]", f"{range_var}[1]",
                 )
 
     def MultiSlider(self, index: Literal["i", "j", "k"]):
@@ -162,16 +194,11 @@ class SlicerControls:
                     hide_details=True,
                     style="flex: 1; min-width: 0;",
                 )
-                vuetify3.VTextField(
-                    model_value=("pos",),
-                    blur=f"{list_var} = {list_var}.map(function(v, i) {{ return i === idx ? parseInt($event.target.value) : v; }})",
-                    keydown=f"if ($event.key === 'Enter') {{ {list_var} = {list_var}.map(function(v, i) {{ return i === idx ? parseInt($event.target.value) : v; }}); }}",
-                    density="compact",
-                    variant="outlined",
-                    hide_details=True,
-                    style="width: 70px; font-size: 0.75rem; flex-shrink: 0;",
-                    type="number",
-                    single_line=True,
+                # slice position: clamp to [grid-min, grid-max]
+                self._num_stepper(
+                    "pos",
+                    lambda v: f"{list_var} = {list_var}.map(function(x, i) {{ return i === idx ? ({v}) : x; }})",
+                    f"{range_var}[0]", f"{range_var}[1]",
                 )
                 vuetify3.VBtn(
                     icon=(f"{vis_list_var}[idx] !== false ? 'mdi-eye' : 'mdi-eye-off'",),
