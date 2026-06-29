@@ -8,7 +8,10 @@ from .enums import TreeRole, VisibilityPolicy, ColorPolicy
 class Grouping(ElementType):
     """Tri-state folder; checking selects all selectable descendants."""
 
-    KINDS = ("Collection", "Wellbore", "Feature", "Interpretation")
+    # GridContainer wraps an IjkGrid/UnstructuredGrid: it holds the grid's
+    # "Full Geometry" rep + its SubReps + BlockedWellbores as children, and
+    # renders nothing itself (C++ MapperType::Folder).
+    KINDS = ("Collection", "Wellbore", "Feature", "Interpretation", "GridContainer")
 
     def tree_role(self) -> TreeRole:
         return TreeRole.FOLDER

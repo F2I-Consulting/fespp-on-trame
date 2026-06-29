@@ -85,6 +85,11 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             if wb is not None:
                 traj = tree.find_first_child_of_type(wb, "WellboreTrajectory")
                 _add_implicit(traj)
+        # NOTE: a BlockedWellbore also force-displays its referenced trajectory,
+        # but that trajectory lives in the WELL tab (a different per-tab
+        # selection var) while the blocked well is in the RESERVOIR tab — it
+        # can't be added here, which only expands the current tab. The cross-tab
+        # add is done by _wire_blocked_well_trajectory.
         # Property → its rep ancestor. `find_representation_node`
         # returns node_id itself when it's already a rep, so a rep
         # being added is a no-op here.
@@ -192,6 +197,33 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
         expanded = _expand_selection_with_deps(curr_select, prev_select, tree)
         if set(expanded) != set(curr_select):
             setattr(_state, select_var, expanded)
+
+
+def _wire_blocked_well_trajectory(tree):
+    """Force a BlockedWellbore's referenced WellboreTrajectory checked.
+
+    The blocked well lives in the RESERVOIR tab (under its supporting grid),
+    but the trajectory lives in the WELL tab — a different per-tab selection
+    var. Both the trajectory's checkbox AND its rendering are driven by
+    `ui_select_node_well` (the per-tab selectors are merged downstream), so the
+    trajectory must be written into the WELL selection, not the reservoir one.
+    Add-only: unchecking the blocked well keeps the trajectory selected, per the
+    feature spec."""
+    @_state.change("ui_select_node_reservoir")
+    def _on_change(**_):
+        reservoir = list(getattr(_state, "ui_select_node_reservoir", []) or [])
+        well = list(getattr(_state, "ui_select_node_well", []) or [])
+        added = False
+        for node_id in reservoir:
+            if tree.find_type(node_id) != "BlockedWellbore":
+                continue
+            traj_uuid = tree.find_attribute_value(node_id, "trajectoryUuid")
+            traj = tree.find_node_id_by_uuid(traj_uuid) if traj_uuid else None
+            if traj is not None and traj not in well:
+                well.append(traj)
+                added = True
+        if added:
+            _state.ui_select_node_well = well
 
 
 # --- Custom row checkbox -------------------------------------------------
@@ -697,6 +729,10 @@ class TreeViews:
             "ui_select_node_well", "_prev_select_well",
             "ui_active_node_well", self._tree,
         )
+
+        # Cross-tab: a BlockedWellbore (reservoir tab) force-checks its
+        # referenced trajectory in the WELL tab.
+        _wire_blocked_well_trajectory(self._tree)
 
         # update_selected from Vuetify gives the FULL selected array,
         # so writing `active = $event` would always pick array[0]

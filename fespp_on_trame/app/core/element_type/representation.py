@@ -399,3 +399,13 @@ class SeismicFrameRep(Representation):
     like the log/marker frames). Currently on standard rep defaults."""
 
     KINDS = ("SeismicWellboreFrame",)
+
+
+class BlockedWellboreRep(Representation):
+    """BlockedWellbore — a real eye-bearing rep with its OWN geometry (the
+    subset of its supporting grid's cells the wellbore is blocked in, produced
+    by the FESPP BlockedWellbore mapper). It sits UNDER the grid in the tree but
+    is NOT a property of it: selecting it shows only the blocked cells, not the
+    full grid. Standard rep defaults."""
+
+    KINDS = ("BlockedWellbore",)

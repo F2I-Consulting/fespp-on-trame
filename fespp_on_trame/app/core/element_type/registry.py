@@ -5,7 +5,7 @@ stateless ElementType singleton. `for_kind` is an O(1) dict lookup; unknown
 from .base import ElementType  # noqa: F401 (re-exported via package __init__)
 from .representation import (
     Representation, IjkGridRep, GridRep, SurfaceRep,
-    WellboreGeometryRep, SeismicFrameRep,
+    WellboreGeometryRep, SeismicFrameRep, BlockedWellboreRep,
 )
 from .grouping import Grouping, PartialType
 from .frames import ChannelFrameRep, MarkerFrameRep
@@ -22,6 +22,7 @@ from .leaf import (
 _CONCRETE = (
     Grouping, PartialType,
     IjkGridRep, GridRep, SurfaceRep, WellboreGeometryRep, SeismicFrameRep,
+    BlockedWellboreRep,
     ChannelFrameRep, MarkerFrameRep,
     TimeSeriesLeaf, MultiRealizationLeaf, MultiRealizationTimeSeriesLeaf,
     PropertyLeaf, MarkerLeaf,

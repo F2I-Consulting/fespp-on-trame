@@ -13,4 +13,7 @@ GROUPING_KINDS = (
     "Interpretation",
     "Frame",
     "MarkerFrame",
+    # The grid container folder (wraps a grid's Full Geometry + SubReps +
+    # BlockedWellbores); checking it bulk-selects those children.
+    "GridContainer",
 )

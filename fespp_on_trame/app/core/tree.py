@@ -75,7 +75,7 @@ class Tree():
         # It stays a grouping (expand/collapse + bulk-select); only its
         # child Trajectory/Frame/Marker/Completion reps carry an eye +
         # colour.
-        self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'partial']
+        self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'BlockedWellbore', 'partial']
 
     def add_subtreeview_data(self, parent_id: int, child_index: int, treeview_type, disabled=False) -> None:
         """Recursive walker that builds the nested treeview dict for a
@@ -102,7 +102,7 @@ class Tree():
             node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
 
         if treeview_type == "unknown":
-            if node_type in ['IjkGrid', 'UnstructuredGrid']:
+            if node_type in ['IjkGrid', 'UnstructuredGrid', 'GridContainer']:
                 treeview_type = "reservoir"
             elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                 treeview_type = "well"
@@ -240,7 +240,7 @@ class Tree():
 
                 treeview = {}
                 treeview_type = "unknown"
-                if dispatch_kind in ['IjkGrid', 'UnstructuredGrid']:
+                if dispatch_kind in ['IjkGrid', 'UnstructuredGrid', 'GridContainer']:
                     treeview_type = "reservoir"
                 elif dispatch_kind in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
@@ -492,6 +492,14 @@ class Tree():
         if node_id is not None:
             return self._data_assembly.GetAttributeOrDefault(node_id, attribute_name, None)
         return
+
+    def find_node_id_by_uuid(self, uuid):
+        """Resolve a tree node id from a RESQML uuid. Node names are the
+        uuid prefixed with '_'. Returns None if no such node exists."""
+        if not uuid or self._data_assembly is None:
+            return None
+        node_id = self._data_assembly.FindFirstNodeWithName("_" + uuid)
+        return node_id if node_id and node_id > 0 else None
 
     def find_parent_attribute_value(self, node_id, attribute_name) -> None:
         """Walk up from `node_id` and return the value of the nearest
