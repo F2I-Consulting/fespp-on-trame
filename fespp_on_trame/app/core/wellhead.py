@@ -1,6 +1,7 @@
 from trame.app import get_server
 from paraview import simple as pvsimple
 
+from fespp_on_trame.app.core.sources import leaf_rep
 from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.tree import Tree
 
@@ -40,7 +41,10 @@ class Wellhead:
         # Head marker: a small flagpole at the MD datum.
         self._source = pvsimple.Text(registrationName=title + "_mdDatum")
         self._source.Text = 'A'
-        head = pvsimple.Show(proxy=self._source, view=view)
+        # Text/Flagpole reps need the full composite representation (TextPropMode
+        # etc. are not on a leaf SurfaceRepresentation) — opt out of the global
+        # leaf-rep patch here. See leaf_rep.show_composite.
+        head = leaf_rep.show_composite(self._source, view)
         head.TextPropMode = 'Flagpole Actor'
         head.BasePosition = position
         head.TopPosition = [position[0], position[1], position[2] + 0.01]
@@ -55,7 +59,8 @@ class Wellhead:
         well_name = tree.find_ancestor_title_of_kind(node_id, "Wellbore") or title
         self._name_source = pvsimple.Text(registrationName=title + "_name")
         self._name_source.Text = well_name
-        label = pvsimple.Show(proxy=self._name_source, view=view)
+        # Billboard text rep — composite only (see the flagpole above).
+        label = leaf_rep.show_composite(self._name_source, view)
         label.TextPropMode = 'Billboard 3D Text'
         label.BillboardPosition = position
         label.Justification = 'Left'

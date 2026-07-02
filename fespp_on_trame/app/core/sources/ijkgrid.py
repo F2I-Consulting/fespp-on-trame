@@ -7,7 +7,9 @@ from fespp_on_trame.app.core.tree import Tree
 from fespp_on_trame.app.core.sources.representation import (
     _apply_default_tint, _find_registered_proxy, _sanitize, inherit_display,
     arrays_from_source, array_range_from_source, resolve_assoc,
+    suppress_selection_labels,
 )
+from fespp_on_trame.app.core.sources import leaf_rep
 
 
 server = get_server()
@@ -312,6 +314,7 @@ class IjkGrid:
         src.UpdatePipelineInformation()
         view = self._target_view()
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
+        suppress_selection_labels(rep)
         rep.Representation = state.representation_active or 'Surface'
         rep.Scale = [1.0, 1.0, self._current_z_scale()]
         if self._title and self._current_array_type:
@@ -354,8 +357,13 @@ class IjkGrid:
             self._node_id = None
             return
 
-        ijkgrid_node_id = self._tree.find_parent_node_id_with_type(node_id, 'IjkGrid')
-        if ijkgrid_node_id is None:
+        # SolidColor variant: a grid property is now a SIBLING of its geometry
+        # rep under a PropertiesFolder, so the geometry is no longer an ancestor
+        # of the property. find_representation_node descends the grid folder to
+        # the geometry rep for a property (and returns the rep itself when
+        # node_id already is it); keep only IjkGrid — this source is IjkGrid-only.
+        ijkgrid_node_id = self._tree.find_representation_node(node_id)
+        if ijkgrid_node_id is None or self._tree.find_type(ijkgrid_node_id) != 'IjkGrid':
             return
 
         if self._node_id != ijkgrid_node_id:
@@ -1101,11 +1109,12 @@ class IjkGrid:
         bar of the previously selected array."""
         view = self._target_view()
         representation = pvsimple.GetRepresentation(proxy=src, view=view)
+        suppress_selection_labels(representation)
         representation.ColorArrayName = [array_type, property_title]
         lut = pvsimple.GetColorTransferFunction(property_title)
         lut.NanOpacity = self._nan_opacity_from_state()
         representation.LookupTable = lut
-        representation.RescaleTransferFunctionToDataRange(True)
+        leaf_rep.rescale_to_range(representation)
         bar = pvsimple.GetScalarBar(ctf=lut, view=view)
         bar.Visibility = True
         bar.RangeLabelFormat = '%-#6.3g'

@@ -17,6 +17,8 @@ Failures surface via `state.diff_compute_error` so the dialog can
 display them."""
 from paraview import simple as pvsimple
 
+from fespp_on_trame.app.core.sources import leaf_rep
+
 
 def build_array_choice(tree, array_path):
     """Resolve a tree array path to a `{title, value, rep_path,
@@ -151,12 +153,13 @@ def compute_diff(state, controller, server, source_registry):
                 pass
         disp = pvsimple.Show(proxy=calc, view=diff_view)
         try:
-            pvsimple.ColorBy(disp, ("CELLS", "fespp_diff_value"))
+            leaf_rep.color_by(disp, "CELLS", "fespp_diff_value")
+            leaf_rep.rescale_to_range(disp)
         except Exception:
             pass
         # Color bar for the diff array in the diff view only.
         try:
-            disp.SetScalarBarVisibility(diff_view, True)
+            leaf_rep.scalar_bar_visibility(disp.LookupTable, diff_view, True)
         except Exception:
             pass
         try:

@@ -22,7 +22,7 @@ import math
 
 from paraview import simple as pvsimple
 
-from fespp_on_trame.app.core.sources.representation import _sanitize
+from fespp_on_trame.app.core.sources.representation import _sanitize, suppress_selection_labels
 from fespp_on_trame.app.core.sources.plane_widget import PlaneWidget
 
 
@@ -246,6 +246,7 @@ class SlicePlane:
         if view is not None:
             try:
                 disp = pvsimple.GetRepresentation(proxy=self._proxy, view=view)
+                suppress_selection_labels(disp)
                 if disp is not None:
                     disp.Representation = "Surface"
                     disp.DiffuseColor = [1.0, 0.15, 0.15]

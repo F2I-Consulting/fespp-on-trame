@@ -84,12 +84,45 @@ def _create_plugin_filter_proxy(proxy_class: str, registration_name: str,
         return None
 
 
+def suppress_selection_labels(display):
+    """Zero the per-representation label/selection overhead on a display.
+
+    Every ParaView geometry representation eagerly builds a
+    ``vtkSelectionRepresentation`` + ``vtkDataLabelRepresentation`` whose
+    ``vtkLabeledDataMapper`` pre-allocates ``SelectionMaximumNumberOfLabels``
+    (default 100) ``vtkTextMapper`` objects, each carrying a full VTK executive
+    — even though this app never shows ParaView data labels and drives its own
+    selection through the tree. With ONE representation per source / slicer /
+    threshold (the deliberate N-source design, kept for type-specific filters),
+    that overhead accumulates into tens of thousands of VTK objects and
+    eventually a ``std::bad_alloc`` on mass loads (gdb-confirmed: ``Show`` -> …
+    -> ``vtkLabeledDataMapper::AllocateLabels``). Setting the label count to 0
+    (and hiding the sub-reps) removes the overhead while keeping Surface
+    rendering, ColorBy, LUTs and every filter intact. Idempotent; never raises.
+    """
+    if display is None:
+        return
+    for attr, val in (
+        ("SelectionMaximumNumberOfLabels", 0),
+        ("SelectionVisibility", 0),
+        ("SelectionCellLabelVisibility", 0),
+        ("SelectionPointLabelVisibility", 0),
+    ):
+        try:
+            setattr(display, attr, val)
+        except Exception:
+            pass
+
+
 def _apply_default_tint(display, color_hex):
     """Set DiffuseColor + AmbientColor (and Opacity if alpha is given)
     on a display. Does NOT touch ColorArrayName, so a later ColorBy
     will take over while this stays the fallback when no array is
     bound."""
-    if display is None or not color_hex:
+    if display is None:
+        return
+    suppress_selection_labels(display)
+    if not color_hex:
         return
     h = color_hex.lstrip('#')
     if len(h) < 6:
@@ -188,6 +221,7 @@ def inherit_display(upstream, target_proxy, view):
         dst_disp = pvsimple.GetRepresentation(proxy=target_proxy, view=view)
         if src_disp is None or dst_disp is None:
             return
+        suppress_selection_labels(dst_disp)
         for attr, as_list in _DISPLAY_INHERIT_ATTRS:
             try:
                 val = getattr(src_disp, attr)

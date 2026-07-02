@@ -1,6 +1,12 @@
 # Prerequisites
 *.d
 
+# Local vendored source (e.g. VTK clone for preparing superbuild patches) — never commit
+/_local/
+
+# V2 architecture / planning notes (local-only, matches the feature/v2 convention)
+/doc/v2/
+
 # Compiled Object files
 *.slo
 *.lo

@@ -27,6 +27,7 @@ Functions:
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.utils.naming import make_valid_vtk_name
+from fespp_on_trame.app.core.sources import leaf_rep
 
 
 def _vtk_array_range_from_clientside(pv_src, name, assoc):
@@ -671,18 +672,10 @@ def _clear_coloring(displays, view):
     for d in displays:
         try:
             if d.LookupTable is not None and view is not None:
-                d.SetScalarBarVisibility(view, False)
+                leaf_rep.scalar_bar_visibility(d.LookupTable, view, False)
         except Exception:
             pass
-        try:
-            sm = getattr(d, "SMProxy", None)
-            if sm is not None:
-                sm.SetScalarColoring("", 0)
-                sm.UpdateVTKObjects()
-            else:
-                d.ColorArrayName = ['', '']
-        except Exception:
-            pass
+        leaf_rep.uncolor(d)
 
 
 def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
@@ -726,7 +719,7 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         return False
     for d in displays:
         try:
-            pvsimple.ColorBy(d, (assoc, name))
+            leaf_rep.color_by(d, assoc, name)
         except Exception:
             pass
     target_view = view if view is not None else pvsimple.GetActiveView()
@@ -761,8 +754,8 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         if target_view is not None:
             for d in displays:
                 try:
-                    d.SetScalarBarVisibility(target_view, True)
-                    break
+                    if leaf_rep.scalar_bar_visibility(d.LookupTable, target_view, True):
+                        break
                 except Exception:
                     continue
             # Use the scoped LUT when we have one so the scalar bar

@@ -102,6 +102,13 @@ def initialize_fespp_engine(
         '/opt/paraview/lib/paraview-6.0/plugins/ExplicitStructuredGrid/'
         'ExplicitStructuredGrid.so'))
 
+    # Swap ParaView's heavy composite representation for a lightweight leaf one
+    # on every Show/GetRepresentation (see leaf_rep.py) — kills the per-rep
+    # 100-vtkTextMapper allocation that OOMs mass loads. Must run before the
+    # first Show (data load / wellhead), i.e. right after the plugins load.
+    from fespp_on_trame.app.core.sources import leaf_rep
+    leaf_rep.install()
+
     _view = pvsimple.GetActiveViewOrCreate("RenderView")
     _view.Visible = 1
     _view.Location = 'Bottom Left'
