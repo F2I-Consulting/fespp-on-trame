@@ -26,8 +26,22 @@ def register_upload_route(server) -> bool:
             async for field in reader:
                 if not field.filename:
                     continue
-                filename = field.filename
+                # SECURITY: the multipart filename is fully client-controlled.
+                # Reduce it to a bare basename (defusing `../` and absolute-path
+                # escapes on both `/` and `\` separators) and allow only the two
+                # extensions this app actually consumes, so a POST to /upload can
+                # never create a file outside temp_dir or of an executable type.
+                filename = (field.filename or "").replace("\\", "/").split("/")[-1]
+                if not filename or filename in (".", ".."):
+                    continue
+                if not filename.lower().endswith((".epc", ".h5")):
+                    print(f"[Upload] rejected non-EPC/H5 upload: {filename!r}", flush=True)
+                    continue
                 filepath = Path(temp_dir) / filename
+                base = Path(temp_dir).resolve()
+                if base != filepath.resolve() and base not in filepath.resolve().parents:
+                    print(f"[Upload] rejected path escape: {filename!r}", flush=True)
+                    continue
                 print(f"[Upload] Receiving {filename}...", flush=True)
                 if filepath.exists():
                     print(f"[Upload] File {filename} already exists, ignored.", flush=True)
@@ -54,11 +68,15 @@ def register_upload_route(server) -> bool:
                 controller.load_epc_file(path)
             state.upload_uploading = False
             state.flush()
-            return aiohttp_web.json_response({"status": "ok", "epc_paths": epc_paths})
+            # Return basenames only — never leak absolute server temp paths.
+            return aiohttp_web.json_response(
+                {"status": "ok", "epc_paths": [Path(p).name for p in epc_paths]})
         except Exception as exc:
             state.upload_uploading = False
             state.upload_progress = 0
-            return aiohttp_web.json_response({"status": "error", "message": str(exc)}, status=500)
+            print(f"[Upload] error: {exc}", flush=True)  # server-side log only
+            return aiohttp_web.json_response(
+                {"status": "error", "message": "upload failed"}, status=500)
 
     global _registered_handler
     _registered_handler = handle_upload

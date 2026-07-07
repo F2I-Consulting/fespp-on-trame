@@ -25,3 +25,8 @@
 **/values.dev.yaml
 LICENSE
 README.md
+# Private / sensitive datasets must NOT ship in the published image.
+# Dockerfile does `COPY ./data /deploy/data`; this keeps data/empty.epc and
+# drops everything under data/private/ (drogon, blockWellbore test EPCs, ...).
+data/private
+data/private/**
