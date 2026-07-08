@@ -525,8 +525,31 @@ class Tree():
         if node_type:
             if node_type in self._representation_type_in:
                 return node_id
-            else:
-                return self.find_representation_node(self._data_assembly.GetParent(node_id))
+            # SolidColor variant: a grid sub-folder groups MULTIPLE sub-objects
+            # (SubReps / BlockedWellbores) with no single enclosing rep — do NOT
+            # climb to the GridContainer and resolve to the grid geometry.
+            # Mirrors the C++ resolveGridGeometryRepId early-return.
+            if node_type in ("SubRepresentationFolder", "BlockedWellboreFolder"):
+                return
+            # SolidColor variant: a grid's geometry rep is a SIBLING under its
+            # PropertiesFolder, not an ancestor of its props. When the up-walk
+            # reaches the props folder / grid container, descend to the
+            # GridContainer's geometry rep child instead of climbing past it
+            # (which would return None and break a property's colour eye / stats).
+            if node_type in ("PropertiesFolder", "GridContainer"):
+                container = node_id if node_type == "GridContainer" \
+                    else self.find_parent_node_id_with_type(node_id, "GridContainer")
+                if container is not None:
+                    for kind in ("IjkGrid", "UnstructuredGrid"):
+                        rep = self.find_first_child_of_type(container, kind)
+                        if rep is None:
+                            props = self.find_first_child_of_type(container, "PropertiesFolder")
+                            if props is not None:
+                                rep = self.find_first_child_of_type(props, kind)
+                        if rep is not None:
+                            return rep
+                return
+            return self.find_representation_node(self._data_assembly.GetParent(node_id))
         return
 
     def find_representation_type(self, node_id) -> None:
