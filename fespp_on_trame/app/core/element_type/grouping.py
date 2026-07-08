@@ -11,7 +11,13 @@ class Grouping(ElementType):
     # GridContainer wraps an IjkGrid/UnstructuredGrid: it holds the grid's
     # "Full Geometry" rep + its SubReps + BlockedWellbores as children, and
     # renders nothing itself (C++ MapperType::Folder).
-    KINDS = ("Collection", "Wellbore", "Feature", "Interpretation", "GridContainer")
+    # BlockedWellboreFolder / SubRepresentationFolder are per-grid sub-folders
+    # that group all of a grid's blocked wellbores / subreps — checking one
+    # bulk-selects just those children (mirrors the C++ isGroupingType in
+    # enum.h). PropertiesFolder is DELIBERATELY excluded there and here: it
+    # must NOT cascade to the geometry + every property.
+    KINDS = ("Collection", "Wellbore", "Feature", "Interpretation", "GridContainer",
+             "BlockedWellboreFolder", "SubRepresentationFolder")
 
     def tree_role(self) -> TreeRole:
         return TreeRole.FOLDER

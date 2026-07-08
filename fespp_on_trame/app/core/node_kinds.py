@@ -16,4 +16,10 @@ GROUPING_KINDS = (
     # The grid container folder (wraps a grid's Full Geometry + SubReps +
     # BlockedWellbores); checking it bulk-selects those children.
     "GridContainer",
+    # Per-grid sub-folders: checking one bulk-selects just its blocked
+    # wellbores / subreps (mirrors the C++ isGroupingType in enum.h).
+    # PropertiesFolder is intentionally NOT here — checking it must not
+    # cascade to the geometry + every property.
+    "BlockedWellboreFolder",
+    "SubRepresentationFolder",
 )

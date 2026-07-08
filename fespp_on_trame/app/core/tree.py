@@ -17,6 +17,14 @@ state.setdefault("ui_subtree_well", [])
 _NATURAL_SPLIT_RE = re.compile(r"(\d+)")
 _PARTIAL_PREFIX = "!!!PARTIAL!!!"
 
+# SolidColor variant (grid tree): the grid geometry rep kinds, and the
+# organizational per-grid folders that are never individually selected
+# (excluded from a grouping's tri-state universe, but recursed into).
+_GRID_GEOMETRY_KINDS = ("IjkGrid", "UnstructuredGrid")
+_GRID_SUBFOLDER_KINDS = (
+    "PropertiesFolder", "BlockedWellboreFolder", "SubRepresentationFolder",
+)
+
 
 def _sibling_sort_key(node):
     """Case-insensitive, natural (numeric-aware) sort key for a treeview
@@ -38,10 +46,52 @@ def _sibling_sort_key(node):
         c for c in unicodedata.normalize("NFKD", title.strip())
         if not unicodedata.combining(c)
     ).casefold()
-    return [
+    natural = [
         int(part) if part.isdigit() else part
         for part in _NATURAL_SPLIT_RE.split(title)
     ]
+    # A node flagged `_sort_first` (the hoisted grid geometry) sorts before
+    # every sibling at its level; others keep natural alphabetical order.
+    return [0 if node.get("_sort_first") else 1, *natural]
+
+
+def _hoist_grid_geometry(node_type, children):
+    """SolidColor variant DISPLAY re-map: lift a grid's geometry rep (kind
+    IjkGrid/UnstructuredGrid, titled 'SolidColor') OUT of its PropertiesFolder
+    so it shows as a top-level node under the GridContainer, leaving the
+    PropertiesFolder to hold only the real properties.
+
+    DISPLAY-ONLY: the live vtkDataAssembly still holds the rep under the
+    PropertiesFolder (its mapper key / find_node_id path), so every
+    id/path/uuid lookup is untouched — only the emitted treeview dicts move.
+    `children` (the GridContainer's child-dict list) is mutated in place."""
+    if node_type != "GridContainer":
+        return
+    props_folder = next(
+        (c for c in children if c.get("type") == "PropertiesFolder"), None)
+    if props_folder is None:
+        return
+    folder_children = props_folder.get("children") or []
+    geom = next(
+        (c for c in folder_children if c.get("type") in _GRID_GEOMETRY_KINDS),
+        None,
+    )
+    if geom is None:
+        return
+    folder_children.remove(geom)
+    # Frontend-only display label: FESPP names this rep "SolidColor" (grid drawn
+    # with no property = solid colour). Show it as "geometry" to match the
+    # user's mental model. Identity (id / path / uuid) is untouched.
+    geom["title"] = "geometry"
+    # Pin geometry above the properties/ · block wellbore/ · SubRep/ folders
+    # (see _sibling_sort_key) instead of letting it sort alphabetically.
+    geom["_sort_first"] = True
+    if not folder_children:
+        # Geometry-only grid (no real properties): the props folder is now empty
+        # — drop it so the tree shows just the hoisted geometry, with no empty
+        # 'properties/' folder.
+        children.remove(props_folder)
+    children.append(geom)
 
 
 def _eye_field(element_type):
@@ -177,6 +227,9 @@ class Tree():
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                 data["treeview"]["children"].append(subTreeview["treeview"])
                 data["treeview_type"] = subTreeview["treeview_type"]
+            # SolidColor variant: lift the grid geometry rep out of its
+            # properties folder to a top-level GridContainer child (display).
+            _hoist_grid_geometry(node_type, data["treeview"]["children"])
             # Alphabetical sibling order at this level (hierarchy kept).
             data["treeview"]["children"].sort(key=_sibling_sort_key)
         return data
@@ -286,6 +339,9 @@ class Tree():
                         subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                         treeview["children"].append(subTreeview["treeview"])
                         treeview_type = subTreeview["treeview_type"]
+                    # SolidColor variant: hoist grid geometry to a top-level
+                    # GridContainer child (display only).
+                    _hoist_grid_geometry(node_type, treeview["children"])
                     # Alphabetical sibling order under this top-level node.
                     treeview["children"].sort(key=_sibling_sort_key)
                 if treeview_type == "reservoir":
@@ -382,6 +438,14 @@ class Tree():
         'all selected'."""
         if node_id is None or self._data_assembly is None:
             return []
+        # SolidColor variant: when the walk STARTS at a grid's PropertiesFolder,
+        # exclude the geometry rep (displayed + toggled as a top-level sibling,
+        # so bulk-toggling 'properties/' leaves it in place — geometry persists).
+        # At a GridContainer the geometry IS included so a bulk-toggle moves it.
+        exclude_geometry = (
+            self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
+            == "PropertiesFolder"
+        )
         out = []
 
         def _walk(nid):
@@ -394,7 +458,13 @@ class Tree():
                 kind = self._data_assembly.GetAttributeOrDefault(c, "kind", None)
                 if not _et.for_kind(kind).is_selectable():
                     continue
-                out.append(c)
+                # Organizational grid sub-folders are never individually
+                # selected — exclude them (else a GridContainer tri-state can
+                # never reach 'all selected') but still recurse INTO them.
+                if kind not in _GRID_SUBFOLDER_KINDS and not (
+                    exclude_geometry and kind in _GRID_GEOMETRY_KINDS
+                ):
+                    out.append(c)
                 _walk(c)
 
         _walk(node_id)

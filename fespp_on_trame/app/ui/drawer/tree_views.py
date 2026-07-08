@@ -199,6 +199,35 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
             setattr(_state, select_var, expanded)
 
 
+def _wire_grid_geometry_on_property(tree):
+    """SolidColor variant: when a grid PROPERTY is checked, also check its
+    grid's geometry rep (the "SolidColor" leaf under the PropertiesFolder) so
+    the geometry's own checkbox reflects that it renders and — being ADD-ONLY —
+    the geometry PERSISTS when the property is later unchecked (a property
+    without its geometry makes no business sense; the geometry leaves only when
+    nothing references it). FESPP also autoloads the geometry server-side
+    (selectNodeId); this keeps the reservoir selection / checkbox in sync."""
+    @_state.change("ui_select_node_reservoir")
+    def _on_change(**_):
+        reservoir = list(getattr(_state, "ui_select_node_reservoir", []) or [])
+        added = False
+        for node_id in list(reservoir):
+            # The geometry rep lives under the props folder too — skip it; only
+            # real property leaves (with a PropertiesFolder ancestor) pull it in.
+            if tree.find_type(node_id) in ("IjkGrid", "UnstructuredGrid"):
+                continue
+            folder = tree.find_parent_node_id_with_type(node_id, "PropertiesFolder")
+            if folder is None:
+                continue
+            geom = tree.find_first_child_of_type(folder, "IjkGrid") \
+                or tree.find_first_child_of_type(folder, "UnstructuredGrid")
+            if geom is not None and geom not in reservoir:
+                reservoir.append(geom)
+                added = True
+        if added:
+            _state.ui_select_node_reservoir = reservoir
+
+
 def _wire_blocked_well_trajectory(tree):
     """Force a BlockedWellbore's referenced WellboreTrajectory checked.
 
@@ -733,6 +762,10 @@ class TreeViews:
         # Cross-tab: a BlockedWellbore (reservoir tab) force-checks its
         # referenced trajectory in the WELL tab.
         _wire_blocked_well_trajectory(self._tree)
+
+        # SolidColor variant: checking a grid property force-checks its grid
+        # geometry (a property without its geometry makes no business sense).
+        _wire_grid_geometry_on_property(self._tree)
 
         # update_selected from Vuetify gives the FULL selected array,
         # so writing `active = $event` would always pick array[0]
