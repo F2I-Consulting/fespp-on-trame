@@ -40,6 +40,15 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         # dials in an alpha here. The red hue means raising the alpha
         # yields a visible "no data" marker.
         state.setdefault("nan_color", "#FF000000")
+        # Scalar-range + log-scale controls (continuous properties only —
+        # this editor is mounted solely for the non-categorical /
+        # non-SolidColor case). Register the button handlers BEFORE
+        # super().__init__() runs build_content, which references them.
+        state.setdefault("color_range_min", 0.0)
+        state.setdefault("color_range_max", 1.0)
+        state.setdefault("color_use_log", False)
+        controller.fespp_apply_color_range = self.apply_color_range
+        controller.fespp_reset_color_range = self.reset_color_range_to_data
         super().__init__()
 
     def build_content(self) -> None:
@@ -70,6 +79,56 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 show_histograms=("show_histograms", False),
                 histograms_color=("histograms_color", [0, 0, 0, 0.25]),
             )
+
+            # --- Scalar range (min/max) + log scale ---
+            # Continuous properties only: this editor is mounted solely for
+            # the non-categorical / non-SolidColor case (see
+            # solid_color_panel), so these knobs never reach a discrete,
+            # categorical or SolidColor representation.
+            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2"):
+                with vuetify3.VCol(cols=6, classes="pr-1"):
+                    vuetify3.VTextField(
+                        label="Min",
+                        v_model_number=("color_range_min", 0.0),
+                        type="number",
+                        density="compact",
+                        variant="outlined",
+                        hide_details=True,
+                        keydown_enter=self.apply_color_range,
+                    )
+                with vuetify3.VCol(cols=6, classes="pl-1"):
+                    vuetify3.VTextField(
+                        label="Max",
+                        v_model_number=("color_range_max", 1.0),
+                        type="number",
+                        density="compact",
+                        variant="outlined",
+                        hide_details=True,
+                        keydown_enter=self.apply_color_range,
+                    )
+            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1", align="center"):
+                vuetify3.VBtn(
+                    "Apply",
+                    size="small",
+                    variant="tonal",
+                    click=(controller.fespp_apply_color_range,),
+                )
+                vuetify3.VBtn(
+                    "Reset to data range",
+                    size="small",
+                    variant="text",
+                    classes="ml-1",
+                    click=(controller.fespp_reset_color_range,),
+                )
+                vuetify3.VSpacer()
+                vuetify3.VSwitch(
+                    label="Log scale",
+                    v_model=("color_use_log", False),
+                    density="compact",
+                    hide_details=True,
+                    inset=True,
+                    classes="flex-grow-0 mt-0",
+                )
 
             with vuetify3.VMenu(close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
@@ -223,6 +282,141 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             self.state.scalar_range = [lo, hi]
         except Exception:
             self.state.scalar_range = [0, 1]
+
+    # ---- Scalar range (min/max) + log scale — continuous props only ----
+
+    @staticmethod
+    def _positive_floor(hi):
+        """A log axis needs a strictly-positive lower bound: pick a floor
+        four decades below the max (tiny epsilon when the max itself is
+        non-positive)."""
+        try:
+            hi = float(hi)
+        except (TypeError, ValueError):
+            return 1e-6
+        return hi * 1e-4 if hi > 0 else 1e-6
+
+    def _resolve_active_lut(self):
+        """`(base_name, lut)` for the active array on the drawer's target
+        view — the per-view scoped LUT, falling back to the global
+        singleton (same resolution as `update_scalar_range`)."""
+        raw_name = self.state.active_color_array_name or ""
+        if not raw_name:
+            return None, None
+        base_name, scene_lut = source_resolver.resolve_target_scoped_lut(raw_name)
+        if not base_name:
+            return None, None
+        lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(base_name)
+        return base_name, lut
+
+    def _sync_range_fields(self, lo, hi):
+        """Reflect a range into the Min/Max inputs. They never auto-apply
+        (apply is explicit via button / Enter), so writing them here can't
+        loop back into a rescale."""
+        try:
+            self.state.color_range_min = float(lo)
+            self.state.color_range_max = float(hi)
+        except (TypeError, ValueError):
+            pass
+
+    def _apply_scalar_range(self, lo, hi):
+        """Rescale the active view's LUT to [lo, hi] and push the frame.
+        Clamps the lower bound positive when the LUT is in log mode."""
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        lo, hi = source_resolver.nondegenerate_range(lo, hi)
+        if int(getattr(lut, "UseLogScale", 0)) and lo <= 0:
+            lo = self._positive_floor(hi)
+        try:
+            lut.RescaleTransferFunction(float(lo), float(hi))
+        except Exception:
+            return
+        self.state.scalar_range = [float(lo), float(hi)]
+        self._sync_range_fields(lo, hi)
+        source_resolver.render_and_push_target(self.server.controller)
+
+    def apply_color_range(self, *args, **kwargs):
+        """Apply the user-entered Min/Max (ignores an inverted / empty
+        range where Max <= Min). Wired to the Apply button + Enter."""
+        if not self._should_apply_state_change():
+            return
+        try:
+            lo = float(self.state.color_range_min)
+            hi = float(self.state.color_range_max)
+        except (TypeError, ValueError):
+            return
+        if hi <= lo:
+            return
+        self._apply_scalar_range(lo, hi)
+
+    def reset_color_range_to_data(self, *args, **kwargs):
+        """Recompute the data range and rescale the LUT back to it."""
+        if not self._should_apply_state_change():
+            return
+        self.update_scalar_range()
+        rng = self.state.scalar_range or [0.0, 1.0]
+        try:
+            self._apply_scalar_range(float(rng[0]), float(rng[1]))
+        except (TypeError, ValueError, IndexError):
+            pass
+
+    @change("scalar_range")
+    def on_scalar_range_changed(self, *args, **kwargs) -> None:
+        """Mirror the recomputed data range into the Min/Max inputs and
+        reflect the LUT's current log state in the switch. Fires whenever
+        `update_scalar_range` recomputes the range (property activation /
+        target-view or realization switch)."""
+        rng = self.state.scalar_range or [0.0, 1.0]
+        self._sync_range_fields(
+            rng[0] if rng else 0.0,
+            rng[1] if len(rng) > 1 else 1.0,
+        )
+        _base, lut = self._resolve_active_lut()
+        if lut is not None:
+            self.state.color_use_log = bool(int(getattr(lut, "UseLogScale", 0)))
+
+    @change("color_use_log")
+    def on_color_use_log_changed(self, *args, **kwargs) -> None:
+        """Toggle logarithmic colour mapping on the active LUT. No-ops when
+        the LUT already matches the request, so the programmatic reflect
+        from `on_scalar_range_changed` doesn't re-remap the control points.
+        Enabling log clamps the lower bound strictly positive."""
+        if not self._should_apply_state_change():
+            return
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        desired = 1 if self.state.color_use_log else 0
+        if int(getattr(lut, "UseLogScale", 0)) == desired:
+            return
+        if desired:
+            try:
+                lo = float(self.state.color_range_min)
+                hi = float(self.state.color_range_max)
+            except (TypeError, ValueError):
+                rng = self.state.scalar_range or [0.0, 1.0]
+                lo, hi = float(rng[0]), float(rng[1])
+            if lo <= 0:
+                lo = self._positive_floor(hi)
+                try:
+                    lut.RescaleTransferFunction(lo, hi)
+                except Exception:
+                    pass
+                self.state.scalar_range = [lo, hi]
+                self._sync_range_fields(lo, hi)
+            lut.UseLogScale = 1
+            try:
+                lut.MapControlPointsToLogSpace()
+            except Exception:
+                pass
+        else:
+            try:
+                lut.MapControlPointsToLinearSpace()
+            except Exception:
+                pass
+            lut.UseLogScale = 0
+        source_resolver.render_and_push_target(self.server.controller)
 
     @change("colors")
     def on_colors_changed(self, *args, **kwargs) -> None:
