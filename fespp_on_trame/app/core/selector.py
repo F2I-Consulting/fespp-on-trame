@@ -26,6 +26,19 @@ class Selector:
 
         state.setdefault("first_selection", True)
 
+    def apply_z_scale(self, zscale):
+        """Re-anchor every wellhead on the Z exaggeration.
+
+        Wellheads are Text reps (flagpole + billboard): they carry no
+        `Scale`, so the z-scale fan-out silently skips them and they would
+        stay at the unscaled datum while their trajectory stretches away.
+        See `Wellhead.apply_z_scale`."""
+        for wellhead in self._wellheads:
+            try:
+                wellhead.apply_z_scale(zscale)
+            except Exception:
+                continue
+
     def optimize_tree_selection(self, selected_items):
         """Identity in explicit-selection mode.
 

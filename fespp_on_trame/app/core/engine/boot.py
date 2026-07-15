@@ -318,6 +318,11 @@ def initialize_fespp_engine(
     @state.change("ui_scale_z")
     def ui_scale_z_update(ui_scale_z, **kwargs):
         slicer_dispatch.apply_z_scale(state, controller, _source_registry, _view, ui_scale_z)
+        # Wellheads can't ride the fan-out: they are Text reps with no
+        # `Scale` and absolute anchors, so they need an explicit re-anchor.
+        # This single hook covers BOTH z-scale entry points — the
+        # TransformationEditor persists its value here before applying.
+        _selector.apply_z_scale(ui_scale_z)
 
     # Global wellbore-marker display options (orientation = oriented disk
     # vs sphere; size = radius). Apply to every marker in every view via
