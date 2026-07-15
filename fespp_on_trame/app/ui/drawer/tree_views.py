@@ -767,6 +767,22 @@ class TreeViews:
             if len(raw) == len(prev):
                 return  # nothing new to select
             expanded = _expand_selection_with_deps(raw, prev, self._tree)
+            # Pre-seed the shared `_prev_select_<tab>` tracker with the final
+            # set. BOTH reactive handlers key off it, and a bulk select adds a
+            # whole folder + all its leaves in one shot:
+            #   - `_wire_dependency_expansion` sees a fixed point (as the
+            #     docstring above relies on) — now explicitly, not by luck;
+            #   - `_wire_select_to_active` would otherwise activate
+            #     `new_ones[-1]`, an ARBITRARY node of the bulk — typically the
+            #     grouping folder (e.g. BlockedWellboreFolder). Activating a
+            #     non-property node makes the activator clear
+            #     `active_color_array_name`, which greys the threshold
+            #     union / intersect buttons even though the user never touched
+            #     the active node.
+            # With prev == curr it sees no new ids and leaves the active node
+            # alone — while still falling back correctly if that node is not in
+            # the new selection.
+            setattr(state, f"_prev_select_{tab}", list(expanded))
             setattr(state, select_var, expanded)
 
         @controller.set("init_opened_nodes")
