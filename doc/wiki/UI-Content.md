@@ -227,7 +227,7 @@ A recurring architectural pattern to internalize before forking: many editors an
 
 **Key classes / functions.**
 - `SCOPE_GLOBAL="global"`.
-- `class TransformationEditor` — `__init__(self, scope_var="settings_scope")`. `render(self)` builds `ptc.TransformEditor(show_translation=False, show_scale=True, …, show_apply_button=True)`, hides the X/Y scale knobs (only Z matters), and binds `_apply_z_scale` to the Apply button.
+- `class TransformationEditor` — `__init__(self, scope_var="settings_scope")`. `render(self)` builds `ptc.TransformEditor(show_translation=False, show_scale=True, …, show_apply_button=True)`, hides the X/Y scale knobs (only Z matters), **neutralises ptc's own apply** (`self._te._get_display_properties = lambda: None` — see Gotchas), and binds `_apply_z_scale` to the Apply button.
 - `_current_scope / _target_views` — resolve target views by scope (global → every render panel; per-view → one).
 - `_proxy_reg_name(proxy)` (static) — registration name of a proxy across the `filters`/`sources` groups (per-(marker,view) extractors are registered `mrk_…`).
 - `_rep_is_marker(rep, marker_ids)` (classmethod) — True when a representation is a marker glyph (input GlobalID in the scene-registry marker set OR registration name starts with `mrk_`).
@@ -237,7 +237,7 @@ A recurring architectural pattern to internalize before forking: many editors an
 
 **Collaborators.** `ptc.TransformEditor`, `pvsimple`, `server.context.scene_registry`, `marker_dispatch` (`marker_proxy_ids`, `apply_marker_z`), controllers `view_update` / `view_update_all`. Composed by both settings dialogs.
 
-**Gotchas.** The save/restore of color around the `Scale` write exists because the Scale write was observed to clobber the active `ColorArrayName`/`LookupTable`. `ui_scale_z` is the **single global source of truth** for Z exaggeration — creation hooks and on-load re-apply read it; nothing wrote it before this widget existed, which is why later-loaded objects used to stay flat. Markers must never be scaled (see commit history about "olive").
+**Gotchas.** **ptc's own apply must stay neutralised, or the Z scale silently never applies.** `ptc.TransformEditor.apply_changes()` runs `apply_translation` / `apply_origin` / `apply_orientation` / `apply_scale` BEFORE calling its `on_apply_clicked` hook, and those write `display_properties.PolarAxes.<x>` / `.DataAxesGrid.<x>` unconditionally. Since `leaf_rep` patches `pvsimple.GetDisplayProperties` **globally**, ptc receives a leaf `SurfaceRepresentation`, which carries no `PolarAxes` / `DataAxesGrid` sub-proxy → `AttributeError` → `apply_changes` dies before the hook → `_apply_z_scale` is never called, with no log (the exception dies inside the wslink protocol). Each ptc `apply_*` bails early when `_get_display_properties()` returns None, letting the hook fire; we do the real, scope-aware apply ourselves (and DO guard those sub-proxies). This is the general hazard of the global leaf-rep patch: it also breaks THIRD-PARTY code that assumes a composite representation. The save/restore of color around the `Scale` write exists because the Scale write was observed to clobber the active `ColorArrayName`/`LookupTable`. `ui_scale_z` is the **single global source of truth** for Z exaggeration — creation hooks and on-load re-apply read it; nothing wrote it before this widget existed, which is why later-loaded objects used to stay flat. Markers must never be scaled (see commit history about "olive").
 
 ---
 

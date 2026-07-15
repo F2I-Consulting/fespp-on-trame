@@ -47,6 +47,18 @@ class TransformationEditor:
             self._te.scale_name.x: False,
             self._te.scale_name.y: False,
         })
+        # Neutralise ptc's OWN apply. `ptc.TransformEditor.apply_changes()`
+        # runs apply_translation/origin/orientation/scale BEFORE calling the
+        # `on_apply_clicked` hook, and those write
+        # `display_properties.PolarAxes.<x>` / `.DataAxesGrid.<x>`
+        # unconditionally. Since `leaf_rep` patches `GetDisplayProperties`
+        # globally, ptc gets a LEAF SurfaceRepresentation, which carries no
+        # PolarAxes / DataAxesGrid sub-proxy -> AttributeError -> apply_changes
+        # dies before the hook, so the Z scale silently never applied.
+        # Each ptc apply_* bails early when this returns None, letting
+        # apply_changes reach the hook; we do the real, scope-aware apply in
+        # `_apply_z_scale_now` (which guards those sub-proxies properly).
+        self._te._get_display_properties = lambda: None
         self._te.bind_on_apply_button_clicked(self._apply_z_scale)
 
     def _current_scope(self) -> str:
