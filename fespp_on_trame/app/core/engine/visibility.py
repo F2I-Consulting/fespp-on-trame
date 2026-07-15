@@ -30,48 +30,6 @@ from fespp_on_trame.app.core.engine import panel_resolver, source_resolver
 from fespp_on_trame.app.core.sources.representation import _apply_default_tint
 
 
-def _clear_active_array(state, controller, server, source_registry, tree,
-                        rep_path, panel_id, view, html_view):
-    """Drop the active array binding for `rep_path` in `panel_id` and
-    push SolidColor onto every display of that rep in `view`. Mirrors
-    the legacy global map iff this is the active panel."""
-    bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
-
-    by_view = dict(state.ui_active_array_by_rep_by_view or {})
-    panel_map = dict(by_view.get(bucket_key, {}) or {})
-    panel_map.pop(rep_path, None)
-    by_view[bucket_key] = panel_map
-    state.ui_active_array_by_rep_by_view = by_view
-
-    active = panel_resolver.active_panel_id(server)
-    if active and active == bucket_key:
-        mirror = dict(state.ui_active_array_by_rep or {})
-        mirror.pop(rep_path, None)
-        state.ui_active_array_by_rep = mirror
-
-    source_resolver.apply_color_array(
-        source_registry, tree, rep_path, None, view=view,
-    )
-    # The scalar bar for the cleared array is now orphaned in `view`
-    # (no visible display references its LUT here). Sweep stale bars.
-    source_resolver.hide_unused_scalar_bars(view=view)
-    if view is not None:
-        try:
-            pvsimple.Render(view=view)
-        except Exception:
-            pass
-    if html_view is not None:
-        try:
-            html_view.update()
-        except Exception:
-            pass
-    else:
-        try:
-            controller.view_update()
-        except Exception:
-            pass
-
-
 def toggle_marker_visibility(state, controller, server, source_registry, tree,
                              marker_path, panel_id=None):
     """Tree eye on a WellboreMarker leaf.
@@ -139,41 +97,16 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
     view, html_view = panel_resolver.resolve_view_and_html_view(server, panel_id)
     bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
 
-    # A wellbore frame has no own geometry — its only renderable content
-    # is the single selected channel tube. The 3-state "clear coloring,
-    # keep geometry" intermediate makes no sense there (it would leave
-    # the log painted in SolidColor instead of hiding it). Treat the
-    # frame's eye as a plain show/hide: skip the clear-coloring branch so
-    # the click goes straight to flipping the per-view extractor's
-    # visibility.
-    is_frame = False
-    if tree is not None:
-        try:
-            from fespp_on_trame.app.core import element_type
-            _nid = tree.find_node_id(rep_path)
-            is_frame = (
-                _nid is not None
-                and element_type.for_kind(tree.find_type(_nid) or "").is_channel_frame()
-            )
-        except Exception:
-            is_frame = False
-
-    # State (3) — array active on this rep in this panel → click means
-    # "give up the coloring", not "hide the rep". Drop the array and
-    # leave the geometry visible in SolidColor.
-    active_array_path = (state.ui_active_array_by_rep_by_view or {}) \
-        .get(bucket_key, {}).get(rep_path)
-    is_hidden_now = rep_path in (
-        (state.ui_hidden_rep_paths_by_view or {}).get(bucket_key, []) or []
-    )
-    if active_array_path and not is_hidden_now and not is_frame:
-        _clear_active_array(
-            state, controller, server, source_registry, tree,
-            rep_path, panel_id, view, html_view,
-        )
-        return
-
-    # State (1)↔(2) — flip visibility for this rep in this panel.
+    # Visibility and colouring are ORTHOGONAL: this eye means show/hide the
+    # rep, nothing else. It used to first "give up the colouring" (SolidColor)
+    # and only hide on a second click — which made hiding a rep necessarily
+    # DESTROY its active array, so "hide the grid, keep the wells coloured by
+    # PORO" was unexpressible, and any consumer of the grid's active property
+    # lost it the moment the grid went away. Dropping a colour array is the
+    # PROPERTY eye's job (`active_array.toggle_dataarray_color`), which already
+    # allows one active array per rep and falls back to SolidColor when the
+    # last one closes. That also retires the wellbore-frame special case: the
+    # frame's eye was only ever exempted to escape this same intermediate.
     by_view = dict(state.ui_hidden_rep_paths_by_view or {})
     bucket = list(by_view.get(bucket_key, []) or [])
     if rep_path in bucket:

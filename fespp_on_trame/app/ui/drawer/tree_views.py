@@ -548,13 +548,18 @@ def _eye_slot(controller):
                         ,
                     ),
                 )
+                # Blue when shown, grey when hidden — ALWAYS, whether or not a
+                # property is colouring the rep. It used to dim to
+                # `grey-lighten-1` under an active array, back when this eye's
+                # first click meant "give up the colouring" and it really was
+                # secondary. It is now the ONLY visibility control (colouring
+                # belongs to the array eye below), so dimming it misread as
+                # disabled exactly when it matters most: hiding a coloured rep.
                 vuetify3.VIcon(
                     icon=(f"({is_hidden_in_panel}) ? 'mdi-eye-closed' : 'mdi-eye'",),
                     size="small",
                     color=(
-                        f"!({has_active_array_in_panel})"
-                        f" ? (({is_hidden_in_panel}) ? 'grey-darken-1' : 'blue-darken-1')"
-                        " : 'grey-lighten-1'",
+                        f"({is_hidden_in_panel}) ? 'grey-darken-1' : 'blue-darken-1'",
                     ),
                     style="cursor: pointer;",
                     click=(controller.toggle_rep_visibility, "[item.path, panel.id]"),

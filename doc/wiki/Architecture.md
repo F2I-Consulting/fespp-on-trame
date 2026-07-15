@@ -211,9 +211,9 @@ Separately, `@state.change("ui_loaded_rep_paths") → scene_registry.sync_loaded
 
 ### (b) Eye toggle = show / hide
 
-Tree rep-eye click → `controller.toggle_rep_visibility(rep_path, panel_id)` → [`visibility.toggle_rep_visibility`](fespp_on_trame/app/core/engine/visibility.py). It is a 3-state chip:
-- **State (3) → (2):** if an array is active on this rep in this panel (and not a frame), `_clear_active_array(...)` drops the binding → SolidColor (same as un-checking the array eye), sweeps stale scalar bars.
-- **State (2) ↔ (1):** flips `rep_path` in `ui_hidden_rep_paths_by_view[bucket_key]` (mirrored to global `ui_hidden_rep_paths` iff this is the active panel). Resolves sources via `source_resolver.sources_for_rep_path` (IjkGrid → `ijk.show(view)`; ExtractBlock → `pvsimple.Show` + re-assert Representation/tint). Renders the **target panel's** `pv_view` and pushes the frame to `html_view` (per-panel), not just the active view.
+Tree rep-eye click → `controller.toggle_rep_visibility(rep_path, panel_id)` → [`visibility.toggle_rep_visibility`](fespp_on_trame/app/core/engine/visibility.py). It is a plain **show / hide** toggle — visibility and colouring are orthogonal, so this eye never touches the colour array: it flips `rep_path` in `ui_hidden_rep_paths_by_view[bucket_key]` (mirrored to global `ui_hidden_rep_paths` iff this is the active panel), resolves sources via `source_resolver.sources_for_rep_path` (IjkGrid → `ijk.show(view)`; ExtractBlock → `pvsimple.Show` + re-assert Representation/tint), then renders the **target panel's** `pv_view` and pushes the frame to `html_view` (per-panel), not just the active view.
+
+> It used to be a 3-state chip whose first click "gave up the colouring" (→ SolidColor) and only hid on the second, with a `_clear_active_array` helper and an `is_frame` exemption. That made hiding a rep necessarily DESTROY its active array, so **"hide the grid, keep its blocked wellbores coloured by PORO" was unexpressible** — and it violated the orthogonality this document opens with. Dropping a colour array is the array eye's job alone. Symmetrically, `active_array.toggle_dataarray_color` no longer implicitly un-hides + Shows a hidden rep: **colouring a hidden rep is a legal, useful state.**
 
 Markers (`toggle_marker_visibility`) and data-array eyes (`active_array.toggle_dataarray_color`) follow the same panel-targeted render+push pattern.
 

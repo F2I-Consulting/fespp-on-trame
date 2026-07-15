@@ -332,40 +332,19 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
             mirror[r_path] = new_value
         state.ui_active_array_by_rep = mirror
 
-    # When activating a property in a view where the rep is currently
-    # hidden (e.g. clicking the property eye on an empty render
-    # panel), implicitly show the rep — the user expects
-    # "show + color", not "color a hidden rep". Drop the rep from the
-    # hidden bucket and replay the IjkGrid / ExtractBlock show in the
-    # target view.
-    if new_value is not None:
-        hidden_by_view = dict(state.ui_hidden_rep_paths_by_view or {})
-        hidden_bucket = list(hidden_by_view.get(bucket_key, []) or [])
-        if r_path in hidden_bucket:
-            hidden_bucket.remove(r_path)
-            hidden_by_view[bucket_key] = hidden_bucket
-            state.ui_hidden_rep_paths_by_view = hidden_by_view
-            if active and active == bucket_key:
-                state.ui_hidden_rep_paths = list(hidden_bucket)
-            # Wellbore channel: do NOT show the legacy frame source — it
-            # would surface the frame's FIRST channel (frame-pathed
-            # ExtractBlock). The per-view extractor Show below
-            # (set_extract_channel) is the only thing that should render
-            # for a frame.
-            if not is_channel:
-                ijk = source_registry.get_ijk_grid(r_path)
-                if ijk is not None:
-                    try:
-                        ijk.show(view=view)
-                    except Exception:
-                        pass
-                else:
-                    eb = source_registry.get_extract_block(r_path)
-                    if eb is not None and eb.source is not None and view is not None:
-                        try:
-                            pvsimple.Show(eb.source, view=view)
-                        except Exception:
-                            pass
+    # This eye picks the COLOUR ARRAY and never touches visibility — showing
+    # or hiding a rep is the geometry eye's job alone (see
+    # `visibility.toggle_rep_visibility`). Colouring a hidden rep is a legal,
+    # useful state: it is what lets a user hide the grid and keep its blocked
+    # wellbores / channels coloured, and swap the array without the grid
+    # popping back each time.
+    #
+    # This used to implicitly un-hide + Show ("the user expects show + color,
+    # not color a hidden rep"), which broke that outright — and worse, it
+    # replayed the show on the LEGACY `eb.source` while
+    # `toggle_rep_visibility` hides whatever `sources_for_rep_path` returns.
+    # The two disagreed, so a rep re-shown from here escaped the next hide and
+    # lingered on screen in SolidColor.
 
     # Apply ColorBy on the target view's displays explicitly here
     # (rather than relying on @state.change of the global map) because
