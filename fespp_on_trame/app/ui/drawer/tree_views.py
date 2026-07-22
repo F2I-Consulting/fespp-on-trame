@@ -21,13 +21,17 @@ from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 # Domain-level dependency: a WellboreChannel or WellboreMarker requires
 # its Wellbore's Trajectory (the geometry that anchors per-depth log
 # values or marker positions). When the user checks one of these, we
-# auto-check the Wellbore's Trajectory child too. The rule is STRUCTURAL
-# (any node under a Wellbore), not kind-based: a well log carries a plain
-# property kind ("ContinuousProperty"/"DiscreteProperty" under a Frame —
-# verified on a real EPC), so no kind list can name the dependents. The
-# original kind list also assumed "Wellbore…"-prefixed names the assembly
-# never uses ("Marker", "Trajectory"), which made this auto-check a
-# silent no-op since day one.
+# auto-check the Wellbore's Trajectory child too. The trigger is
+# STRUCTURAL — "an element of a frame" — not leaf-kind-based: a well log
+# carries a plain property kind ("ContinuousProperty"/"DiscreteProperty"
+# under a Frame; the `kind` attribute is the RESQML XML tag, never the
+# "Wellbore…"-prefixed enum names the original kind list assumed, which
+# made this auto-check a silent no-op since day one). The FRAME kinds
+# below scope the rule: an element of one of these (or the folder itself,
+# whose check cascades to its elements) pulls the trajectory in; other
+# wellbore children (Completion, Perforation…) do not.
+_FRAME_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
+                "WellboreFrame", "WellboreMarkerFrame")
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -85,12 +89,23 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             # partial stub (no checkbox, can't load) to the selection.
             for desc in tree.find_all_selectable_descendant_ids(node_id):
                 _add_implicit(desc)
-        wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
-        if wb is not None:
-            traj = (tree.find_first_child_of_type(wb, "Trajectory")
-                    or tree.find_first_child_of_type(wb, "WellboreTrajectory"))
-            if traj is not None and traj != node_id:
-                _add_implicit(traj)
+        # Trajectory dependency, scoped to the FRAMES: an element of a
+        # (marker) frame — a log or a marker — renders ALONG the well's
+        # trajectory, so checking one pulls the trajectory in. The frame
+        # folder itself triggers too (its check cascades to its elements).
+        # Deliberately NOT any-node-under-a-Wellbore: a Completion or a
+        # Perforation does not need the trajectory forced in.
+        in_frame_scope = kind in _FRAME_KINDS or any(
+            tree.find_parent_node_id_with_type(node_id, fk) is not None
+            for fk in _FRAME_KINDS
+        )
+        if in_frame_scope:
+            wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
+            if wb is not None:
+                traj = (tree.find_first_child_of_type(wb, "Trajectory")
+                        or tree.find_first_child_of_type(wb, "WellboreTrajectory"))
+                if traj is not None and traj != node_id:
+                    _add_implicit(traj)
         # NOTE: a BlockedWellbore also force-displays its referenced trajectory,
         # but that trajectory lives in the WELL tab (a different per-tab
         # selection var) while the blocked well is in the RESERVOIR tab — it
