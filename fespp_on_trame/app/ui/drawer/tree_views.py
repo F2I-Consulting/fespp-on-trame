@@ -26,12 +26,17 @@ from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 # carries a plain property kind ("ContinuousProperty"/"DiscreteProperty"
 # under a Frame; the `kind` attribute is the RESQML XML tag, never the
 # "Wellbore…"-prefixed enum names the original kind list assumed, which
-# made this auto-check a silent no-op since day one). The FRAME kinds
-# below scope the rule: an element of one of these (or the folder itself,
-# whose check cascades to its elements) pulls the trajectory in; other
-# wellbore children (Completion, Perforation…) do not.
+# made this auto-check a silent no-op since day one). The kinds below
+# scope the rule: an element of one of these (or the container itself,
+# whose check cascades to its elements) pulls the trajectory in. The
+# completions belong here too: a perforation is COMPUTED from the
+# trajectory (the C++ mapper converts its MD values to XYZ along it —
+# WitsmlWellboreCompletionPerforationToVtkPolyData), so it renders
+# nonsensically without the well path. Both tag and legacy spellings.
 _FRAME_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
-                "WellboreFrame", "WellboreMarkerFrame")
+                "WellboreFrame", "WellboreMarkerFrame",
+                "WellboreCompletion", "Completion",
+                "Perforation", "Perfo")
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -89,12 +94,12 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             # partial stub (no checkbox, can't load) to the selection.
             for desc in tree.find_all_selectable_descendant_ids(node_id):
                 _add_implicit(desc)
-        # Trajectory dependency, scoped to the FRAMES: an element of a
-        # (marker) frame — a log or a marker — renders ALONG the well's
-        # trajectory, so checking one pulls the trajectory in. The frame
-        # folder itself triggers too (its check cascades to its elements).
-        # Deliberately NOT any-node-under-a-Wellbore: a Completion or a
-        # Perforation does not need the trajectory forced in.
+        # Trajectory dependency, scoped by _FRAME_KINDS: logs, markers and
+        # perforations all render ALONG (or are computed FROM) the well's
+        # trajectory, so checking one pulls the trajectory in. The frame /
+        # completion container triggers too (its check cascades to its
+        # elements). Deliberately NOT any-node-under-a-Wellbore, to leave
+        # future wellbore children without this coupling unless decided.
         in_frame_scope = kind in _FRAME_KINDS or any(
             tree.find_parent_node_id_with_type(node_id, fk) is not None
             for fk in _FRAME_KINDS
