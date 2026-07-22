@@ -158,6 +158,60 @@ def resolve_chain_kind(tree, rep_path, array_name, source_proxy, assoc):
     return (kind, uniques, labels)
 
 
+# RESQML integer properties cannot carry NaN, so writers (Petrel at
+# least) declare `<NullValue>` = INT32_MAX (or the int64 / MIN variants)
+# for inactive cells and FESPP delivers those cells verbatim in the VTK
+# array — `GetRange()` on FIPBLOCK reads (1, 2147483647). Only the
+# double-array path gets the C++ integer-null → NaN conversion.
+INT_NULL_SENTINELS = frozenset({
+    float(2 ** 31 - 1), float(-(2 ** 31)),
+    float(2 ** 63 - 1), float(-(2 ** 63)),
+})
+
+
+def is_null_sentinel(value):
+    """True when `value` is a RESQML integer NullValue sentinel (an
+    inactive cell, never a real category)."""
+    try:
+        return float(value) in INT_NULL_SENTINELS
+    except (TypeError, ValueError):
+        return False
+
+
+def chain_domain(kind, unique_values, labels, fallback_range):
+    """Slider domain + cleaned uniques/labels for a fresh chain entry.
+
+    The NullValue sentinel (see `INT_NULL_SENTINELS`) lands in the raw
+    array range, stretching a categorical threshold slider over ±2^31:
+    the real categories collapse into the first pixels of the track and
+    their tick labels pile up unreadably. Discrete / Categorical: drop
+    the sentinels from the unique scan and the label map; a Categorical
+    entry with LUT labels additionally spans ALL annotated keys, so
+    every lookup category gets a tick whether present in the data or
+    not. Continuous passes through untouched (float nulls are NaN and
+    never reach `GetRange()`).
+
+    Returns `(range, unique_values, labels)`."""
+    if kind == "Continuous":
+        return fallback_range, list(unique_values or []), dict(labels or {})
+    cleaned = [v for v in (unique_values or []) if not is_null_sentinel(v)]
+    kept_labels = {
+        k: v for k, v in (labels or {}).items() if not is_null_sentinel(k)
+    }
+    domain_values = set(cleaned)
+    if kind == "Categorical" and kept_labels:
+        domain_values |= set(kept_labels)
+    if not domain_values:
+        return fallback_range, cleaned, kept_labels
+    lo = float(min(domain_values))
+    hi = float(max(domain_values))
+    if hi <= lo:
+        # Degenerate single-category domain — VRangeSlider needs a
+        # non-zero span to place its thumbs.
+        hi = lo + 1.0
+    return (lo, hi), cleaned, kept_labels
+
+
 def _kind_in_subtree(tree, root_id, sanitized):
     """`propKind` of the property whose sanitized title is `sanitized`
     anywhere under `root_id`, or None when there is no match."""

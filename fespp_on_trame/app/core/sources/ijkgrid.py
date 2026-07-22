@@ -808,10 +808,18 @@ class IjkGrid:
         # rep_data extractor — that's the unfiltered VTK array store,
         # so scanning uniques there reflects the data's true value
         # set, not what's left after slicers / chain filtering.
-        from fespp_on_trame.app.core.sources.extract_block import resolve_chain_kind
+        from fespp_on_trame.app.core.sources.extract_block import (
+            chain_domain, resolve_chain_kind,
+        )
         kind, unique_values, labels = resolve_chain_kind(
             self._tree, rep_path, array,
             self._src_extract_init, assoc,
+        )
+        # Discrete / Categorical: shrink the slider domain to the real
+        # categories — the raw range includes the NullValue sentinel
+        # (INT32_MAX) of inactive cells and spans billions.
+        rng, unique_values, labels = chain_domain(
+            kind, unique_values, labels, rng,
         )
 
         entry = _IjkChainEntry(

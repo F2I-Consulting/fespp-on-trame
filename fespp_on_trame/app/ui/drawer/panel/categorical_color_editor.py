@@ -16,6 +16,7 @@ from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import source_resolver
+from fespp_on_trame.app.core.sources.extract_block import is_null_sentinel
 from fespp_on_trame.app.utils.naming import make_valid_vtk_name
 
 server = get_server()
@@ -290,7 +291,14 @@ class CategoricalColorEditor(html.Div):
                 if v != v:  # NaN
                     continue
                 unique_vals.add(int(v))
-            sorted_vals = sorted(unique_vals)
+            # RESQML integer NullValue sentinels (INT32_MAX & friends)
+            # arrive verbatim in the array — an integer array cannot
+            # carry NaN. They are inactive cells, not a category: drop
+            # them here, or they show up as an unnamed extra row AND
+            # get written back into the LUT Annotations below.
+            sorted_vals = [
+                v for v in sorted(unique_vals) if not is_null_sentinel(v)
+            ]
         except Exception:
             state.categorical_entries = []
             return

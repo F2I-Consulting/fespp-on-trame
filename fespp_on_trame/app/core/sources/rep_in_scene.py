@@ -650,7 +650,7 @@ class RepInScene:
 
         from fespp_on_trame.app.core.sources.representation import _sanitize
         from fespp_on_trame.app.core.sources.extract_block import (
-            ChainEntry, resolve_chain_kind,
+            ChainEntry, chain_domain, resolve_chain_kind,
         )
         rep_token = _sanitize(self.rep_path)
         view_token = _sanitize(str(self.scene.view_id))
@@ -667,6 +667,23 @@ class RepInScene:
             base_name = f"{base_name}_{suffix}"
 
         rng = self.array_data_range(array) or (0.0, 1.0)
+
+        # Resolve property kind (Continuous / Discrete / Categorical)
+        # + unique values (for Discrete / Categorical ticks) + LUT
+        # labels (Categorical only). Drives the threshold panel's
+        # slider variant via `to_dict()`. Resolved BEFORE the proxy so
+        # its initial bounds use the corrected domain: for Discrete /
+        # Categorical, `chain_domain` shrinks the raw range — which
+        # includes the NullValue sentinel (INT32_MAX) of inactive
+        # cells — down to the real categories.
+        kind, unique_values, labels = resolve_chain_kind(
+            self.scene.tree, self.rep_path, array,
+            upstream_root, assoc,
+        )
+        rng, unique_values, labels = chain_domain(
+            kind, unique_values, labels, rng,
+        )
+
         upstream = self._effective_input_for_parent(parent_name)
         try:
             from paraview import simple as pvsimple
@@ -680,15 +697,6 @@ class RepInScene:
             proxy.UpdatePipeline()
         except Exception as exc:
             return None
-
-        # Resolve property kind (Continuous / Discrete / Categorical)
-        # + unique values (for Discrete / Categorical ticks) + LUT
-        # labels (Categorical only). Drives the threshold panel's
-        # slider variant via `to_dict()`.
-        kind, unique_values, labels = resolve_chain_kind(
-            self.scene.tree, self.rep_path, array,
-            upstream_root, assoc,
-        )
 
         entry = ChainEntry(
             name=base_name,
