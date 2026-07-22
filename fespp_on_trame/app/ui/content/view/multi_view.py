@@ -46,27 +46,19 @@ class FesppMultiView(ptc.MultiView):
         # before creating another one.
         self._stats_panel_id = None
         super().__init__(**kwargs)
-        # ptc's stock right-header "add view" button is a `flat` VBtn:
-        # flat keeps the surface (white) background, so it rendered as
-        # an anonymous white disc in the dark dockview tab row — unlike
-        # every other bar button (text variant, white glyph). Re-register
-        # the template ptc points its rightHeaderActionsComponent at,
-        # restyled to match the bar chrome and tooltipped. Same
-        # behaviour (direct add_view).
+        # ptc's stock right-header component is an "add view" (+) VBtn
+        # (a flat white disc over the dark tab row). V1 ships WITHOUT
+        # user-driven view creation — multi-view isn't stable enough to
+        # expose — so re-register the template ptc points its
+        # rightHeaderActionsComponent at as EMPTY (the last layout
+        # registered under a name wins). The analytics panels (stats /
+        # distribution / compare) still create their tabs
+        # programmatically through add_view(); only the clickable
+        # RenderView entry point is gone. ptc's watermark keeps its
+        # "Create RenderView" button as sole recovery if the last
+        # panel is ever closed.
         with DivLayout(self.server, "ptc-multiview-add") as add_actions:
             add_actions.root.style = "height: 100%;"
-            add_actions.root.classes = "d-flex align-center px-2"
-            with vuetify3.VTooltip(location="bottom"):
-                with vuetify3.Template(v_slot_activator="{ props }"):
-                    vuetify3.VBtn(
-                        v_bind="props",
-                        icon="mdi-plus",
-                        variant="text",
-                        size="small",
-                        color="white",
-                        click=self.add_view,
-                    )
-                html.Span("Add a view")
         # Public state — tree views iterate this to render one eye per
         # render panel on each rep / data-array node. Diff panels are
         # excluded because their content is driven by the diff dialog,
@@ -1365,16 +1357,17 @@ class FesppMultiView(ptc.MultiView):
         # standard CSS var). `right` is reactive: when the top toolbar
         # is hidden, the floating show-toolbar chevron lives at the
         # viewport top-right, so the chrome slides left to avoid overlap.
-        # Base offset 44px, NOT 8: the far right of the tab row belongs
-        # to dockview's right-header-actions (the ptc "+" add-view
-        # button) — at 8px this chrome sat underneath it, hiding the ⚙.
+        # The far right of the tab row is dockview's right-header-actions
+        # slot; ptc's "+" add-view button lived there and covered this
+        # chrome at right:8px, until __init__ re-registered that
+        # template empty (no user-driven view creation in V1).
         with html.Div(
             classes="d-flex align-center",
             style=(
                 "`position: absolute;"
                 " top: calc(-1 * var(--dv-tabs-and-actions-container-height, 35px));"
                 " height: var(--dv-tabs-and-actions-container-height, 35px);"
-                " right: ${toolbar_visible ? '44px' : '92px'};"
+                " right: ${toolbar_visible ? '8px' : '56px'};"
                 " z-index: 5;"
                 " gap: 4px;"
                 " pointer-events: auto;`",
