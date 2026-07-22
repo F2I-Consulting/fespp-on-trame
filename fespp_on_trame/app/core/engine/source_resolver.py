@@ -697,6 +697,34 @@ def scene_lut_for_view(view, array_name):
     return pvsimple.GetColorTransferFunction(array_name)
 
 
+# Corner rotation for simultaneous colour bars (multi-source V1: the grid
+# and a well log each own a LUT + bar). Every bar spawns at PV's default
+# spot, so two visible bars overlap unreadably without this.
+_BAR_CORNERS = ("Lower Right Corner", "Upper Right Corner",
+                "Lower Left Corner", "Upper Left Corner")
+
+
+def layout_visible_scalar_bars(view=None):
+    """Spread the view's VISIBLE colour bars over distinct corners, in the
+    stable order of the view's representation list (first bar keeps the
+    default lower-right). No-op on hidden bars, never moves anything the
+    sweep is about to reap."""
+    view = view if view is not None else pvsimple.GetActiveView()
+    if view is None:
+        return
+    i = 0
+    for r in (view.Representations or []):
+        try:
+            if r.SMProxy.GetXMLName() != "ScalarBarWidgetRepresentation":
+                continue
+            if not getattr(r, "Visibility", 0):
+                continue
+            r.WindowLocation = _BAR_CORNERS[min(i, len(_BAR_CORNERS) - 1)]
+            i += 1
+        except Exception:
+            continue
+
+
 def reassert_active_scalar_bars(state, source_registry, view=None):
     """Enforce, at the end of a load batch, the invariant "the active
     array's colour bar is VISIBLE". Something inside the batch raw-hides
@@ -719,6 +747,7 @@ def reassert_active_scalar_bars(state, source_registry, view=None):
                         break
         except Exception:
             continue
+    layout_visible_scalar_bars(view)
 
 
 def _clear_coloring(displays, view):
@@ -917,7 +946,9 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     # property don't linger alongside the new one. The TransferFunction
     # Manager only hides bars whose LUT is unreferenced by any visible
     # display, so our freshly-shown bar (bound via ColorBy above)
-    # survives the sweep.
+    # survives the sweep. Then spread whatever remains visible over
+    # distinct corners (grid + well log = two bars, same default spot).
     if target_view is not None:
         hide_unused_scalar_bars(view=target_view)
+        layout_visible_scalar_bars(target_view)
     return True
