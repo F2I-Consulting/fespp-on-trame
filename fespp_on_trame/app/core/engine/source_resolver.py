@@ -610,15 +610,50 @@ def target_view_and_panel():
         return None, ""
 
 
-def render_and_push_target(controller):
-    """Render the drawer target's pv_view and push a fresh vtk.js
-    frame to its panel — used by edit handlers that mutate a per-
-    view proxy (LUT / PWF / display.Representation / …) and need the
-    target's browser to actually show the new state.
+# Pending debounced pushes, keyed by panel id — see render_and_push_target.
+_pending_target_push: dict = {}
 
-    Bypasses `controller.view_update()` (which only refreshes the
-    active panel) in favour of `view_update_for(panel_id)`. Falls
-    back to `view_update()` when the per-panel hook isn't wired."""
+
+def render_and_push_target(controller):
+    """Render the drawer target's pv_view and push a fresh vtk.js frame to
+    its panel — used by edit handlers that mutate a per-view proxy (LUT /
+    PWF / display.Representation / …) and need the target's browser to
+    actually show the new state.
+
+    COALESCED: one user gesture fans out to several state handlers (colors,
+    opacities, nan_color, preset …) and each used to render + push its own
+    full frame — six ~370 ms frames per property switch, measured, all
+    identical but the last. Trailing-edge debounce per panel: every call
+    re-arms a short timer and only the last one actually renders. Falls
+    back to an immediate render when no event loop is running."""
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+    except Exception:
+        _render_and_push_target_now(controller)
+        return
+    _, panel_id = target_view_and_panel()
+    key = panel_id or "_active"
+    pending = _pending_target_push.pop(key, None)
+    if pending is not None:
+        try:
+            pending.cancel()
+        except Exception:
+            pass
+
+    def _fire():
+        _pending_target_push.pop(key, None)
+        _render_and_push_target_now(controller)
+
+    _pending_target_push[key] = loop.call_later(0.05, _fire)
+
+
+def _render_and_push_target_now(controller):
+    """The actual render + push (pre-debounce body of
+    `render_and_push_target`). Bypasses `controller.view_update()` (which
+    only refreshes the active panel) in favour of `view_update_for
+    (panel_id)`. Falls back to `view_update()` when the per-panel hook
+    isn't wired."""
     pv_view, panel_id = target_view_and_panel()
     if pv_view is not None:
         try:
@@ -687,6 +722,15 @@ def blocked_wellbore_rep_paths_for(tree, rep_path):
     try:
         rep_id = tree.find_node_id(rep_path)
         if rep_id is None:
+            return []
+        # Fan out ONLY from the grid GEOMETRY rep. A BlockedWellbore sits
+        # under the SAME GridContainer, so without this guard a wellbore's
+        # own apply/clear would walk every sibling wellbore — the active-map
+        # sweep then goes O(N²) (82 reps × 82 walks ≈ 6700 display
+        # resolutions ≈ 9 s, measured), and each wellbore's None-apply mass-
+        # clears the colouring of all its siblings, surviving only by
+        # iteration-order luck.
+        if (tree.find_type(rep_id) or "") not in ("IjkGrid", "UnstructuredGrid"):
             return []
         container = tree.find_parent_node_id_with_type(rep_id, "GridContainer")
         if container is None:
