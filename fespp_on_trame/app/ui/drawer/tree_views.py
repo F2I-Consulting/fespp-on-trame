@@ -37,6 +37,12 @@ _FRAME_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
                 "WellboreFrame", "WellboreMarkerFrame",
                 "WellboreCompletion", "Completion",
                 "Perforation", "Perfo")
+# The CONTAINER subset of the above — the only kinds the empty-shell
+# garbage collection may drop. A Perforation is an ELEMENT: it has no
+# descendants and must never be collected as an "empty container".
+_FRAME_CONTAINER_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
+                          "WellboreFrame", "WellboreMarkerFrame",
+                          "WellboreCompletion", "Completion")
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -141,6 +147,51 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
         if x not in descendants_to_drop and x not in seen:
             result.append(x)
             seen.add(x)
+
+    if removed:
+        # Garbage-collect frame / completion containers left with NO selected
+        # descendant. Checking a marker implicitly adds its MarkerFrame (the
+        # rep), but unchecking the marker never removed it — the stale, empty
+        # frame then counted as a "dependent" and wrongly vetoed a bulk
+        # trajectory unselect right after select-all + unselect-all markers.
+        empty_shells = set()
+        for x in result:
+            if (tree.find_type(x) or "") not in _FRAME_CONTAINER_KINDS:
+                continue
+            if not any(d in seen for d in tree.find_all_descendant_ids(x)):
+                empty_shells.add(x)
+        if empty_shells:
+            result = [x for x in result if x not in empty_shells]
+            seen -= empty_shells
+
+        # Trajectory veto — the ONE place it lives, so the unitary uncheck
+        # and the bulk unselect behave identically: a trajectory cannot
+        # leave while its well still has selected frame-scope nodes (logs,
+        # markers, perforations render along / are computed from it).
+        kept_wells = []
+        for node_id in removed:
+            if (tree.find_type(node_id) or "") not in (
+                    "Trajectory", "WellboreTrajectory"):
+                continue
+            if node_id in seen:
+                continue  # already retained (e.g. re-added implicitly)
+            wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
+            if wb is None:
+                continue
+            if any(d in seen for d in tree.find_all_descendant_ids(wb)
+                   if d != node_id):
+                result.append(node_id)
+                seen.add(node_id)
+                kept_wells.append(tree.find_title(wb) or "?")
+        if kept_wells:
+            # The app's amber warning snackbar (free-text body).
+            _state.empty_color_snackbar_text = (
+                "Trajectory kept for: " + ", ".join(sorted(set(kept_wells)))
+                + " — selected logs/markers depend on it. Unselect them"
+                " first to unselect the trajectory."
+            )
+            _state.empty_color_snackbar_visible = False
+            _state.empty_color_snackbar_visible = True
     return result
 
 
@@ -806,33 +857,11 @@ class TreeViews:
                 for nid in matched:
                     if (self._tree.find_type(nid) or "") in _GROUPING_KINDS:
                         to_drop.update(self._tree.find_all_descendant_ids(nid))
-                # A trajectory whose WELL still has other checked nodes
-                # (logs, markers, frames) must survive the bulk unselect —
-                # those dependents render along it. Keep it and tell the
-                # user which wells were held back.
-                kept_wells = []
-                would_remain = set(prev) - to_drop
-                for nid in sorted(to_drop):
-                    if (self._tree.find_type(nid) or "") not in (
-                            "Trajectory", "WellboreTrajectory"):
-                        continue
-                    wb = self._tree.find_parent_node_id_with_type(nid, "Wellbore")
-                    if wb is None:
-                        continue
-                    if any(d in would_remain
-                           for d in self._tree.find_all_descendant_ids(wb)
-                           if d != nid):
-                        to_drop.discard(nid)
-                        kept_wells.append(self._tree.find_title(wb) or "?")
-                if kept_wells:
-                    # Reuse the app's amber warning snackbar (free-text body).
-                    state.empty_color_snackbar_text = (
-                        "Trajectory kept for: " + ", ".join(sorted(kept_wells))
-                        + " — selected logs/markers depend on it. Unselect"
-                        " them first to unselect the trajectory."
-                    )
-                    state.empty_color_snackbar_visible = False
-                    state.empty_color_snackbar_visible = True
+                # No trajectory guard here: `_expand_selection_with_deps`
+                # below owns the veto (+ snackbar), so the bulk unselect and
+                # a unitary uncheck behave identically — and it first
+                # garbage-collects stale empty frames, which this local
+                # guard used to count as "dependents".
                 raw = [x for x in prev if x not in to_drop]
             else:
                 raw = prev + [n for n in matched if n not in set(prev)]
