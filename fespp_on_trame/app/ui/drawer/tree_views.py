@@ -1,3 +1,5 @@
+import json
+
 from trame.app import get_server
 from trame.widgets import html
 from trame.widgets import vuetify3 as vuetify3
@@ -43,6 +45,56 @@ _FRAME_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
 _FRAME_CONTAINER_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
                           "WellboreFrame", "WellboreMarkerFrame",
                           "WellboreCompletion", "Completion")
+
+# The "Select / unselect ▾" menu, per tab: (label, kinds acted on,
+# kinds COUNTED for the "(N)" badge). The two differ when the action
+# targets a grouping folder: "All blocked wellbores" selects the ONE
+# BlockedWellboreFolder (its check cascades) but the user reads the
+# number of WELLBORES.
+_BULK_ACTIONS = {
+    "reservoir": [
+        ("All grids", ["IjkGrid", "UnstructuredGrid"],
+         ["IjkGrid", "UnstructuredGrid"]),
+        ("All blocked wellbores", ["BlockedWellboreFolder"],
+         ["BlockedWellbore"]),
+    ],
+    "surface": [
+        ("All surfaces",
+         ["Grid2d", "TriangulatedSet", "PointSet", "Polyline", "PolylineSet"],
+         ["Grid2d", "TriangulatedSet", "PointSet", "Polyline", "PolylineSet"]),
+    ],
+    "well": [
+        ("All trajectories", ["Trajectory", "WellboreTrajectory"],
+         ["Trajectory", "WellboreTrajectory"]),
+        ("All markers", ["Marker", "WellboreMarker"],
+         ["Marker", "WellboreMarker"]),
+    ],
+}
+
+
+def _count_kinds(items, wanted):
+    """Recursive count of subtree items whose type is in `wanted`."""
+    n = 0
+    for it in items or []:
+        if it.get("type") in wanted:
+            n += 1
+        n += _count_kinds(it.get("children"), wanted)
+    return n
+
+
+_state.setdefault("ui_bulk_counts", {})
+
+
+@_state.change("ui_subtree_reservoir", "ui_subtree_surface", "ui_subtree_well")
+def _recompute_bulk_counts(**_):
+    """Refresh the "(N)" badges of the Select / unselect menu whenever a
+    tab's subtree is (re)published — import, hierarchy-mode switch."""
+    counts = {}
+    for tab, actions in _BULK_ACTIONS.items():
+        items = getattr(_state, f"ui_subtree_{tab}", []) or []
+        for label, _sel_kinds, count_kinds in actions:
+            counts[f"{tab}|{label}"] = _count_kinds(items, set(count_kinds))
+    _state.ui_bulk_counts = counts
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -963,10 +1015,12 @@ class TreeViews:
 
     def _select_toolbar(self, tab, actions):
         """A 'Select / unselect ▾' dropdown above a tree tab. Each entry in
-        `actions` is `(label, js_kinds_array)` and offers BOTH bulk actions
-        on every node of those kinds: a check-all button (load) and an
-        uncheck-all button (unload). Drives node SELECTION (data load),
-        independent of the per-view eyes."""
+        `actions` is a `_BULK_ACTIONS` triple `(label, select_kinds,
+        count_kinds)` and offers BOTH bulk actions on every node of the
+        select kinds: a check-all button (load) and an uncheck-all button
+        (unload), with a live "(N)" object count from `ui_bulk_counts`.
+        Drives node SELECTION (data load), independent of the per-view
+        eyes."""
         with html.Div(classes="px-1 pb-1"):
             with vuetify3.VMenu(location="bottom start", close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
@@ -978,9 +1032,17 @@ class TreeViews:
                         density="comfortable",
                         append_icon="mdi-menu-down",
                     )
-                with vuetify3.VList(density="compact", min_width="240"):
-                    for label, kinds in actions:
-                        with vuetify3.VListItem(title=label):
+                with vuetify3.VList(density="compact", min_width="260"):
+                    for label, sel_kinds, _count_kinds in actions:
+                        kinds = json.dumps(sel_kinds)
+                        count_key = f"{tab}|{label}"
+                        with vuetify3.VListItem(
+                            title=(
+                                f"'{label} ('"
+                                f" + (((ui_bulk_counts || {{}})['{count_key}']) || 0)"
+                                " + ')'",
+                            ),
+                        ):
                             with vuetify3.Template(v_slot_append=True):
                                 # icon=True + explicit VIcon child: Vuetify 3
                                 # drops the `icon="mdi-…"` glyph as soon as the
@@ -1017,10 +1079,7 @@ class TreeViews:
     def reservoir_tree(self):
         """Render the Reservoir tab's tree (IjkGrid / UnstructuredGrid
         roots and their property descendants)."""
-        self._select_toolbar("reservoir", [
-            ("All grids", "['IjkGrid','UnstructuredGrid']"),
-            ("All blocked wellbores", "['BlockedWellboreFolder']"),
-        ])
+        self._select_toolbar("reservoir", _BULK_ACTIONS["reservoir"])
         with vuetify3.VTreeview(
             slim=True,
             density="comfortable",
@@ -1080,9 +1139,7 @@ class TreeViews:
                 _eye_slot(self.controller)
 
     def surface_tree(self):
-        self._select_toolbar("surface", [
-            ("All surfaces", "['Grid2d','TriangulatedSet','PointSet','Polyline','PolylineSet']"),
-        ])
+        self._select_toolbar("surface", _BULK_ACTIONS["surface"])
         with vuetify3.VTreeview(
             slim=True,
             density="compact",
@@ -1141,10 +1198,7 @@ class TreeViews:
                 _eye_slot(self.controller)
 
     def well_tree(self):
-        self._select_toolbar("well", [
-            ("All trajectories", "['Trajectory','WellboreTrajectory']"),
-            ("All markers", "['Marker','WellboreMarker']"),
-        ])
+        self._select_toolbar("well", _BULK_ACTIONS["well"])
         with vuetify3.VTreeview(
             slim=True,
             density="compact",
