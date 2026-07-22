@@ -697,6 +697,30 @@ def scene_lut_for_view(view, array_name):
     return pvsimple.GetColorTransferFunction(array_name)
 
 
+def reassert_active_scalar_bars(state, source_registry, view=None):
+    """Enforce, at the end of a load batch, the invariant "the active
+    array's colour bar is VISIBLE". Something inside the batch raw-hides
+    the freshly-shown bar (observed live: display visible and bound to the
+    scoped LUT, bar already off before data_load's teardown sweep — the
+    writer bypasses every helper here and two probe rounds could not name
+    it). Rather than chase it further, re-show the bar for every rep that
+    ends the batch with an active array; the later hide-unused sweeps then
+    PRESERVE it, since its LUT is referenced by a visible display."""
+    view = view if view is not None else pvsimple.GetActiveView()
+    if view is None:
+        return
+    for rep_path, array_path in dict(state.ui_active_array_by_rep or {}).items():
+        if not array_path:
+            continue
+        try:
+            for d in displays_for_rep_path(source_registry, rep_path, view=view):
+                if getattr(d, "Visibility", 0) and getattr(d, "LookupTable", None) is not None:
+                    if leaf_rep.scalar_bar_visibility(d.LookupTable, view, True):
+                        break
+        except Exception:
+            continue
+
+
 def _clear_coloring(displays, view):
     """Drop ColorBy to SolidColor and hide the stale scalar bar on
     every display. Shared by the deselect path (array_path falsy) and

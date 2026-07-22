@@ -343,6 +343,17 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     except Exception:
         pass
 
+    # A load batch must END with the active array's colour bar visible —
+    # something mid-batch raw-hides the freshly shown bar (observed live on a
+    # categorical property; the writer bypasses every scalar-bar helper).
+    # Re-asserting here is safe: later hide-unused sweeps preserve a bar
+    # whose LUT is referenced by a visible display.
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver
+        source_resolver.reassert_active_scalar_bars(state, source_registry, view=view)
+    except Exception:
+        pass
+
     state.view_update = True
     # Reliable client refresh — render the (possibly empty) scene and push a
     # fresh frame to the client. Render UNCONDITIONALLY: an empty selection
