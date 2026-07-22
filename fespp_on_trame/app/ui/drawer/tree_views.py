@@ -21,8 +21,13 @@ from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 # Domain-level dependency: a WellboreChannel or WellboreMarker requires
 # its Wellbore's Trajectory (the geometry that anchors per-depth log
 # values or marker positions). When the user checks one of these, we
-# auto-check the Wellbore's Trajectory child too.
-_WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY = ("WellboreChannel", "WellboreMarker")
+# auto-check the Wellbore's Trajectory child too. Both spellings of each
+# kind are listed: the assembly says "Marker" / "Trajectory" (verified on
+# a real EPC) while older code assumed the "Wellbore…"-prefixed names —
+# that mismatch made this auto-check a silent no-op since day one.
+_WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY = (
+    "WellboreChannel", "Channel", "WellboreMarker", "Marker",
+)
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -83,7 +88,8 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
         if kind in _WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY:
             wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
             if wb is not None:
-                traj = tree.find_first_child_of_type(wb, "WellboreTrajectory")
+                traj = (tree.find_first_child_of_type(wb, "Trajectory")
+                        or tree.find_first_child_of_type(wb, "WellboreTrajectory"))
                 _add_implicit(traj)
         # NOTE: a BlockedWellbore also force-displays its referenced trajectory,
         # but that trajectory lives in the WELL tab (a different per-tab
@@ -731,9 +737,11 @@ class TreeViews:
             setattr(state, select_var, new_curr)
 
         @controller.set("tree_select_kinds")
-        def tree_select_kinds(tab, kinds):
-            """Bulk-SELECT (load) every node whose kind is in `kinds`, in
-            `tab`, unioned with the current selection.
+        def tree_select_kinds(tab, kinds, mode="add"):
+            """Bulk select / unselect every node whose kind is in `kinds`,
+            in `tab`. `mode="add"` unions them with the current selection
+            (LOAD); `mode="remove"` drops them — and, for grouping kinds,
+            their whole subtree — from it (UNLOAD).
 
             Walks `find_all_descendant_ids` (NOT the selectable-only variant)
             so GROUPING folder kinds — e.g. `BlockedWellboreFolder` for the
@@ -757,20 +765,32 @@ class TreeViews:
             select_var = f"ui_select_node_{tab}"
             roots = getattr(state, f"ui_subtree_{tab}", []) or []
             prev = list(getattr(state, select_var, []) or [])
-            raw = list(prev)
-            seen = set(prev)
+            matched = []
+            matched_set = set()
             for root in roots:
                 rid = root.get("id")
                 if rid is None:
                     continue
                 for nid in [rid] + self._tree.find_all_descendant_ids(rid):
-                    if nid in seen:
+                    if nid in matched_set:
                         continue
                     if self._tree.find_type(nid) in wanted:
-                        raw.append(nid)
-                        seen.add(nid)
+                        matched.append(nid)
+                        matched_set.add(nid)
+            if mode == "remove":
+                # A grouping's uncheck must take its subtree along, exactly
+                # like unchecking the folder by hand — the removal cascade of
+                # `_expand_selection_with_deps` keys off the DELTA, so build
+                # the removal set explicitly here.
+                to_drop = set(matched_set)
+                for nid in matched:
+                    if (self._tree.find_type(nid) or "") in _GROUPING_KINDS:
+                        to_drop.update(self._tree.find_all_descendant_ids(nid))
+                raw = [x for x in prev if x not in to_drop]
+            else:
+                raw = prev + [n for n in matched if n not in set(prev)]
             if len(raw) == len(prev):
-                return  # nothing new to select
+                return  # nothing to change
             expanded = _expand_selection_with_deps(raw, prev, self._tree)
             # Pre-seed the shared `_prev_select_<tab>` tracker with the final
             # set. BOTH reactive handlers key off it, and a bulk select adds a
@@ -866,28 +886,51 @@ class TreeViews:
                     setattr(self.state, state_key, [])
 
     def _select_toolbar(self, tab, actions):
-        """A 'Select ▾' dropdown above a tree tab. Each entry in `actions`
-        is `(label, js_kinds_array)` and bulk-selects (loads) every node of
-        those kinds. Drives node SELECTION (data load), independent of the
-        per-view eyes."""
+        """A 'Select / unselect ▾' dropdown above a tree tab. Each entry in
+        `actions` is `(label, js_kinds_array)` and offers BOTH bulk actions
+        on every node of those kinds: a check-all button (load) and an
+        uncheck-all button (unload). Drives node SELECTION (data load),
+        independent of the per-view eyes."""
         with html.Div(classes="px-1 pb-1"):
-            with vuetify3.VMenu(location="bottom start"):
+            with vuetify3.VMenu(location="bottom start", close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     vuetify3.VBtn(
-                        "Select",
+                        "Select / unselect",
                         v_bind="props",
                         size="small",
                         variant="tonal",
                         density="comfortable",
                         append_icon="mdi-menu-down",
                     )
-                with vuetify3.VList(density="compact", min_width="210"):
+                with vuetify3.VList(density="compact", min_width="240"):
                     for label, kinds in actions:
-                        vuetify3.VListItem(
-                            title=label,
-                            prepend_icon="mdi-check-all",
-                            click=(self.controller.tree_select_kinds, f"['{tab}', {kinds}]"),
-                        )
+                        with vuetify3.VListItem(title=label):
+                            with vuetify3.Template(v_slot_append=True):
+                                with vuetify3.VBtn(
+                                    icon="mdi-check-all",
+                                    size="x-small",
+                                    variant="text",
+                                    color="primary",
+                                    classes="ml-2",
+                                    click=(self.controller.tree_select_kinds,
+                                           f"['{tab}', {kinds}, 'add']"),
+                                ):
+                                    vuetify3.VTooltip(
+                                        "Select all", activator="parent",
+                                        location="bottom",
+                                    )
+                                with vuetify3.VBtn(
+                                    icon="mdi-checkbox-multiple-blank-outline",
+                                    size="x-small",
+                                    variant="text",
+                                    color="grey-darken-1",
+                                    click=(self.controller.tree_select_kinds,
+                                           f"['{tab}', {kinds}, 'remove']"),
+                                ):
+                                    vuetify3.VTooltip(
+                                        "Unselect all", activator="parent",
+                                        location="bottom",
+                                    )
 
     def reservoir_tree(self):
         """Render the Reservoir tab's tree (IjkGrid / UnstructuredGrid
