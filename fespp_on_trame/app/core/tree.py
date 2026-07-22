@@ -324,10 +324,16 @@ class Tree():
                 treeview["is_mr"] = _et.for_kind(node_type).is_multi_realization()
                 # eye token (rep / array / marker / None) — drives which eye
                 # block the tree view renders. Keyed on the node's own kind
-                # (NOT dispatch_kind, which is only for tab routing). A
-                # top-level rep (e.g. a Flat-mode IjkGrid) must still get its
-                # eye even though set_tree omits is_grouping here.
-                treeview["eye"] = _eye_field(_et.for_kind(node_type))
+                # (NOT dispatch_kind, which is only for tab routing).
+                top_et = _et.for_kind(node_type)
+                treeview["eye"] = _eye_field(top_et)
+                # Same tri-state fields as add_subtreeview_data — set_tree
+                # used to omit them, so every TOP-LEVEL envelope (a Wellbore
+                # folder, the GridContainer) rendered a plain binary checkbox
+                # while its nested folders showed the tri-state.
+                treeview["is_grouping"] = top_et.is_grouping()
+                if top_et.is_grouping():
+                    treeview["descendant_ids"] = self.find_all_selectable_descendant_ids(node_id)
                 treeview["parent_id"] = 0
                 if disabled or node_is_partial:
                     treeview["disabled"] = True
