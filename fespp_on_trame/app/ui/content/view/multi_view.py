@@ -46,6 +46,27 @@ class FesppMultiView(ptc.MultiView):
         # before creating another one.
         self._stats_panel_id = None
         super().__init__(**kwargs)
+        # ptc's stock right-header "add view" button is a `flat` VBtn:
+        # flat keeps the surface (white) background, so it rendered as
+        # an anonymous white disc in the dark dockview tab row — unlike
+        # every other bar button (text variant, white glyph). Re-register
+        # the template ptc points its rightHeaderActionsComponent at,
+        # restyled to match the bar chrome and tooltipped. Same
+        # behaviour (direct add_view).
+        with DivLayout(self.server, "ptc-multiview-add") as add_actions:
+            add_actions.root.style = "height: 100%;"
+            add_actions.root.classes = "d-flex align-center px-2"
+            with vuetify3.VTooltip(location="bottom"):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        v_bind="props",
+                        icon="mdi-plus",
+                        variant="text",
+                        size="small",
+                        color="white",
+                        click=self.add_view,
+                    )
+                html.Span("Add a view")
         # Public state — tree views iterate this to render one eye per
         # render panel on each rep / data-array node. Diff panels are
         # excluded because their content is driven by the diff dialog,
@@ -1344,13 +1365,16 @@ class FesppMultiView(ptc.MultiView):
         # standard CSS var). `right` is reactive: when the top toolbar
         # is hidden, the floating show-toolbar chevron lives at the
         # viewport top-right, so the chrome slides left to avoid overlap.
+        # Base offset 44px, NOT 8: the far right of the tab row belongs
+        # to dockview's right-header-actions (the ptc "+" add-view
+        # button) — at 8px this chrome sat underneath it, hiding the ⚙.
         with html.Div(
             classes="d-flex align-center",
             style=(
                 "`position: absolute;"
                 " top: calc(-1 * var(--dv-tabs-and-actions-container-height, 35px));"
                 " height: var(--dv-tabs-and-actions-container-height, 35px);"
-                " right: ${toolbar_visible ? '8px' : '56px'};"
+                " right: ${toolbar_visible ? '44px' : '92px'};"
                 " z-index: 5;"
                 " gap: 4px;"
                 " pointer-events: auto;`",
