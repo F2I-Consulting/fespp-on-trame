@@ -166,6 +166,15 @@ def run(state, controller, server, view, tree, collector, etp_connector,
 
     present_paths = set(p for p, _ in source_registry.items())
 
+    # Every load batch invalidates the active-map sweep's no-array memo: a
+    # freshly-(re)loaded rep has NEW displays and must get one full sweep
+    # pass even when its (rep -> array) binding is unchanged.
+    try:
+        from fespp_on_trame.app.core.engine import active_array as _active_array
+        _active_array.reset_sweep_memo()
+    except Exception:
+        pass
+
     # Captured BEFORE the tracking update mutates ui_loaded_rep_paths — used
     # below to spot blocked wellbores that appeared in THIS run.
     prev_rep_paths = set(state.ui_loaded_rep_paths or [])

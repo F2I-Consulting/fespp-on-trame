@@ -25,6 +25,19 @@ from fespp_on_trame.app.core.engine import (
 from fespp_on_trame.app.core import element_type
 
 
+# (rep_path, view_key) pairs the active-map sweep last applied with NO array —
+# skipped on the next sweep until something invalidates them. See
+# `on_active_array_change` / `reset_sweep_memo`.
+_sweep_none_memo: set = set()
+
+
+def reset_sweep_memo():
+    """Forget the sweep's no-array memo. Called by `data_load.run()` on every
+    load batch: a freshly-(re)loaded rep must get one full sweep pass even if
+    its binding is unchanged (its displays are new)."""
+    _sweep_none_memo.clear()
+
+
 def _is_channel_rep(element_type_obj) -> bool:
     """A wellbore-frame CHANNEL container = a rep whose visibility policy
     is ONE_AT_A_TIME (only ChannelFrameRep)."""
@@ -72,6 +85,12 @@ def on_active_array_change(state, controller, source_registry, tree,
     loaded = list(state.ui_loaded_rep_paths or [])
     active_map = ui_active_array_by_rep or {}
     hidden_set = set(state.ui_hidden_rep_paths or [])
+    # Sweep memo: a rep that had NO active array on the previous sweep of
+    # this same view and still has none is a strict no-op — yet its body
+    # costs a display resolution + a scene walk, and with 82 blocked
+    # wellbores those no-ops dominated the sweep (~1 s measured). The memo
+    # is reset by data_load.run() so freshly-(re)loaded reps always get one
+    # real pass (phantom-outline enforcement, stale-colour clear).
 
     active_panel_id = None
     panel_realizations: dict = {}
@@ -80,9 +99,16 @@ def on_active_array_change(state, controller, source_registry, tree,
         if active_panel_id is not None:
             by_view = state.ui_active_realization_by_array_by_view or {}
             panel_realizations = by_view.get(active_panel_id) or {}
+    view_key = active_panel_id or (str(id(view)) if view is not None else "_")
 
     for rep_path in loaded:
         array_path = active_map.get(rep_path)
+        if array_path is None:
+            if (rep_path, view_key) in _sweep_none_memo:
+                continue
+            _sweep_none_memo.add((rep_path, view_key))
+        else:
+            _sweep_none_memo.discard((rep_path, view_key))
         realization_idx = panel_realizations.get(array_path) if array_path else None
         # Wellbore-frame channel: SHOW it (exclusive) in the active view
         # BEFORE coloring — on a plain channel SELECTION (data_load
