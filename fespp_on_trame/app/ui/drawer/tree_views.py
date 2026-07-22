@@ -21,13 +21,13 @@ from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 # Domain-level dependency: a WellboreChannel or WellboreMarker requires
 # its Wellbore's Trajectory (the geometry that anchors per-depth log
 # values or marker positions). When the user checks one of these, we
-# auto-check the Wellbore's Trajectory child too. Both spellings of each
-# kind are listed: the assembly says "Marker" / "Trajectory" (verified on
-# a real EPC) while older code assumed the "Wellbore…"-prefixed names —
-# that mismatch made this auto-check a silent no-op since day one.
-_WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY = (
-    "WellboreChannel", "Channel", "WellboreMarker", "Marker",
-)
+# auto-check the Wellbore's Trajectory child too. The rule is STRUCTURAL
+# (any node under a Wellbore), not kind-based: a well log carries a plain
+# property kind ("ContinuousProperty"/"DiscreteProperty" under a Frame —
+# verified on a real EPC), so no kind list can name the dependents. The
+# original kind list also assumed "Wellbore…"-prefixed names the assembly
+# never uses ("Marker", "Trajectory"), which made this auto-check a
+# silent no-op since day one.
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -85,11 +85,11 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             # partial stub (no checkbox, can't load) to the selection.
             for desc in tree.find_all_selectable_descendant_ids(node_id):
                 _add_implicit(desc)
-        if kind in _WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY:
-            wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
-            if wb is not None:
-                traj = (tree.find_first_child_of_type(wb, "Trajectory")
-                        or tree.find_first_child_of_type(wb, "WellboreTrajectory"))
+        wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
+        if wb is not None:
+            traj = (tree.find_first_child_of_type(wb, "Trajectory")
+                    or tree.find_first_child_of_type(wb, "WellboreTrajectory"))
+            if traj is not None and traj != node_id:
                 _add_implicit(traj)
         # NOTE: a BlockedWellbore also force-displays its referenced trajectory,
         # but that trajectory lives in the WELL tab (a different per-tab
@@ -786,6 +786,33 @@ class TreeViews:
                 for nid in matched:
                     if (self._tree.find_type(nid) or "") in _GROUPING_KINDS:
                         to_drop.update(self._tree.find_all_descendant_ids(nid))
+                # A trajectory whose WELL still has other checked nodes
+                # (logs, markers, frames) must survive the bulk unselect —
+                # those dependents render along it. Keep it and tell the
+                # user which wells were held back.
+                kept_wells = []
+                would_remain = set(prev) - to_drop
+                for nid in sorted(to_drop):
+                    if (self._tree.find_type(nid) or "") not in (
+                            "Trajectory", "WellboreTrajectory"):
+                        continue
+                    wb = self._tree.find_parent_node_id_with_type(nid, "Wellbore")
+                    if wb is None:
+                        continue
+                    if any(d in would_remain
+                           for d in self._tree.find_all_descendant_ids(wb)
+                           if d != nid):
+                        to_drop.discard(nid)
+                        kept_wells.append(self._tree.find_title(wb) or "?")
+                if kept_wells:
+                    # Reuse the app's amber warning snackbar (free-text body).
+                    state.empty_color_snackbar_text = (
+                        "Trajectory kept for: " + ", ".join(sorted(kept_wells))
+                        + " — selected logs/markers depend on it. Unselect"
+                        " them first to unselect the trajectory."
+                    )
+                    state.empty_color_snackbar_visible = False
+                    state.empty_color_snackbar_visible = True
                 raw = [x for x in prev if x not in to_drop]
             else:
                 raw = prev + [n for n in matched if n not in set(prev)]
@@ -906,8 +933,12 @@ class TreeViews:
                     for label, kinds in actions:
                         with vuetify3.VListItem(title=label):
                             with vuetify3.Template(v_slot_append=True):
+                                # icon=True + explicit VIcon child: Vuetify 3
+                                # drops the `icon="mdi-…"` glyph as soon as the
+                                # default slot has content (the tooltip here),
+                                # leaving an invisible hover-only circle.
                                 with vuetify3.VBtn(
-                                    icon="mdi-check-all",
+                                    icon=True,
                                     size="x-small",
                                     variant="text",
                                     color="primary",
@@ -915,18 +946,20 @@ class TreeViews:
                                     click=(self.controller.tree_select_kinds,
                                            f"['{tab}', {kinds}, 'add']"),
                                 ):
+                                    vuetify3.VIcon("mdi-check-all")
                                     vuetify3.VTooltip(
                                         "Select all", activator="parent",
                                         location="bottom",
                                     )
                                 with vuetify3.VBtn(
-                                    icon="mdi-checkbox-multiple-blank-outline",
+                                    icon=True,
                                     size="x-small",
                                     variant="text",
                                     color="grey-darken-1",
                                     click=(self.controller.tree_select_kinds,
                                            f"['{tab}', {kinds}, 'remove']"),
                                 ):
+                                    vuetify3.VIcon("mdi-checkbox-multiple-blank-outline")
                                     vuetify3.VTooltip(
                                         "Unselect all", activator="parent",
                                         location="bottom",
