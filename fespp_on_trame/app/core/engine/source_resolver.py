@@ -699,9 +699,11 @@ def scene_lut_for_view(view, array_name):
 
 # Corner rotation for simultaneous colour bars (multi-source V1: the grid
 # and a well log each own a LUT + bar). Every bar spawns at PV's default
-# spot, so two visible bars overlap unreadably without this.
+# spot, so two visible bars overlap unreadably without this. RIGHT side +
+# centers only: the LEFT corners are taken (orientation axes bottom-left,
+# in-view toolbar top-left).
 _BAR_CORNERS = ("Lower Right Corner", "Upper Right Corner",
-                "Lower Left Corner", "Upper Left Corner")
+                "Upper Center", "Lower Center")
 
 
 def layout_visible_scalar_bars(view=None):

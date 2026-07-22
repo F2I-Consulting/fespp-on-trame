@@ -1,5 +1,3 @@
-import json
-
 from trame.app import get_server
 from trame.widgets import html
 from trame.widgets import vuetify3 as vuetify3
@@ -1034,7 +1032,11 @@ class TreeViews:
                     )
                 with vuetify3.VList(density="compact", min_width="260"):
                     for label, sel_kinds, _count_kinds in actions:
-                        kinds = json.dumps(sel_kinds)
+                        # SINGLE-quoted JS array: trame wraps the HTML
+                        # attribute in double quotes, so a json.dumps here
+                        # (double-quoted strings) breaks the attribute and
+                        # Vue fails to compile the WHOLE page (blank app).
+                        kinds = "[" + ",".join("'%s'" % k for k in sel_kinds) + "]"
                         count_key = f"{tab}|{label}"
                         with vuetify3.VListItem(
                             title=(
