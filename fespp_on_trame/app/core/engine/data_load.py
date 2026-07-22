@@ -315,6 +315,13 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                 .get(panel_id, {}) or {}
             )
             grids_done = set()
+            chain_snap_by_grid = {}
+            # Self-sufficient scene resolution: the earlier bindings of
+            # `scene` are conditional (marker / re-show blocks), so this
+            # block must not rely on them.
+            scene_reg = getattr(server.context, "scene_registry", None)
+            active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+            scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
             for bw_path in new_bw:
                 bw_id = tree.find_node_id(bw_path)
                 container = tree.find_parent_node_id_with_type(bw_id, "GridContainer")
@@ -322,15 +329,34 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                     continue
                 geom_id = tree.find_representation_node(container)
                 geom_path = tree.find_path(geom_id) if geom_id is not None else None
-                if not geom_path or geom_path in grids_done:
+                if not geom_path:
                     continue
-                grids_done.add(geom_path)
-                array_path = active_map.get(geom_path)
-                if array_path:
-                    source_resolver.apply_color_array(
-                        source_registry, tree, geom_path, array_path, view=view,
-                        realization_idx=panel_realizations.get(array_path),
-                    )
+                if geom_path not in grids_done:
+                    grids_done.add(geom_path)
+                    array_path = active_map.get(geom_path)
+                    if array_path:
+                        source_resolver.apply_color_array(
+                            source_registry, tree, geom_path, array_path, view=view,
+                            realization_idx=panel_realizations.get(array_path),
+                        )
+                    grid_rep = scene.get_rep(geom_path) if scene is not None else None
+                    if grid_rep is not None and hasattr(grid_rep, "snapshot_threshold_chain"):
+                        try:
+                            chain_snap_by_grid[geom_path] = grid_rep.snapshot_threshold_chain()
+                        except Exception:
+                            pass
+                # A fresh wellbore inherits its grid's THRESHOLD chain too:
+                # the dispatch mirror (`sync_blocked_wellbore_chains`) only
+                # fires on threshold OPS, so a wellbore checked after the
+                # filter was set would render unfiltered without this.
+                snap = chain_snap_by_grid.get(geom_path)
+                if snap and snap.get("entries"):
+                    bw_rep = scene.get_rep(bw_path) if scene is not None else None
+                    if bw_rep is not None:
+                        try:
+                            bw_rep.apply_threshold_chain(snap)
+                        except Exception:
+                            pass
     except Exception:
         pass
 

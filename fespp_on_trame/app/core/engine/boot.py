@@ -1370,6 +1370,11 @@ def initialize_fespp_engine(
             try:
                 if concern == "threshold":
                     dst_rep.apply_threshold_chain(src_rep.snapshot_threshold_chain())
+                    # A grid's chain mirrors onto its loaded wellbores —
+                    # keep the copy's destination view consistent.
+                    threshold_dispatch.sync_blocked_wellbore_chains(
+                        _scene_registry, dst_rep, rep_path, str(dst_view),
+                    )
                 elif concern == "slice":
                     dst_rep.apply_slice(src_rep.snapshot_slice())
                 elif concern == "clip":
