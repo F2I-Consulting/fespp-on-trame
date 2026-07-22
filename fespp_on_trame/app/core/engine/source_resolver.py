@@ -697,32 +697,25 @@ def scene_lut_for_view(view, array_name):
     return pvsimple.GetColorTransferFunction(array_name)
 
 
-# Corner rotation for simultaneous colour bars (multi-source V1: the grid
-# and a well log each own a LUT + bar). Every bar spawns at PV's default
-# spot, so two visible bars overlap unreadably without this. RIGHT side +
-# centers only: the LEFT corners are taken (orientation axes bottom-left,
-# in-view toolbar top-left).
-_BAR_CORNERS = ("Lower Right Corner", "Upper Right Corner",
-                "Upper Center", "Lower Center")
-
-
 def layout_visible_scalar_bars(view=None):
-    """Spread the view's VISIBLE colour bars over distinct corners, in the
-    stable order of the view's representation list (first bar keeps the
-    default lower-right). No-op on hidden bars, never moves anything the
-    sweep is about to reap."""
+    """Hand every VISIBLE colour bar to ParaView's own placement
+    algorithm (PlaceInView — what the desktop GUI runs when it shows a
+    bar): each bar scans the spots occupied by the OTHER visible bars
+    and takes the first free one. Iterating the representation list in
+    stable order keeps the result deterministic and idempotent, so
+    re-running at each batch end never shuffles a settled bar — it only
+    re-places one whose spot was stolen while it was hidden."""
     view = view if view is not None else pvsimple.GetActiveView()
     if view is None:
         return
-    i = 0
     for r in (view.Representations or []):
         try:
             if r.SMProxy.GetXMLName() != "ScalarBarWidgetRepresentation":
                 continue
             if not getattr(r, "Visibility", 0):
                 continue
-            r.WindowLocation = _BAR_CORNERS[min(i, len(_BAR_CORNERS) - 1)]
-            i += 1
+            r.WindowLocation = "Any Location"
+            r.SMProxy.PlaceInView(view.SMProxy)
         except Exception:
             continue
 
