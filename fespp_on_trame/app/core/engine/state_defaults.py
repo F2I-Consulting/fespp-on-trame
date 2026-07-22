@@ -171,6 +171,7 @@ def init_state_defaults(state):
 
     # --- Upload progress -------------------------------------------
     state.setdefault("upload_uploading", False)
+    state.setdefault("upload_parsing", False)
     state.setdefault("upload_progress", 0)
     state.setdefault("upload_file_count", 0)
     state.setdefault("upload_file_names", [])

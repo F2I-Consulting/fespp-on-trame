@@ -998,6 +998,12 @@ class TreeViews:
             opened=("ui_opened_reservoir", []),
             line="connected",
             item_value="id",
+            # 'props': collapsed children are NOT mounted (default 'render'
+            # mounts every item at once — measured as the client half of the
+            # "no tree for 2-3 s" import stall and the bulk of the ~6000-DOM-
+            # node reflow behind the slow tab switch). Needs Vuetify >= 3.10
+            # (trame-vuetify >= 3.2.2, pinned in setup).
+            items_registration="props",
             items=("ui_subtree_reservoir", []),
             activated=("ui_active_node_reservoir", []),
             activatable=True,
@@ -1054,6 +1060,12 @@ class TreeViews:
             opened=("ui_opened_surface", []),
             line="connected",
             item_value="id",
+            # 'props': collapsed children are NOT mounted (default 'render'
+            # mounts every item at once — measured as the client half of the
+            # "no tree for 2-3 s" import stall and the bulk of the ~6000-DOM-
+            # node reflow behind the slow tab switch). Needs Vuetify >= 3.10
+            # (trame-vuetify >= 3.2.2, pinned in setup).
+            items_registration="props",
             items=("ui_subtree_surface", []),
             activated=("ui_active_node_surface", []),
             activatable=True,
@@ -1110,6 +1122,12 @@ class TreeViews:
             opened=("ui_opened_well", []),
             line="connected",
             item_value="id",
+            # 'props': collapsed children are NOT mounted (default 'render'
+            # mounts every item at once — measured as the client half of the
+            # "no tree for 2-3 s" import stall and the bulk of the ~6000-DOM-
+            # node reflow behind the slow tab switch). Needs Vuetify >= 3.10
+            # (trame-vuetify >= 3.2.2, pinned in setup).
+            items_registration="props",
             items=("ui_subtree_well", []),
             activated=("ui_active_node_well", []),
             activatable=True,

@@ -3,7 +3,7 @@ numpy>=1.22.0 # @<1.22.0 low vulnerability CWE-119 buffer overflow
 Pillow>=10.4.0 # @9.5.0 critical vulnerability, see https://cwe.mitre.org/data/definitions/400.html https://www.first.org/cvss/calculator/3.1#CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
 trame
 trame-iframe
-trame-vuetify
+trame-vuetify>=3.2.2
 # Pinned: trame-vtk 2.11.9 added a top-level `import vtk` (the monolithic
 # module) in its serializers, which pulls in `vtkmodules.vtkViewsInfovis`
 # — a module ParaView's bundled VTK (PV 6.0.1) does NOT ship, so the

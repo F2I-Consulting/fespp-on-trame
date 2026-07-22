@@ -5,6 +5,7 @@ app that actually serves HTTP requests (Trame creates several
 aiohttp.Application instances during startup; the one we want is the
 one AppRunner.setup wires up — not necessarily the first one we see).
 """
+import asyncio
 from pathlib import Path
 from aiohttp import web as aiohttp_web
 
@@ -64,8 +65,18 @@ def register_upload_route(server) -> bool:
                     epc_paths.append(str(filepath))
             state.upload_progress = 100
             state.flush()
-            for path in epc_paths:
-                controller.load_epc_file(path)
+            # The C++ EPC parse below BLOCKS the event loop for 1-2 s
+            # (measured). Flip the overlay to "Reading EPC…" and yield ONCE so
+            # the flush actually reaches the client BEFORE the blocking loop —
+            # without the sleep(0) the message would only ship after it.
+            state.upload_parsing = True
+            state.flush()
+            await asyncio.sleep(0)
+            try:
+                for path in epc_paths:
+                    controller.load_epc_file(path)
+            finally:
+                state.upload_parsing = False
             state.upload_uploading = False
             state.flush()
             # Return basenames only — never leak absolute server temp paths.
