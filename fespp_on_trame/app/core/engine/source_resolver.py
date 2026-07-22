@@ -678,6 +678,71 @@ def _clear_coloring(displays, view):
         leaf_rep.uncolor(d)
 
 
+def blocked_wellbore_rep_paths_for(tree, rep_path):
+    """Paths of the BlockedWellbore reps grouped under the same GridContainer
+    as `rep_path` (a grid geometry rep). Empty for non-grid reps — a
+    Trajectory / surface has no GridContainer ancestor."""
+    if tree is None or not rep_path:
+        return []
+    try:
+        rep_id = tree.find_node_id(rep_path)
+        if rep_id is None:
+            return []
+        container = tree.find_parent_node_id_with_type(rep_id, "GridContainer")
+        if container is None:
+            return []
+        folder = tree.find_first_child_of_type(container, "BlockedWellboreFolder")
+        if folder is None:
+            return []
+        paths = []
+        for nid in tree.find_all_descendant_ids(folder):
+            if (tree.find_type(nid) or "") == "BlockedWellbore":
+                p = tree.find_path(nid)
+                if p:
+                    paths.append(p)
+        return paths
+    except Exception:
+        return []
+
+
+def _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path, assoc,
+                                       name, view):
+    """FESPP mirrors a grid's CELL arrays onto its blocked wellbores (same
+    array names, restricted to the crossed cells); mirror the ColorBy too, so
+    the wells follow the grid's ACTIVE property — including while the grid
+    itself is hidden (visibility and colouring are orthogonal). `name=None`
+    clears instead. The scoped LUT is keyed on the same array name, so grid
+    and wells share one colour scale and one bar."""
+    for bw_path in blocked_wellbore_rep_paths_for(tree, rep_path):
+        bw_displays = displays_for_rep_path(source_registry, bw_path, view=view)
+        if not bw_displays:
+            continue  # unchecked wellbore — nothing loaded, nothing to colour
+        if not name:
+            _clear_coloring(bw_displays, view)
+            continue
+        # Re-applies are frequent (every load batch, every active-map fire) and
+        # the wellbores are many: skip a display already bound to this array so
+        # the steady state costs a read per wellbore, not a proxy-write storm.
+        rebound = []
+        for d in bw_displays:
+            try:
+                ca = list(d.ColorArrayName or [])
+                if ca and ca[-1] == name and d.LookupTable is not None:
+                    continue
+            except Exception:
+                pass
+            try:
+                leaf_rep.color_by(d, assoc, name)
+                rebound.append(d)
+            except Exception:
+                continue
+        if rebound:
+            try:
+                swap_to_scene_tfs(rebound, view, name)
+            except Exception:
+                pass
+
+
 def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
                        realization_idx=None, clear_on_empty=False):
     """See module docstring.
@@ -699,8 +764,11 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     if not displays:
         return True
     if not array_path:
-        # Deselect path (tree eye unchecked).
+        # Deselect path (tree eye unchecked). The blocked wellbores mirrored
+        # this rep's colouring — clear them too.
         _clear_coloring(displays, view)
+        _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path,
+                                           None, None, view)
         return True
     assoc, name, range_src = resolve_array_for_path(
         source_registry, tree, rep_path, array_path,
@@ -716,6 +784,8 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         # the caller can surface a "no data to display" alert.
         if clear_on_empty:
             _clear_coloring(displays, view)
+            _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path,
+                                               None, None, view)
         return False
     for d in displays:
         try:
@@ -770,6 +840,11 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
                     bar.Resizable = 1
     except Exception:
         pass
+    # Mirror the colouring onto this grid's blocked wellbores BEFORE the
+    # orphan-bar sweep below: their displays reference the same LUT, which is
+    # what keeps the shared colour bar alive when the grid itself is hidden.
+    _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path, assoc,
+                                       name, target_view)
     # Sweep orphan bars in this view so stale legends from a previous
     # property don't linger alongside the new one. The TransferFunction
     # Manager only hides bars whose LUT is unreferenced by any visible
