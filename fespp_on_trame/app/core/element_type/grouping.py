@@ -14,10 +14,12 @@ class Grouping(ElementType):
     # BlockedWellboreFolder / SubRepresentationFolder are per-grid sub-folders
     # that group all of a grid's blocked wellbores / subreps — checking one
     # bulk-selects just those children (mirrors the C++ isGroupingType in
-    # enum.h). PropertiesFolder is DELIBERATELY excluded there and here: it
-    # must NOT cascade to the geometry + every property.
+    # enum.h). PropertiesFolder cascades to the PROPERTIES only: the
+    # geometry rep is excluded by find_all_selectable_descendant_ids when
+    # the walk starts at a PropertiesFolder (it lives as a hoisted sibling
+    # and auto-checks when a property loads).
     KINDS = ("Collection", "Wellbore", "Feature", "Interpretation", "GridContainer",
-             "BlockedWellboreFolder", "SubRepresentationFolder")
+             "BlockedWellboreFolder", "SubRepresentationFolder", "PropertiesFolder")
 
     def tree_role(self) -> TreeRole:
         return TreeRole.FOLDER
