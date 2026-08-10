@@ -440,16 +440,16 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     def _range_color_swatch(self, side):
         """One compact swatch button + colour-picker menu for the below-
-        or above-range colour. Empty state var = VTK's clamp default
-        (out-of-range cells keep the min / max stop colour — the swatch
-        then shows that stop colour via `*_auto_color`). Picking a
-        colour flips `UseBelow/AboveRangeColor` on the LUT; "Auto"
-        reverts to the clamp. HEX mode only, no alpha slider: VTK has no
-        below/above-range opacity, and the alpha slider was a trap — the
-        picker seeds BLACK on an empty v_model, so dragging alpha first
-        emitted #000000XX and painted every out-of-range cell black.
-        The picker is one-way bound with the auto colour as fallback so
-        it always opens on the colour actually rendered."""
+        or above-range colour + opacity. Empty state var = VTK's clamp
+        default (out-of-range cells keep the min / max stop colour — the
+        swatch then shows that stop colour via `*_auto_color`). Picking
+        a colour flips `UseBelow/AboveRangeColor` on the LUT; the ALPHA
+        channel is emulated through the scoped PWF's boundary points
+        (see `_apply_range_alphas` — VTK's LUT has no out-of-range
+        opacity of its own); "Auto" reverts to the clamp. The picker is
+        one-way bound with the auto colour as fallback because it seeds
+        BLACK on an empty v_model — dragging alpha first then emitted
+        #000000XX and painted every out-of-range cell black."""
         var = f"{side}_range_color"
         auto_var = f"{side}_range_auto_color"
         tip = ("Colour below Min (Auto = clamp to the min colour)"
@@ -476,9 +476,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         html.Span(tip)
                 with vuetify3.VCard():
                     vuetify3.VColorPicker(
-                        model_value=(f"{var} || {auto_var} || '#808080'",),
+                        model_value=(
+                            f"{var} || ({auto_var} ? {auto_var} + 'FF'"
+                            " : '#808080FF')",
+                        ),
                         update_modelValue=(f"{var} = $event",),
-                        modes=("['hex']",),
+                        modes=("['hexa']",),
                         classes="w-100",
                         divided=True,
                         landscape=True,
@@ -507,17 +510,96 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         except Exception:
             return ""
 
+    # Width of the PWF boundary step, as a fraction of the scalar span.
+    _RANGE_ALPHA_EPS = 1e-5
+
+    @staticmethod
+    def _alpha_from_hex(hex_color):
+        """The alpha byte of '#RRGGBBAA' as [0,1]; 1.0 when absent."""
+        hex_val = (hex_color or "").lstrip("#")
+        if len(hex_val) >= 8:
+            try:
+                return int(hex_val[6:8], 16) / 255.0
+            except ValueError:
+                pass
+        return 1.0
+
+    def _apply_range_alphas(self, lut, base):
+        """Emulate below/above-range OPACITY through the scoped PWF.
+
+        VTK's LUT has no out-of-range opacity — but the PWF CLAMPS: a
+        value below the range takes the FIRST opacity point's value,
+        above takes the LAST. So a boundary point at exactly `lo`
+        (resp. `hi`) carrying the wanted alpha, followed (preceded) an
+        epsilon inside by the curve's real value, gives out-of-range
+        cells their own opacity while the in-range curve stays intact
+        (the step spans 1e-5 of the range). Alpha 1.0 (or FF / absent)
+        removes the synthetic boundary point on that side. Requires
+        `EnableOpacityMapping` on the LUT — flipped on here whenever
+        either side goes translucent, never flipped back off (an
+        all-opaque PWF renders identically)."""
+        a_below = self._alpha_from_hex(self.state.below_range_color)
+        a_above = self._alpha_from_hex(self.state.above_range_color)
+        pwf = self._resolve_target_pwf(base)
+        if pwf is None:
+            return
+        try:
+            pts = list(pwf.Points or [])
+            quads = [pts[i:i + 4] for i in range(0, len(pts) - 3, 4)]
+            if not quads:
+                return
+            lo, hi = quads[0][0], quads[-1][0]
+            span = hi - lo
+            if span <= 0:
+                return
+            eps = span * self._RANGE_ALPHA_EPS
+            obj = pwf.GetClientSideObject()
+
+            def val(x):
+                try:
+                    return float(obj.GetValue(x))
+                except Exception:
+                    return 1.0
+
+            # The user's curve = everything strictly inside the two
+            # boundary strips (also drops previous synthetic points).
+            interior = [q for q in quads if lo + 2 * eps < q[0] < hi - 2 * eps]
+            inner_lo = val(lo + 2.5 * eps)
+            inner_hi = val(hi - 2.5 * eps)
+            new = []
+            if a_below < 0.999:
+                new.append([lo, a_below, 0.5, 0.0])
+                new.append([lo + eps, inner_lo, 0.5, 0.0])
+            else:
+                new.append([lo, inner_lo, 0.5, 0.0])
+            new.extend(interior)
+            if a_above < 0.999:
+                new.append([hi - eps, inner_hi, 0.5, 0.0])
+                new.append([hi, a_above, 0.5, 0.0])
+            else:
+                new.append([hi, inner_hi, 0.5, 0.0])
+            pwf.Points = [c for q in new for c in q]
+            if a_below < 0.999 or a_above < 0.999:
+                lut.EnableOpacityMapping = 1
+        except Exception:
+            pass
+
     def _apply_range_color(self, which, hex_color):
-        """Apply ('#RRGGBB[AA]') or clear ('') a below/above-range colour
-        on the active LUT. No-ops when the LUT already matches, so the
-        programmatic reflect in `on_scalar_range_changed` can't trigger
-        a redundant render. Alpha is ignored (LUT property is RGB-only)."""
-        _base, lut = self._resolve_active_lut()
+        """Apply ('#RRGGBB[AA]') or clear ('') a below/above-range
+        colour + opacity on the active LUT. RGB drives the LUT's
+        `Use{Below,Above}RangeColor`; the ALPHA byte drives the PWF
+        boundary emulation (`_apply_range_alphas`). No-ops when both
+        already match, so the programmatic reflect in
+        `on_scalar_range_changed` can't trigger a redundant render."""
+        base, lut = self._resolve_active_lut()
         if lut is None:
             return
         hex_val = (hex_color or "").lstrip("#")
         requested = "#" + hex_val[:6].upper() if len(hex_val) >= 6 else ""
-        if self._range_color_hex(lut, which).upper() == requested:
+        requested_alpha = self._alpha_from_hex(hex_color)
+        current_alpha = self._pwf_edge_alpha(base, which)
+        if (self._range_color_hex(lut, which).upper() == requested
+                and abs(current_alpha - requested_alpha) < 1 / 255):
             return
         use_prop = "UseBelowRangeColor" if which == "below" else "UseAboveRangeColor"
         col_prop = "BelowRangeColor" if which == "below" else "AboveRangeColor"
@@ -531,7 +613,28 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 setattr(lut, use_prop, 1)
         except Exception:
             return
+        self._apply_range_alphas(lut, base)
         source_resolver.render_and_push_target(self.server.controller)
+
+    def _pwf_edge_alpha(self, base, which):
+        """The opacity a cell OUTSIDE the range currently renders with
+        on `which` side — the PWF's clamped edge value. 1.0 default."""
+        pwf = self._resolve_target_pwf(base)
+        if pwf is None:
+            return 1.0
+        try:
+            pts = list(pwf.Points or [])
+            if len(pts) < 8:
+                return 1.0
+            lo, hi = pts[0], pts[-4]
+            span = hi - lo
+            if span <= 0:
+                return 1.0
+            obj = pwf.GetClientSideObject()
+            x = lo - span * 0.01 if which == "below" else hi + span * 0.01
+            return float(obj.GetValue(x))
+        except Exception:
+            return 1.0
 
     @change("below_range_color")
     def on_below_range_color_changed(self, *args, **kwargs) -> None:
@@ -568,13 +671,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         self._sync_range_fields(lo, hi)
         if lut is not None:
             self.state.color_use_log = bool(int(getattr(lut, "UseLogScale", 0)))
-            # Reflect the LUT's below/above-range colours too ('' = clamp).
-            # `_apply_range_color` no-ops on an identical value, so this
-            # reflect can't trigger a redundant render.
-            self.state.below_range_color = self._range_color_hex(lut, "below")
-            self.state.above_range_color = self._range_color_hex(lut, "above")
-            # Mirror the preset's actual first / last stop colours so the
-            # collapsed swatches show the real clamp colour by default.
+            # Mirror the preset's actual first / last stop colours FIRST
+            # so the collapsed swatches (and the alpha reflect below)
+            # show the real clamp colour by default.
             try:
                 pts = list(lut.RGBPoints or [])
                 if len(pts) >= 8:
@@ -588,6 +687,23 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     )
             except Exception:
                 pass
+            # Reflect the LUT's below/above-range colour AND the PWF's
+            # edge opacity ('' = full clamp default). `_apply_range_color`
+            # no-ops on an identical value, so this reflect can't
+            # trigger a redundant render.
+            for _side, _var, _auto_var in (
+                ("below", "below_range_color", "below_range_auto_color"),
+                ("above", "above_range_color", "above_range_auto_color"),
+            ):
+                rgb_hex = self._range_color_hex(lut, _side)
+                a = self._pwf_edge_alpha(_base, _side)
+                if a < 0.999:
+                    rgb_part = (rgb_hex
+                                or getattr(self.state, _auto_var, "")
+                                or "#808080")
+                    rgb_hex = rgb_part + "%02X" % max(
+                        0, min(255, round(a * 255)))
+                setattr(self.state, _var, rgb_hex)
 
     @change("color_use_log")
     def on_color_use_log_changed(self, *args, **kwargs) -> None:
