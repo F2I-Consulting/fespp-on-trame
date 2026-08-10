@@ -26,7 +26,7 @@ Functions:
     SMProxy.SetScalarColoring."""
 from paraview import simple as pvsimple
 
-from fespp_on_trame.app.utils.naming import make_valid_vtk_name
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name, strip_realization_suffix
 from fespp_on_trame.app.core.sources import leaf_rep
 
 
@@ -941,7 +941,11 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
             if bar_lut is not None:
                 bar = pvsimple.GetScalarBar(bar_lut, target_view)
                 if bar is not None:
-                    bar.Title = name
+                    # Realizations share one LUT (and thus one bar) per
+                    # property — title with the UNSUFFIXED name, else the
+                    # bar would keep claiming "_real_<idx>" of whichever
+                    # realization created it.
+                    bar.Title = strip_realization_suffix(name)
                     bar.RangeLabelFormat = '%-#6.3g'
                     bar.Resizable = 1
     except Exception:

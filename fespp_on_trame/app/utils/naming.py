@@ -56,3 +56,14 @@ def sanitize_proxy_name(name: str) -> str:
     titles / paths. Use ONLY for proxy reg-names; never for VTK
     array name lookup."""
     return _INVALID_CHAR_RE.sub("_", name or "")
+
+
+_REALIZATION_SUFFIX_RE = re.compile(r"_real_\d+$")
+
+
+def strip_realization_suffix(array_name: str) -> str:
+    """Inverse of `realization_dispatch.suffixed_array_name`:
+    'SOIL_real_23' -> 'SOIL'; non-MR names pass through untouched.
+    Lives here (not in realization_dispatch) so `core.sources` modules
+    can import it without a core->engine import cycle."""
+    return _REALIZATION_SUFFIX_RE.sub("", array_name or "")
