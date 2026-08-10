@@ -222,13 +222,27 @@ def uncolor(rep):
         pass
 
 
+def range_is_pinned(lut):
+    """True when the user pinned this LUT's scalar range (the COE
+    Min/Max Apply). The pin IS a ParaView property —
+    ``AutomaticRescaleRangeMode == 'Never'`` on the LUT proxy — so it
+    travels with the scoped LUT (per view × array), needs no side
+    bookkeeping, and every auto-rescale helper can honour it. The enum
+    stringifies WITH quotes, so test membership, not equality."""
+    try:
+        return "Never" in str(getattr(lut, "AutomaticRescaleRangeMode", ""))
+    except Exception:
+        return False
+
+
 def rescale_to_range(rep):
     """Leaf-safe ``rep.RescaleTransferFunctionToDataRange(True)``: read the
     range of the rep's currently bound colour array off the rep input and
     rescale the rep's lookup table. For a multi-component (vector/tensor) array
     it honours the LUT's vector mode — magnitude vs a specific component — the
-    same as ParaView's rescale, so vectors don't paint flat. Returns (lo, hi)
-    or None."""
+    same as ParaView's rescale, so vectors don't paint flat. Stands down on a
+    user-pinned LUT (`range_is_pinned`) — the range is still computed and
+    returned, just not applied. Returns (lo, hi) or None."""
     if rep is None:
         return None
     try:
@@ -255,7 +269,7 @@ def rescale_to_range(rep):
             except Exception:
                 comp = 0
             lo, hi = array_info.GetComponentRange(comp)
-        if lut is not None:
+        if lut is not None and not range_is_pinned(lut):
             lut.RescaleTransferFunction(lo, hi)
         return (lo, hi)
     except Exception:

@@ -7,6 +7,7 @@ from paraview import simple as pvsimple
 from ptc.color_opacity_editor import ColorOpacityEditorConvertor
 
 from fespp_on_trame.app.core.engine import source_resolver
+from fespp_on_trame.app.core.sources import leaf_rep
 
 server = get_server()
 state = server.state
@@ -319,10 +320,35 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         except (TypeError, ValueError):
             pass
 
-    def _apply_scalar_range(self, lo, hi):
-        """Rescale the active view's LUT to [lo, hi] and push the frame.
-        Clamps the lower bound positive when the LUT is in log mode."""
-        _base, lut = self._resolve_active_lut()
+    def _resolve_target_pwf(self, base_name):
+        """The target scene's scoped opacity function for `base_name`,
+        or None outside the per-view scene model."""
+        try:
+            srv = get_server()
+            target = (
+                getattr(srv.state, "drawer_target_view_id", "") or ""
+                or getattr(srv.state, "fespp_active_panel_id", "") or ""
+            )
+            reg = getattr(srv.context, "scene_registry", None)
+            scene = reg.get_scene(target) if (reg and target) else None
+            return scene.get_or_create_pwf(base_name) if scene is not None else None
+        except Exception:
+            return None
+
+    def _apply_scalar_range(self, lo, hi, pin=True):
+        """Rescale the active view's LUT (+ its scoped PWF, in lockstep)
+        to [lo, hi] and push the frame. Clamps the lower bound positive
+        when the LUT is in log mode.
+
+        `pin=True` marks the range as user-chosen by setting
+        `AutomaticRescaleRangeMode='Never'` ON THE LUT PROXY — the flag
+        every auto-rescale site checks through `leaf_rep.range_is_pinned`
+        (`apply_color_array`'s client-side force-rescale,
+        `rescale_to_range`). Without the pin those sites snapped the
+        range back to the data on the very next eye click / activation /
+        time step, which made this feature look dead on its first
+        iteration. `pin=False` (Reset) restores PV's default mode."""
+        base, lut = self._resolve_active_lut()
         if lut is None:
             return
         lo, hi = source_resolver.nondegenerate_range(lo, hi)
@@ -332,6 +358,21 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             lut.RescaleTransferFunction(float(lo), float(hi))
         except Exception:
             return
+        try:
+            lut.AutomaticRescaleRangeMode = (
+                "Never" if pin else "Grow and update on 'Apply'"
+            )
+        except Exception:
+            pass
+        # PWF in lockstep (proportional control-point remap) so the
+        # opacity features follow the colour range instead of staying
+        # anchored at stale scalar positions.
+        try:
+            pwf = self._resolve_target_pwf(base)
+            if pwf is not None:
+                pwf.RescaleTransferFunction(float(lo), float(hi))
+        except Exception:
+            pass
         self.state.scalar_range = [float(lo), float(hi)]
         self._sync_range_fields(lo, hi)
         source_resolver.render_and_push_target(self.server.controller)
@@ -351,13 +392,21 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         self._apply_scalar_range(lo, hi)
 
     def reset_color_range_to_data(self, *args, **kwargs):
-        """Recompute the data range and rescale the LUT back to it."""
+        """Unpin the range, recompute the data range and rescale the LUT
+        back to it."""
         if not self._should_apply_state_change():
             return
+        _base, lut = self._resolve_active_lut()
+        if lut is not None:
+            # Unpin FIRST so the recompute + future auto-rescales resume.
+            try:
+                lut.AutomaticRescaleRangeMode = "Grow and update on 'Apply'"
+            except Exception:
+                pass
         self.update_scalar_range()
         rng = self.state.scalar_range or [0.0, 1.0]
         try:
-            self._apply_scalar_range(float(rng[0]), float(rng[1]))
+            self._apply_scalar_range(float(rng[0]), float(rng[1]), pin=False)
         except (TypeError, ValueError, IndexError):
             pass
 
@@ -366,13 +415,22 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         """Mirror the recomputed data range into the Min/Max inputs and
         reflect the LUT's current log state in the switch. Fires whenever
         `update_scalar_range` recomputes the range (property activation /
-        target-view or realization switch)."""
+        target-view or realization switch). On a PINNED LUT the inputs
+        mirror the pinned range read off the LUT's actual control points
+        — not the recomputed data range, which the LUT deliberately no
+        longer follows."""
         rng = self.state.scalar_range or [0.0, 1.0]
-        self._sync_range_fields(
-            rng[0] if rng else 0.0,
-            rng[1] if len(rng) > 1 else 1.0,
-        )
+        lo = rng[0] if rng else 0.0
+        hi = rng[1] if len(rng) > 1 else 1.0
         _base, lut = self._resolve_active_lut()
+        if lut is not None and leaf_rep.range_is_pinned(lut):
+            try:
+                pts = list(lut.RGBPoints or [])
+                if len(pts) >= 4:
+                    lo, hi = float(pts[0]), float(pts[-4])
+            except Exception:
+                pass
+        self._sync_range_fields(lo, hi)
         if lut is not None:
             self.state.color_use_log = bool(int(getattr(lut, "UseLogScale", 0)))
 

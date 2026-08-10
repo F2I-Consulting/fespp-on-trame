@@ -903,11 +903,16 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     # a STALE proxy info cache after an in-place re-extraction, leaving the
     # LUT at [0,1] so the geometry paints flat; reading the client-side array
     # avoids it. Best-effort; skipped for indexed (categorical) LUTs whose
-    # annotations a numeric rescale would disturb.
+    # annotations a numeric rescale would disturb, and for USER-PINNED
+    # ranges (COE Min/Max Apply → AutomaticRescaleRangeMode='Never'):
+    # without that skip, this line snapped the range back to the data on
+    # the very next eye click / activation and the Min/Max feature
+    # looked dead.
     try:
         rescale_lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(name)
         if (range_src is not None and rescale_lut is not None
-                and not getattr(rescale_lut, "IndexedLookup", 0)):
+                and not getattr(rescale_lut, "IndexedLookup", 0)
+                and not leaf_rep.range_is_pinned(rescale_lut)):
             rng = _vtk_array_range_from_clientside(range_src, name, assoc)
             if rng is not None:
                 rescale_lut.RescaleTransferFunction(rng[0], rng[1])
