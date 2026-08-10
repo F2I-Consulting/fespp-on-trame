@@ -48,6 +48,10 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         state.setdefault("color_range_min", 0.0)
         state.setdefault("color_range_max", 1.0)
         state.setdefault("color_use_log", False)
+        # Below/above-range colours: "" = VTK's default clamp (out-of-
+        # range cells keep the min / max stop colour).
+        state.setdefault("below_range_color", "")
+        state.setdefault("above_range_color", "")
         controller.fespp_apply_color_range = self.apply_color_range
         controller.fespp_reset_color_range = self.reset_color_range_to_data
         super().__init__()
@@ -131,6 +135,57 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     classes="flex-grow-0 mt-0",
                 )
 
+            # --- Below / above range colours ---
+            # Empty state var = VTK's clamp default: out-of-range cells
+            # keep the min / max stop colour — exactly the requested
+            # default. Picking a colour flips UseBelow/AboveRangeColor
+            # on the LUT; "Auto" reverts to the clamp. The picker's
+            # alpha is accepted but silently ignored: the LUT property
+            # is RGB-only (VTK has no below/above-range opacity).
+            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1"):
+                for _side, _label, _var in (
+                    ("below", "Below min", "below_range_color"),
+                    ("above", "Above max", "above_range_color"),
+                ):
+                    with vuetify3.VCol(
+                        cols=6,
+                        classes="pr-1" if _side == "below" else "pl-1",
+                    ):
+                        with vuetify3.VMenu(close_on_content_click=False):
+                            with vuetify3.Template(v_slot_activator="{ props }"):
+                                with vuetify3.VBtn(
+                                    _label,
+                                    v_bind="props",
+                                    elevation=0,
+                                    size="small",
+                                    classes="justify-start",
+                                    block=True,
+                                ):
+                                    with vuetify3.Template(v_slot_prepend=True):
+                                        vuetify3.VIcon(
+                                            "mdi-circle",
+                                            color=(
+                                                f"{_var} ? {_var}.slice(0,7)"
+                                                " : '#9E9E9E'",
+                                            ),
+                                        )
+                            with vuetify3.VCard():
+                                vuetify3.VColorPicker(
+                                    v_model=(_var,),
+                                    modes=("['hexa']",),
+                                    classes="w-100",
+                                    divided=True,
+                                    landscape=True,
+                                    max_width=300,
+                                )
+                                vuetify3.VBtn(
+                                    "Auto (clamp)",
+                                    size="small",
+                                    variant="text",
+                                    block=True,
+                                    click=f"{_var} = ''",
+                                )
+
             with vuetify3.VMenu(close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     with vuetify3.VBtn(
@@ -154,8 +209,10 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     max_width=300,
                 )
 
+            # Both transfer-function tables start COLLAPSED — they are
+            # expert views and eat most of the drawer height when open.
             with vuetify3.VExpansionPanels(
-                v_model=("opened_panels", [0, 1]),
+                v_model=("opened_panels", []),
                 multiple=True,
                 elevation=0,
             ):
@@ -410,6 +467,61 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         except (TypeError, ValueError, IndexError):
             pass
 
+    # ---- Below / above range colours ----
+
+    @staticmethod
+    def _range_color_hex(lut, which):
+        """The LUT's below/above-range colour as '#RRGGBB', or '' when
+        the clamp default is active (Use*RangeColor off)."""
+        use_prop = "UseBelowRangeColor" if which == "below" else "UseAboveRangeColor"
+        col_prop = "BelowRangeColor" if which == "below" else "AboveRangeColor"
+        try:
+            if not int(getattr(lut, use_prop, 0)):
+                return ""
+            r, g, b = list(getattr(lut, col_prop))[:3]
+            return "#%02X%02X%02X" % (
+                round(r * 255), round(g * 255), round(b * 255))
+        except Exception:
+            return ""
+
+    def _apply_range_color(self, which, hex_color):
+        """Apply ('#RRGGBB[AA]') or clear ('') a below/above-range colour
+        on the active LUT. No-ops when the LUT already matches, so the
+        programmatic reflect in `on_scalar_range_changed` can't trigger
+        a redundant render. Alpha is ignored (LUT property is RGB-only)."""
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        hex_val = (hex_color or "").lstrip("#")
+        requested = "#" + hex_val[:6].upper() if len(hex_val) >= 6 else ""
+        if self._range_color_hex(lut, which).upper() == requested:
+            return
+        use_prop = "UseBelowRangeColor" if which == "below" else "UseAboveRangeColor"
+        col_prop = "BelowRangeColor" if which == "below" else "AboveRangeColor"
+        try:
+            if not requested:
+                setattr(lut, use_prop, 0)
+            else:
+                rgb = ColorOpacityEditorConvertor.convert_hex_to_rgb(hex_val)
+                setattr(lut, col_prop,
+                        [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255])
+                setattr(lut, use_prop, 1)
+        except Exception:
+            return
+        source_resolver.render_and_push_target(self.server.controller)
+
+    @change("below_range_color")
+    def on_below_range_color_changed(self, *args, **kwargs) -> None:
+        if not self._should_apply_state_change():
+            return
+        self._apply_range_color("below", self.state.below_range_color)
+
+    @change("above_range_color")
+    def on_above_range_color_changed(self, *args, **kwargs) -> None:
+        if not self._should_apply_state_change():
+            return
+        self._apply_range_color("above", self.state.above_range_color)
+
     @change("scalar_range")
     def on_scalar_range_changed(self, *args, **kwargs) -> None:
         """Mirror the recomputed data range into the Min/Max inputs and
@@ -433,6 +545,11 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         self._sync_range_fields(lo, hi)
         if lut is not None:
             self.state.color_use_log = bool(int(getattr(lut, "UseLogScale", 0)))
+            # Reflect the LUT's below/above-range colours too ('' = clamp).
+            # `_apply_range_color` no-ops on an identical value, so this
+            # reflect can't trigger a redundant render.
+            self.state.below_range_color = self._range_color_hex(lut, "below")
+            self.state.above_range_color = self._range_color_hex(lut, "above")
 
     @change("color_use_log")
     def on_color_use_log_changed(self, *args, **kwargs) -> None:
