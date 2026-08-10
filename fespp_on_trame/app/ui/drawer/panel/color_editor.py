@@ -392,6 +392,15 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             pass
         self.state.scalar_range = [float(lo), float(hi)]
         self._sync_range_fields(lo, hi)
+        # Rebuild the COE widget state (gradient graph + stop tables)
+        # from the rescaled transfer functions: its colour stops carry
+        # SCALAR positions, so leaving them at the old range makes the
+        # canvas normalise out of [0,1] and the graph breaks.
+        try:
+            self.server.controller.update_color_editor(
+                self.state.active_color_array_name)
+        except Exception:
+            pass
         source_resolver.render_and_push_target(self.server.controller)
 
     def apply_color_range(self, *args, **kwargs):
@@ -435,9 +444,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         (out-of-range cells keep the min / max stop colour — the swatch
         then shows that stop colour via `*_auto_color`). Picking a
         colour flips `UseBelow/AboveRangeColor` on the LUT; "Auto"
-        reverts to the clamp. The picker's alpha is accepted but
-        silently ignored: the LUT property is RGB-only (VTK has no
-        below/above-range opacity)."""
+        reverts to the clamp. HEX mode only, no alpha slider: VTK has no
+        below/above-range opacity, and the alpha slider was a trap — the
+        picker seeds BLACK on an empty v_model, so dragging alpha first
+        emitted #000000XX and painted every out-of-range cell black.
+        The picker is one-way bound with the auto colour as fallback so
+        it always opens on the colour actually rendered."""
         var = f"{side}_range_color"
         auto_var = f"{side}_range_auto_color"
         tip = ("Colour below Min (Auto = clamp to the min colour)"
@@ -464,8 +476,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         html.Span(tip)
                 with vuetify3.VCard():
                     vuetify3.VColorPicker(
-                        v_model=(var,),
-                        modes=("['hexa']",),
+                        model_value=(f"{var} || {auto_var} || '#808080'",),
+                        update_modelValue=(f"{var} = $event",),
+                        modes=("['hex']",),
                         classes="w-100",
                         divided=True,
                         landscape=True,
@@ -668,17 +681,18 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     @change("nan_color")
     def on_nan_color_changed(self, *args, **kwargs) -> None:
-        """Apply NanColor + NanOpacity on the active LUT."""
+        """Apply NanColor + NanOpacity on the active LUT — the SCOPED
+        one: displays render with the per-(view, array) LUT, so writing
+        the global singleton (the old behaviour) silently did nothing
+        once a scoped LUT existed — i.e. always, under the per-view
+        model. Same resolution as every other knob of this editor."""
         if not self._should_apply_state_change():
             return
         nan_color = self.state.nan_color
         if not nan_color or len(nan_color) < 7:
             return
-        [_, array_name] = self.get_representation_color_array_name()
-        if not array_name:
-            return
-        lut = pvsimple.GetColorTransferFunction(array_name)
-        if not lut:
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
             return
         _apply_nan_color_to_lut(lut)
         source_resolver.render_and_push_target(self.server.controller)
