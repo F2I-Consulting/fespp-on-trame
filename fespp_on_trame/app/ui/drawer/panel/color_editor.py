@@ -480,7 +480,11 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                             f"{var} || ({auto_var} ? {auto_var} + 'FF'"
                             " : '#808080FF')",
                         ),
-                        update_modelValue=(f"{var} = $event",),
+                        # Plain JS string, NEVER a 1-tuple: trame treats a
+                        # tuple event as (callable, args) and silently
+                        # drops a lone string — the picker then writes
+                        # nothing and the alpha slider snaps back to 1.
+                        update_modelValue=f"{var} = $event",
                         modes=("['hexa']",),
                         classes="w-100",
                         divided=True,
