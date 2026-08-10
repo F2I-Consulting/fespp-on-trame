@@ -43,17 +43,24 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         state.setdefault("nan_color", "#FF000000")
         # Scalar-range + log-scale controls (continuous properties only —
         # this editor is mounted solely for the non-categorical /
-        # non-SolidColor case). Register the button handlers BEFORE
-        # super().__init__() runs build_content, which references them.
+        # non-SolidColor case). The buttons bind the INSTANCE methods
+        # directly — never a shared controller name: the diff dialog's
+        # `_DiffColorOpacityEditor` subclass runs this same __init__
+        # later, and a `controller.fespp_apply_color_range = ...` here
+        # let it OVERWRITE the drawer's handler with its own (whose
+        # guard only passes while the diff dialog is open) — Apply then
+        # silently no-oped, which is why Min/Max looked dead.
         state.setdefault("color_range_min", 0.0)
         state.setdefault("color_range_max", 1.0)
         state.setdefault("color_use_log", False)
         # Below/above-range colours: "" = VTK's default clamp (out-of-
-        # range cells keep the min / max stop colour).
+        # range cells keep the min / max stop colour). The *_auto_color
+        # mirrors carry the LUT's actual min / max stop colours so the
+        # collapsed swatches show the real clamp colour.
         state.setdefault("below_range_color", "")
         state.setdefault("above_range_color", "")
-        controller.fespp_apply_color_range = self.apply_color_range
-        controller.fespp_reset_color_range = self.reset_color_range_to_data
+        state.setdefault("below_range_auto_color", "")
+        state.setdefault("above_range_auto_color", "")
         super().__init__()
 
     def build_content(self) -> None:
@@ -90,8 +97,11 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             # the non-categorical / non-SolidColor case (see
             # solid_color_panel), so these knobs never reach a discrete,
             # categorical or SolidColor representation.
-            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2"):
-                with vuetify3.VCol(cols=6, classes="pr-1"):
+            # One row, in colour-bar reading order: below-range swatch,
+            # Min, Max, above-range swatch.
+            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2", align="center"):
+                self._range_color_swatch("below")
+                with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Min",
                         v_model_number=("color_range_min", 0.0),
@@ -101,7 +111,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         hide_details=True,
                         keydown_enter=self.apply_color_range,
                     )
-                with vuetify3.VCol(cols=6, classes="pl-1"):
+                with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Max",
                         v_model_number=("color_range_max", 1.0),
@@ -111,19 +121,20 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         hide_details=True,
                         keydown_enter=self.apply_color_range,
                     )
+                self._range_color_swatch("above")
             with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1", align="center"):
                 vuetify3.VBtn(
                     "Apply",
                     size="small",
                     variant="tonal",
-                    click=(controller.fespp_apply_color_range,),
+                    click=(self.apply_color_range,),
                 )
                 vuetify3.VBtn(
                     "Reset to data range",
                     size="small",
                     variant="text",
                     classes="ml-1",
-                    click=(controller.fespp_reset_color_range,),
+                    click=(self.reset_color_range_to_data,),
                 )
                 vuetify3.VSpacer()
                 vuetify3.VSwitch(
@@ -134,57 +145,6 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     inset=True,
                     classes="flex-grow-0 mt-0",
                 )
-
-            # --- Below / above range colours ---
-            # Empty state var = VTK's clamp default: out-of-range cells
-            # keep the min / max stop colour — exactly the requested
-            # default. Picking a colour flips UseBelow/AboveRangeColor
-            # on the LUT; "Auto" reverts to the clamp. The picker's
-            # alpha is accepted but silently ignored: the LUT property
-            # is RGB-only (VTK has no below/above-range opacity).
-            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1"):
-                for _side, _label, _var in (
-                    ("below", "Below min", "below_range_color"),
-                    ("above", "Above max", "above_range_color"),
-                ):
-                    with vuetify3.VCol(
-                        cols=6,
-                        classes="pr-1" if _side == "below" else "pl-1",
-                    ):
-                        with vuetify3.VMenu(close_on_content_click=False):
-                            with vuetify3.Template(v_slot_activator="{ props }"):
-                                with vuetify3.VBtn(
-                                    _label,
-                                    v_bind="props",
-                                    elevation=0,
-                                    size="small",
-                                    classes="justify-start",
-                                    block=True,
-                                ):
-                                    with vuetify3.Template(v_slot_prepend=True):
-                                        vuetify3.VIcon(
-                                            "mdi-circle",
-                                            color=(
-                                                f"{_var} ? {_var}.slice(0,7)"
-                                                " : '#9E9E9E'",
-                                            ),
-                                        )
-                            with vuetify3.VCard():
-                                vuetify3.VColorPicker(
-                                    v_model=(_var,),
-                                    modes=("['hexa']",),
-                                    classes="w-100",
-                                    divided=True,
-                                    landscape=True,
-                                    max_width=300,
-                                )
-                                vuetify3.VBtn(
-                                    "Auto (clamp)",
-                                    size="small",
-                                    variant="text",
-                                    block=True,
-                                    click=f"{_var} = ''",
-                                )
 
             with vuetify3.VMenu(close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
@@ -469,6 +429,56 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     # ---- Below / above range colours ----
 
+    def _range_color_swatch(self, side):
+        """One compact swatch button + colour-picker menu for the below-
+        or above-range colour. Empty state var = VTK's clamp default
+        (out-of-range cells keep the min / max stop colour — the swatch
+        then shows that stop colour via `*_auto_color`). Picking a
+        colour flips `UseBelow/AboveRangeColor` on the LUT; "Auto"
+        reverts to the clamp. The picker's alpha is accepted but
+        silently ignored: the LUT property is RGB-only (VTK has no
+        below/above-range opacity)."""
+        var = f"{side}_range_color"
+        auto_var = f"{side}_range_auto_color"
+        tip = ("Colour below Min (Auto = clamp to the min colour)"
+               if side == "below"
+               else "Colour above Max (Auto = clamp to the max colour)")
+        with vuetify3.VCol(cols="auto"):
+            with vuetify3.VMenu(close_on_content_click=False):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    with vuetify3.VTooltip(location="bottom"):
+                        with vuetify3.Template(v_slot_activator="{ props: tt }"):
+                            with vuetify3.VBtn(
+                                icon=True,
+                                v_bind="{ ...props, ...tt }",
+                                variant="text",
+                                size="small",
+                            ):
+                                vuetify3.VIcon(
+                                    "mdi-circle",
+                                    color=(
+                                        f"{var} ? {var}.slice(0,7)"
+                                        f" : ({auto_var} || '#9E9E9E')",
+                                    ),
+                                )
+                        html.Span(tip)
+                with vuetify3.VCard():
+                    vuetify3.VColorPicker(
+                        v_model=(var,),
+                        modes=("['hexa']",),
+                        classes="w-100",
+                        divided=True,
+                        landscape=True,
+                        max_width=300,
+                    )
+                    vuetify3.VBtn(
+                        "Auto (clamp)",
+                        size="small",
+                        variant="text",
+                        block=True,
+                        click=f"{var} = ''",
+                    )
+
     @staticmethod
     def _range_color_hex(lut, which):
         """The LUT's below/above-range colour as '#RRGGBB', or '' when
@@ -550,6 +560,21 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             # reflect can't trigger a redundant render.
             self.state.below_range_color = self._range_color_hex(lut, "below")
             self.state.above_range_color = self._range_color_hex(lut, "above")
+            # Mirror the preset's actual first / last stop colours so the
+            # collapsed swatches show the real clamp colour by default.
+            try:
+                pts = list(lut.RGBPoints or [])
+                if len(pts) >= 8:
+                    self.state.below_range_auto_color = "#%02X%02X%02X" % tuple(
+                        min(255, max(0, round(float(c) * 255)))
+                        for c in pts[1:4]
+                    )
+                    self.state.above_range_auto_color = "#%02X%02X%02X" % tuple(
+                        min(255, max(0, round(float(c) * 255)))
+                        for c in pts[-3:]
+                    )
+            except Exception:
+                pass
 
     @change("color_use_log")
     def on_color_use_log_changed(self, *args, **kwargs) -> None:
