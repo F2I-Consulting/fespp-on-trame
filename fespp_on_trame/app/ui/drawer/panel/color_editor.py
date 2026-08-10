@@ -466,13 +466,26 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                                 variant="text",
                                 size="small",
                             ):
-                                vuetify3.VIcon(
-                                    "mdi-circle",
-                                    color=(
-                                        f"{var} ? {var}.slice(0,7)"
-                                        f" : ({auto_var} || '#9E9E9E')",
-                                    ),
-                                )
+                                # Full 8-digit colour (CSS renders the
+                                # alpha) over a grey outline ring, so
+                                # the chip shows the opacity AND stays
+                                # visible / clickable at alpha 0.
+                                with html.Div(
+                                    style="position:relative; width:24px; height:24px;",
+                                ):
+                                    vuetify3.VIcon(
+                                        "mdi-circle-outline",
+                                        color="grey",
+                                        style="position:absolute; inset:0;",
+                                    )
+                                    vuetify3.VIcon(
+                                        "mdi-circle",
+                                        color=(
+                                            f"{var} ? {var}"
+                                            f" : ({auto_var} || '#9E9E9E')",
+                                        ),
+                                        style="position:absolute; inset:0;",
+                                    )
                         html.Span(tip)
                 with vuetify3.VCard():
                     vuetify3.VColorPicker(
