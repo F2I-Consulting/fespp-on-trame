@@ -1078,6 +1078,9 @@ class TreeViews:
                                     # overlapped with the same diagonal
                                     # offset as check-all, in red. (The
                                     # boxed variants read as "copy".)
+                                    # Same-height horizontal overlap —
+                                    # check-all's two glyphs share their
+                                    # baseline, only shifted sideways.
                                     with html.Div(
                                         style=("position:relative;"
                                                " width:24px; height:24px;"),
@@ -1085,16 +1088,16 @@ class TreeViews:
                                         vuetify3.VIcon(
                                             "mdi-close",
                                             color="red-darken-1",
-                                            size=17,
+                                            size=18,
                                             style=("position:absolute;"
-                                                   " left:-1px; top:6px;"),
+                                                   " left:-1px; top:3px;"),
                                         )
                                         vuetify3.VIcon(
                                             "mdi-close",
                                             color="red-darken-1",
-                                            size=17,
+                                            size=18,
                                             style=("position:absolute;"
-                                                   " left:7px; top:1px;"),
+                                                   " left:6px; top:3px;"),
                                         )
                                     vuetify3.VTooltip(
                                         "Unselect all", activator="parent",
