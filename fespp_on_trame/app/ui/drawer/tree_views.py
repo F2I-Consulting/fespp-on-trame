@@ -1072,33 +1072,38 @@ class TreeViews:
                                     click=(self.controller.tree_select_kinds,
                                            f"['{tab}', {kinds}, 'remove']"),
                                 ):
-                                    # MDI has no bare "double cross"
-                                    # matching mdi-check-all's style, so
-                                    # compose one: two mdi-close glyphs
-                                    # overlapped with the same diagonal
-                                    # offset as check-all, in red. (The
-                                    # boxed variants read as "copy".)
-                                    # Same-height horizontal overlap —
-                                    # check-all's two glyphs share their
-                                    # baseline, only shifted sideways.
-                                    with html.Div(
-                                        style=("position:relative;"
-                                               " width:24px; height:24px;"),
-                                    ):
-                                        vuetify3.VIcon(
-                                            "mdi-close",
-                                            color="red-darken-1",
-                                            size=18,
-                                            style=("position:absolute;"
-                                                   " left:-1px; top:3px;"),
-                                        )
-                                        vuetify3.VIcon(
-                                            "mdi-close",
-                                            color="red-darken-1",
-                                            size=18,
-                                            style=("position:absolute;"
-                                                   " left:6px; top:3px;"),
-                                        )
+                                    # MDI has no bare "double cross" in
+                                    # mdi-check-all's style, so this is a
+                                    # hand-drawn SVG: two red crosses on
+                                    # one baseline, the FRONT one cutting
+                                    # the back one out through an SVG
+                                    # mask (same knockout check-all's
+                                    # glyph uses) — clean separation on
+                                    # any background, hover included.
+                                    # Single quotes ONLY inside the
+                                    # template literal: trame wraps HTML
+                                    # attributes in double quotes.
+                                    html.Div(
+                                        v_html=(
+                                            "`<svg xmlns='http://www.w3.org/2000/svg'"
+                                            " viewBox='0 0 24 24' width='24' height='24'>"
+                                            "<defs><mask id='fespp-unsel-cut'>"
+                                            "<rect width='24' height='24' fill='white'/>"
+                                            "<path d='M10.6 7.4 L19.8 16.6 M10.6 16.6 L19.8 7.4'"
+                                            " stroke='black' stroke-width='5.2'"
+                                            " stroke-linecap='round' fill='none'/>"
+                                            "</mask></defs>"
+                                            "<path d='M4.2 7.4 L13.4 16.6 M4.2 16.6 L13.4 7.4'"
+                                            " stroke='#E53935' stroke-width='2.2'"
+                                            " stroke-linecap='round' fill='none'"
+                                            " mask='url(#fespp-unsel-cut)'/>"
+                                            "<path d='M10.6 7.4 L19.8 16.6 M10.6 16.6 L19.8 7.4'"
+                                            " stroke='#E53935' stroke-width='2.2'"
+                                            " stroke-linecap='round' fill='none'/>"
+                                            "</svg>`",
+                                        ),
+                                        style="width:24px; height:24px;",
+                                    )
                                     vuetify3.VTooltip(
                                         "Unselect all", activator="parent",
                                         location="bottom",
