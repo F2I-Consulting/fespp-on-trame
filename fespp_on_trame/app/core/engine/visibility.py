@@ -90,6 +90,20 @@ def toggle_marker_visibility(state, controller, server, source_registry, tree,
             pass
 
 
+def _per_view_ijk_for(rep_path, view):
+    """The per-view IjkGrid instance rendering `rep_path` in `view`,
+    or None (non-grid rep / scene not built / per-view IjkGrid not
+    materialised yet)."""
+    try:
+        from fespp_on_trame.app.core.engine.source_resolver import (
+            _scene_rep_for_view,
+        )
+        ris = _scene_rep_for_view(rep_path, view)
+        return getattr(ris, "_per_view_ijk", None)
+    except Exception:
+        return None
+
+
 def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                           panel_id=None, tree=None):
     if not rep_path:
@@ -133,14 +147,20 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
         # For IjkGrid the per-mode Show/Hide pattern is intricate
         # (slice vs range, volume eye, deepest threshold leaf) — let
         # IjkGrid.show() decide which sources to actually render in
-        # the target view. For non-IjkGrid reps, plain Show on the
-        # source proxy is the right behaviour.
+        # the target view, on BOTH instances (legacy shared + per-view)
+        # so whichever pipeline currently renders gets re-shown. For
+        # non-IjkGrid reps, plain Show on the source proxy is right.
         ijk = source_registry.get_ijk_grid(rep_path)
-        if ijk is not None:
+        for ijk_inst in (ijk, _per_view_ijk_for(rep_path, view)):
+            if ijk_inst is None:
+                continue
             try:
-                ijk.show(view=view)
+                ijk_inst.show(view=view)
             except Exception as _e:
                 pass
+        # Non-IjkGrid reps take the generic Show path below.
+        if ijk is not None:
+            pass
         else:
             # ExtractBlock side — the rep's `add_source` set
             # Representation + tint on the active view's display only.
@@ -172,7 +192,33 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
     else:
         # Hide: flip Visibility on every source of the rep (slicers,
         # volume crop, rep_data extractor) so the panel goes dark
-        # regardless of which one was rendering.
+        # regardless of which one was rendering. Cover BOTH IjkGrid
+        # pipelines explicitly: the show path re-shows the LEGACY
+        # shared instance while `sources_for_rep_path` prefers the
+        # per-view set once a RepInScene exists — hiding only the
+        # latter left the legacy slicers rendering on the second eye
+        # close ([EYE]-probe diagnosis: sliceri/j/k_0 survived).
+        all_srcs = list(srcs)
+        try:
+            _ijk_legacy = source_registry.get_ijk_grid(rep_path)
+        except Exception:
+            _ijk_legacy = None
+        for _ijk_inst in (_ijk_legacy, _per_view_ijk_for(rep_path, view)):
+            if _ijk_inst is None:
+                continue
+            for _attr in ("_src_extract_init", "_src_slicer_volume"):
+                _p = getattr(_ijk_inst, _attr, None)
+                if _p is not None:
+                    all_srcs.append(_p)
+            try:
+                all_srcs.extend(_ijk_inst._all_slice_sources())
+            except Exception:
+                pass
+            try:
+                all_srcs.extend(_ijk_inst.all_threshold_sources())
+            except Exception:
+                pass
+        srcs = all_srcs
         for src in srcs:
             try:
                 pvsimple.Hide(src, view=view)
