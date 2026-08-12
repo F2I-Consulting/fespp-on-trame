@@ -819,6 +819,17 @@ def _build_table_for_path(state, scene_registry, source_registry, tree,
     is_mr = element_type.for_kind(kind).is_multi_realization()
     is_ts = element_type.for_kind(kind).is_time_series()
     prop_kind = _prop_kind_for_array_path(tree, array_path, kind)
+    # PWLS / local property-kind title (volume, depth, …) — FESPP's
+    # `propertyKind` assembly attribute. Empty on EPCs whose
+    # properties use standard 2.0.1 Energistics kinds (no object to
+    # read C++-side) and on plugins built before the attribute existed.
+    pwls_kind = ""
+    try:
+        _nid = tree.find_node_id(array_path)
+        if _nid is not None:
+            pwls_kind = tree.find_attribute_value(_nid, "propertyKind") or ""
+    except Exception:
+        pwls_kind = ""
     try:
         from fespp_on_trame.app.ui.drawer.config.tree_icons import (
             get_primary_icon,
@@ -833,6 +844,7 @@ def _build_table_for_path(state, scene_registry, source_registry, tree,
         "kind": kind,
         "prop_kind": prop_kind,
         "prop_type_label": _PROP_TYPE_LABELS.get(prop_kind, ""),
+        "property_kind_title": pwls_kind,
         "icon": icon,
         "is_mr": is_mr,
         "is_ts": is_ts,

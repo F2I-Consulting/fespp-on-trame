@@ -296,6 +296,20 @@ class DescriptiveStatsPanel:
                 color="teal-darken-1",
                 classes="ml-2",
             )
+            # PWLS property kind (volume, depth, …) — needs a FESPP
+            # build carrying the `propertyKind` assembly attribute;
+            # silently absent otherwise.
+            vuetify3.VChip(
+                "{{ ui_stats_tables[array_path].property_kind_title }}",
+                v_if=(
+                    "ui_stats_tables && ui_stats_tables[array_path]"
+                    " && ui_stats_tables[array_path].property_kind_title",
+                ),
+                size="x-small",
+                variant="outlined",
+                color="indigo",
+                classes="ml-1",
+            )
             _can_cmp = (
                 "ui_stats_tables && ui_stats_tables[array_path]"
                 " && (ui_stats_tables[array_path].is_mr"
