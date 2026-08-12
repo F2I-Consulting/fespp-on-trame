@@ -124,30 +124,32 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             # Min, Max, above-range swatch.
             with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2", align="center"):
                 self._range_color_swatch("below")
-                # Plain TEXT inputs bound as STRINGS. No `type="number"`
-                # (spinner arrows are meaningless on a continuous range)
-                # and no `v_model_number` either: Vue's `.number`
-                # modifier parseFloat-rewrites the field on every
-                # keystroke, so on a text input typing "0." snapped
-                # back to "0" — decimals could not be typed at all.
-                # Parsing happens server-side on Apply/Enter.
+                # AUTO-APPLY text inputs. The state var syncs ONLY on
+                # commit (blur / Enter) — never per keystroke, which
+                # (a) leaves partial input like "0." alone while typing
+                # and (b) stops the busy spinner from flashing at every
+                # key. The server watcher `on_range_fields_changed`
+                # then applies the committed range immediately: type,
+                # click elsewhere (or Enter) → applied.
                 with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Min",
-                        v_model=("color_range_min", "0"),
+                        model_value=("color_range_min", "0"),
+                        blur="color_range_min = $event.target.value",
+                        keydown_enter="color_range_min = $event.target.value",
                         density="compact",
                         variant="outlined",
                         hide_details=True,
-                        keydown_enter=self.apply_color_range,
                     )
                 with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Max",
-                        v_model=("color_range_max", "1"),
+                        model_value=("color_range_max", "1"),
+                        blur="color_range_max = $event.target.value",
+                        keydown_enter="color_range_max = $event.target.value",
                         density="compact",
                         variant="outlined",
                         hide_details=True,
-                        keydown_enter=self.apply_color_range,
                     )
                 self._range_color_swatch("above")
             with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1", align="center"):
@@ -365,14 +367,29 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
     def _sync_range_fields(self, lo, hi):
         """Reflect a range into the Min/Max inputs as STRINGS formatted
         to 3 decimals max (user-requested display precision — the
-        applied range follows the displayed value). They never
-        auto-apply (apply is explicit via button / Enter), so writing
-        them here can't loop back into a rescale."""
+        applied range follows the displayed value). The guard flag
+        keeps this programmatic write from re-triggering the
+        auto-apply watcher `on_range_fields_changed`."""
+        self._syncing_range_fields = True
         try:
             self.state.color_range_min = self._fmt3(lo)
             self.state.color_range_max = self._fmt3(hi)
         except (TypeError, ValueError):
             pass
+        finally:
+            self._syncing_range_fields = False
+
+    @change("color_range_min", "color_range_max")
+    def on_range_fields_changed(self, *args, **kwargs) -> None:
+        """AUTO-APPLY: the fields sync state only on blur / Enter now,
+        so every change landing here is a USER COMMIT — apply it
+        without requiring the Apply button (kept as an explicit
+        affordance). Skips the editor's own formatted write-backs."""
+        if getattr(self, "_syncing_range_fields", False):
+            return
+        if not self._should_apply_state_change():
+            return
+        self.apply_color_range()
 
     def _resolve_target_pwf(self, base_name):
         """The target scene's scoped opacity function for `base_name`,
