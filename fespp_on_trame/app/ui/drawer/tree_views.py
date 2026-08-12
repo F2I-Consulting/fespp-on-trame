@@ -238,7 +238,8 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             _state.empty_color_snackbar_text = (
                 "Trajectory kept for: " + ", ".join(sorted(set(kept_wells)))
                 + " — selected logs/markers depend on it. Unselect them"
-                " first to unselect the trajectory."
+                " first, or just close the eye on the trajectory to"
+                " hide it."
             )
             _state.empty_color_snackbar_visible = False
             _state.empty_color_snackbar_visible = True
@@ -324,6 +325,15 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
         expanded = _expand_selection_with_deps(curr_select, prev_select, tree)
         if set(expanded) != set(curr_select):
             setattr(_state, select_var, expanded)
+            # Force the client resync even when the re-expanded value
+            # equals the var's PREVIOUS server value (trame collapses
+            # same-value writes): under rapid clicking the checkbox
+            # model could otherwise stay desynced — box unchecked
+            # while the vetoed trajectory still renders.
+            try:
+                _state.dirty(select_var)
+            except Exception:
+                pass
 
 
 def _wire_grid_geometry_on_property(tree):
