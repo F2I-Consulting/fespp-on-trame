@@ -8,7 +8,6 @@ import ptc
 
 from ..widget.time_control import FesppTimeControl
 from ..widget.realization_picker import PerViewRealizationPicker
-from ..widget.view_link_menu import ViewLinkMenu
 from ..widget.per_view_camera_toolbar import PerViewCameraToolbar
 
 
@@ -328,9 +327,15 @@ class FesppMultiView(ptc.MultiView):
             # Active panel indicator — a 3px inset blue border around
             # the viewport, plus an "ACTIVE" pill in the top-right
             # (top-center is taken by the TimeControl; top-left by the
-            # camera chrome). Reactive on `fespp_active_panel_id`.
+            # camera chrome). Reactive on `fespp_active_panel_id`, and
+            # only shown when 2+ render panels exist — on the lone v1
+            # view a permanent ACTIVE badge is multi-view noise.
+            _is_active_multi = (
+                f"fespp_active_panel_id === '{panel_id}'"
+                " && (fespp_render_panels || []).length > 1"
+            )
             html.Div(
-                v_show=(f"fespp_active_panel_id === '{panel_id}'",),
+                v_show=(_is_active_multi,),
                 style=(
                     "position:absolute; inset:0;"
                     " box-shadow: inset 0 0 0 3px #1976d2;"
@@ -340,7 +345,7 @@ class FesppMultiView(ptc.MultiView):
             )
             html.Div(
                 "ACTIVE",
-                v_show=(f"fespp_active_panel_id === '{panel_id}'",),
+                v_show=(_is_active_multi,),
                 style=(
                     "position:absolute; top: 4px; right: 4px;"
                     " padding: 2px 8px;"
@@ -1326,10 +1331,11 @@ class FesppMultiView(ptc.MultiView):
             )
 
     def _render_panel_camera_chrome(self, panel_id):
-        """Top-left vertical chrome on a render panel: magnet (link
-        cameras to other views) above the per-view camera toolbar
-        (reset / +X / +Y / +Z / 2D-3D). Actions iterate over the
-        panel + its `state.view_links` set."""
+        """Top-left vertical chrome on a render panel: the per-view
+        camera toolbar (reset / +X / +Y / +Z / 2D-3D). The camera-link
+        magnet (`ViewLinkMenu`) is NOT mounted — multi-view isn't
+        shipped in v1, and a "link cameras to other views" button on
+        the only view read as unfinished UI."""
         with html.Div(
             classes="d-flex flex-column align-center",
             style=(
@@ -1340,7 +1346,6 @@ class FesppMultiView(ptc.MultiView):
                 " padding: 2px;"
             ),
         ):
-            ViewLinkMenu(panel_id).render()
             PerViewCameraToolbar(panel_id).render()
 
     def _render_panel_actions(self, panel_id):
