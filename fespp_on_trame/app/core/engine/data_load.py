@@ -287,8 +287,20 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     server.controller.on_active_proxy_change()
 
     if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
-        state.view_reset_camera = True
-        state.has_data_loaded_once = True
+        # Re-centre on the first load that actually MATERIALISES
+        # geometry — "0 cells → ≥1 cell". A selection whose data can't
+        # load (EPC imported without its H5: tree fine, geometry empty
+        # + error message) must NOT consume the one-shot flag, else the
+        # retry after the H5 upload renders off-centre with no reset.
+        n_cells = 0
+        try:
+            info = active_source.get_source().GetDataInformation()
+            n_cells = int(info.GetNumberOfCells() or 0)
+        except Exception:
+            n_cells = 0
+        if n_cells > 0:
+            state.view_reset_camera = True
+            state.has_data_loaded_once = True
 
     if activator is not None:
         activator.refresh_active()
