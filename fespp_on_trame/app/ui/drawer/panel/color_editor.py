@@ -455,7 +455,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         tip = ("Colour below Min (Auto = clamp to the min colour)"
                if side == "below"
                else "Colour above Max (Auto = clamp to the max colour)")
-        with vuetify3.VCol(cols="auto"):
+        with vuetify3.VCol(cols="auto"), html.Div(
+            # Chip + a 9px caption stacked in a flex column: 24px icon
+            # + caption stays under the ~40px Min/Max field height, so
+            # the label costs no extra row.
+            classes="d-flex flex-column align-center",
+        ):
             with vuetify3.VMenu(close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     with vuetify3.VTooltip(location="bottom"):
@@ -511,6 +516,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         block=True,
                         click=f"{var} = ''",
                     )
+            html.Span(
+                "Below" if side == "below" else "Above",
+                classes="text-medium-emphasis",
+                style=("font-size: 9px; line-height: 1;"
+                       " margin-top: -3px; user-select: none;"),
+            )
 
     @staticmethod
     def _range_color_hex(lut, which):
