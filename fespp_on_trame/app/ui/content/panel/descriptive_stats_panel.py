@@ -282,6 +282,20 @@ class DescriptiveStatsPanel:
                 color="purple",
                 classes="ml-1",
             )
+            # Value-type chip ("Continuous property", …) — speaks the
+            # geologist's language where the old "SolidColor" rep
+            # prefix spoke ParaView's.
+            vuetify3.VChip(
+                "{{ ui_stats_tables[array_path].prop_type_label }}",
+                v_if=(
+                    "ui_stats_tables && ui_stats_tables[array_path]"
+                    " && ui_stats_tables[array_path].prop_type_label",
+                ),
+                size="x-small",
+                variant="outlined",
+                color="teal-darken-1",
+                classes="ml-2",
+            )
             _can_cmp = (
                 "ui_stats_tables && ui_stats_tables[array_path]"
                 " && (ui_stats_tables[array_path].is_mr"
@@ -352,11 +366,15 @@ class DescriptiveStatsPanel:
                        " at the current realization'",),
                 click="trigger('stats_pin_all', [array_path, 'ts'])",
             )
+            # Always VISIBLE on pinnable cards (disabled while nothing
+            # is pinned): a button that only materialises after the
+            # first pin read as "missing" to users.
             vuetify3.VBtn(
                 "Unpin all",
-                v_if=(_has_custom,),
+                v_if=(f"({_is_mr_card}) || ({_is_ts_card})",),
+                disabled=(f"!({_has_custom})",),
                 variant="text", density="compact", size="small",
-                color="grey",
+                color="grey-darken-1",
                 prepend_icon="mdi-pin-off-outline",
                 classes="ml-1",
                 title=("'Remove every pinned row of this card'",),

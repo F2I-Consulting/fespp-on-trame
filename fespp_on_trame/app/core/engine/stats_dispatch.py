@@ -340,6 +340,17 @@ def _rep_title_for_array_path(tree, array_path):
         if rep_id is None:
             return ""
         title = tree.find_title(rep_id) or ""
+        # A grid property's rep node is the geometry LEAF, literally
+        # titled "SolidColor" (the C++ grid-folder layout) — a
+        # meaningless card prefix. Climb to the enclosing GridContainer
+        # and use the actual grid name instead.
+        if title == "SolidColor":
+            container = tree.find_parent_node_id_with_type(
+                rep_id, "GridContainer")
+            if container is not None:
+                container_title = tree.find_title(container) or ""
+                if container_title:
+                    return container_title
         if title:
             return title
         rep_path = tree.find_path(rep_id) or ""
@@ -348,6 +359,16 @@ def _rep_title_for_array_path(tree, array_path):
         return ""
     except Exception:
         return ""
+
+
+# Human labels of a property's VALUE TYPE — shown as a card-header
+# chip. (The PWLS property kind — volume, depth, … — is NOT exposed by
+# FESPP today; this is the value type only.)
+_PROP_TYPE_LABELS = {
+    "ContinuousProperty": "Continuous property",
+    "DiscreteProperty": "Discrete property",
+    "CategoricalProperty": "Categorical property",
+}
 
 
 def _title_and_kind(tree, array_path):
@@ -811,6 +832,7 @@ def _build_table_for_path(state, scene_registry, source_registry, tree,
         "rows": rows,
         "kind": kind,
         "prop_kind": prop_kind,
+        "prop_type_label": _PROP_TYPE_LABELS.get(prop_kind, ""),
         "icon": icon,
         "is_mr": is_mr,
         "is_ts": is_ts,
