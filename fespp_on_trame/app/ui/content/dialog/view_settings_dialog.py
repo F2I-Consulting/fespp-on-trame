@@ -126,6 +126,42 @@ class ViewSettingsDialog:
                     self._orient_editor.render()
                     vuetify3.VDivider(classes="my-4")
                     self._bg_editor.render()
+                    vuetify3.VDivider(classes="my-4")
+                    self._render_marker_display()
+
+    def _render_marker_display(self):
+        """Marker display (orientation + size) — GLOBAL settings, moved
+        here from the Attributes drawer: everything in Attributes acts
+        on ONE element, and these act on every marker in every view
+        (user feedback: the explicit "global" chip wasn't enough)."""
+        html.Div(
+            "Markers",
+            classes="text-caption text-uppercase font-weight-bold mb-2",
+        )
+        html.Div(
+            "Applies to ALL markers (in every view).",
+            classes="text-caption text-medium-emphasis mb-2",
+        )
+        vuetify3.VSwitch(
+            v_model=("marker_orientation",),
+            label="Orientation (disc oriented by dip/azimuth, otherwise sphere)",
+            density="compact",
+            hide_details=True,
+            color="deep-orange",
+            classes="mb-2",
+        )
+        vuetify3.VSlider(
+            v_model=("marker_size",),
+            label="Size",
+            min=1, max=200, step=1,
+            thumb_label=True,
+            density="compact",
+            hide_details=True,
+            color="deep-orange",
+            # Apply on RELEASE only (rebuilding markers re-runs the
+            # collector over the whole selection).
+            end=(self._server.controller.apply_marker_options,),
+        )
 
     def _render_rename(self):
         """Rename field — Enter and the Apply button commit the

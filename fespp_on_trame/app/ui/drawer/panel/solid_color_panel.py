@@ -270,47 +270,12 @@ class SolidColorPanel(html.Div):
                         ):
                             CategoricalColorEditor()
 
-                # Marker display options (orientation + size). Shown only in
-                # a marker context. GLOBAL — clearly flagged so the user
-                # knows it applies to EVERY marker in EVERY view.
-                with vuetify3.VExpansionPanel(
-                    elevation=0, value=1, v_if="sc_active_is_marker",
-                ):
-                    with vuetify3.VExpansionPanelTitle(classes="pa-2"):
-                        html.Span("Marker display", classes="text-body-2 font-weight-medium")
-                        vuetify3.VSpacer()
-                        vuetify3.VChip(
-                            "global",
-                            size="x-small",
-                            variant="tonal",
-                            color="deep-orange",
-                            classes="font-italic mr-2",
-                        )
-                    with vuetify3.VExpansionPanelText(classes="pa-2"):
-                        html.Div(
-                            "Applies to ALL markers (in every view).",
-                            classes="text-caption text-medium-emphasis mb-3",
-                        )
-                        vuetify3.VSwitch(
-                            v_model=("marker_orientation",),
-                            label="Orientation (disc oriented by dip/azimuth, otherwise sphere)",
-                            density="compact",
-                            hide_details=True,
-                            color="deep-orange",
-                            classes="mb-3",
-                        )
-                        vuetify3.VSlider(
-                            v_model=("marker_size",),
-                            label="Size",
-                            min=1, max=200, step=1,
-                            thumb_label=True,
-                            density="compact",
-                            hide_details=True,
-                            color="deep-orange",
-                            # Apply on RELEASE only (rebuilding markers re-runs
-                            # the collector over the whole selection).
-                            end=(controller.apply_marker_options,),
-                        )
+                # Marker display options (orientation + size) are GLOBAL —
+                # they apply to every marker in every view, which
+                # contradicted this panel's per-element contract even with
+                # the explicit "global" chip (user feedback). They now live
+                # in the view ⚙ dialog with the other global settings — see
+                # `ViewSettingsDialog._render_marker_display`.
 
         # --- Override array-name lookup to use state instead of active source ---
         # The state-driven name carries the property TITLE for MR

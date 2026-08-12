@@ -50,9 +50,17 @@ def _sibling_sort_key(node):
         int(part) if part.isdigit() else part
         for part in _NATURAL_SPLIT_RE.split(title)
     ]
+    # Markers carry an `md` field (FESPP's "md" node attribute): they
+    # sort by DEPTH among their siblings — the geologist's reading
+    # order — falling back to the title on equal MDs. Non-marker nodes
+    # get +inf there, so mixed levels keep pure alphabetical order.
+    try:
+        md_key = float(node.get("md")) if node.get("md") is not None else float("inf")
+    except (TypeError, ValueError):
+        md_key = float("inf")
     # A node flagged `_sort_first` (the hoisted grid geometry) sorts before
     # every sibling at its level; others keep natural alphabetical order.
-    return [0 if node.get("_sort_first") else 1, *natural]
+    return [0 if node.get("_sort_first") else 1, md_key, *natural]
 
 
 def _hoist_grid_geometry(node_type, children):
@@ -201,6 +209,11 @@ class Tree():
         data["treeview"]["rep_path"] = rep_path_attr
         data["treeview"]["type"] = node_type
         data["treeview"]["icon"] = get_primary_icon(node_type, node_prop_kind)
+        # Marker depth — drives the depth-first sibling sort (see
+        # `_sibling_sort_key`); absent on every other node kind.
+        node_md = self._data_assembly.GetAttributeOrDefault(node_id, "md", None)
+        if node_md:
+            data["treeview"]["md"] = node_md
         # is_ts / is_mr drive the secondary badges in tree_views.py
         # (clock + "MR" chip). Only synthetic node types have them.
         data["treeview"]["is_ts"] = _et.for_kind(node_type).is_time_series()
@@ -320,6 +333,9 @@ class Tree():
                 treeview["rep_path"] = top_rep_path
                 treeview["type"] = node_type
                 treeview["icon"] = get_primary_icon(node_type, node_prop_kind)
+                node_md = self._data_assembly.GetAttributeOrDefault(node_id, "md", None)
+                if node_md:
+                    treeview["md"] = node_md
                 treeview["is_ts"] = _et.for_kind(node_type).is_time_series()
                 treeview["is_mr"] = _et.for_kind(node_type).is_multi_realization()
                 # eye token (rep / array / marker / None) — drives which eye
