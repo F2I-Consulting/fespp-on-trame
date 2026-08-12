@@ -225,9 +225,13 @@ class DescriptiveStatsPanel:
         tree's property row exactly (see `tree_views`) so users
         can map a card to its source node at a glance."""
         with html.Div(
-            classes="d-flex align-center pa-3",
+            # flex-wrap: with the column-title-length pin-all labels, a
+            # narrow card used to push "Unpin all" (and the row chip)
+            # past the right edge, clipped invisible. Wrapping flows
+            # the overflow onto a second header line instead.
+            classes="d-flex align-center flex-wrap pa-3",
             style=(
-                "background: #fafafa;"
+                "background: #fafafa; row-gap: 4px;"
                 " border-bottom: 1px solid rgba(0,0,0,0.08);"
             ),
         ):
