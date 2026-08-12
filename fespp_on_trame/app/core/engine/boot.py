@@ -605,6 +605,14 @@ def initialize_fespp_engine(
     def _stats_unpin_original(array_path, original_id):
         stats_dispatch.unpin_original(state, array_path, original_id)
 
+    @server.trigger("stats_pin_all")
+    def _stats_pin_all(array_path, dimension):
+        stats_dispatch.pin_all_originals(state, array_path, dimension)
+
+    @server.trigger("stats_unpin_all")
+    def _stats_unpin_all(array_path):
+        stats_dispatch.unpin_all_originals(state, array_path)
+
     @server.trigger("stats_compare_toggle")
     def _stats_compare_toggle(array_path, item_key):
         stats_dispatch.toggle_compare(state, array_path, item_key)

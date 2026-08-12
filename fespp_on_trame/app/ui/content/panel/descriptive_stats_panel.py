@@ -305,6 +305,56 @@ class DescriptiveStatsPanel:
                 size="x-small", variant="tonal", color="primary",
                 classes="ml-2",
             )
+            # Bulk pinning: one row per realization (at the current
+            # time step) / per time step (at the current realization),
+            # and a one-click sweep of every pinned row. Idempotent —
+            # already-pinned combos are skipped server-side.
+            _is_mr_card = (
+                "ui_stats_tables && ui_stats_tables[array_path]"
+                " && ui_stats_tables[array_path].is_mr"
+            )
+            _is_ts_card = (
+                "ui_stats_tables && ui_stats_tables[array_path]"
+                " && ui_stats_tables[array_path].is_ts"
+            )
+            _has_custom = (
+                "((ui_stats_tables && ui_stats_tables[array_path]"
+                " && ui_stats_tables[array_path].rows) || [])"
+                ".some(function(r){ return r.kind === 'original'"
+                " && r.id !== 'default'; })"
+            )
+            vuetify3.VBtn(
+                "Pin all reals",
+                v_if=(_is_mr_card,),
+                variant="text", density="compact", size="small",
+                color="primary",
+                prepend_icon="mdi-pin-outline",
+                classes="ml-3",
+                title=("'One pinned row per loaded realization,"
+                       " at the current time step'",),
+                click="trigger('stats_pin_all', [array_path, 'real'])",
+            )
+            vuetify3.VBtn(
+                "Pin all steps",
+                v_if=(_is_ts_card,),
+                variant="text", density="compact", size="small",
+                color="primary",
+                prepend_icon="mdi-pin-outline",
+                classes="ml-1",
+                title=("'One pinned row per time step,"
+                       " at the current realization'",),
+                click="trigger('stats_pin_all', [array_path, 'ts'])",
+            )
+            vuetify3.VBtn(
+                "Unpin all",
+                v_if=(_has_custom,),
+                variant="text", density="compact", size="small",
+                color="grey",
+                prepend_icon="mdi-pin-off-outline",
+                classes="ml-1",
+                title=("'Remove every pinned row of this card'",),
+                click="trigger('stats_unpin_all', [array_path])",
+            )
             vuetify3.VSpacer()
             vuetify3.VChip(
                 "{{ (ui_stats_tables && ui_stats_tables[array_path]"
@@ -579,8 +629,11 @@ class DescriptiveStatsPanel:
                 density="compact",
                 hide_details=True,
                 variant="outlined",
-                style="min-width: 130px; max-width: 170px;",
-                menu_props=("{ maxWidth: 360 }",),
+                # Wide enough for a full AAAA-MM-JJ label, with a
+                # slightly smaller font as extra headroom.
+                style=("min-width: 175px; max-width: 240px;"
+                       " font-size: 0.78rem;"),
+                menu_props=("{ maxWidth: 420 }",),
                 update_modelValue=(
                     "trigger('stats_set_original_ts_idx', "
                     "[array_path, row.id, $event])"

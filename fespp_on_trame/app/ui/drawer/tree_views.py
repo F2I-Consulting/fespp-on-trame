@@ -1072,7 +1072,10 @@ class TreeViews:
                                     click=(self.controller.tree_select_kinds,
                                            f"['{tab}', {kinds}, 'remove']"),
                                 ):
-                                    vuetify3.VIcon("mdi-checkbox-multiple-blank-outline")
+                                    # Stacked boxes with an X in the front
+                                    # one — the blank-boxes variant read
+                                    # as a "copy" icon to users.
+                                    vuetify3.VIcon("mdi-close-box-multiple-outline")
                                     vuetify3.VTooltip(
                                         "Unselect all", activator="parent",
                                         location="bottom",

@@ -1072,6 +1072,11 @@ def pin_original(state, array_path, original_id):
     target = next((o for o in originals if o.get("id") == original_id), None)
     if target is None or target.get("id") != "default":
         return
+    # Never two rows for the same (real, ts) combination — re-pinning
+    # an unchanged default silently no-ops instead of stacking
+    # indistinguishable duplicates.
+    if (target.get("real_idx"), target.get("ts_idx")) in _pinned_combos(originals):
+        return
     used_ids = {o.get("id") for o in originals}
     n = 1
     while f"custom-{n}" in used_ids:
@@ -1099,6 +1104,93 @@ def pin_original(state, array_path, original_id):
             new_panel_state[k] = v
     if array_path not in new_panel_state:
         new_panel_state[array_path] = {"originals": new_originals}
+    state.ui_stats_panel_state = new_panel_state
+
+
+def _pinned_combos(originals):
+    """The set of (real_idx, ts_idx) pairs already pinned as custom
+    rows (the default row doesn't count)."""
+    return {
+        (o.get("real_idx"), o.get("ts_idx"))
+        for o in originals if o.get("id") != "default"
+    }
+
+
+def pin_all_originals(state, array_path, dimension):
+    """Bulk-pin one row per available value of `dimension`:
+    'real' → every loaded realization at the default row's current
+    time step; 'ts' → every time step at the default row's current
+    realization. Values come from the PUBLISHED table
+    (`ui_stats_tables[..].available_*` — same source as the row
+    dropdowns). Combos already pinned are skipped, so the button is
+    idempotent and composes with hand-pinned rows."""
+    if not array_path or dimension not in ("real", "ts"):
+        return
+    tables = getattr(state, "ui_stats_tables", {}) or {}
+    tbl = tables.get(array_path) or {}
+    if dimension == "real":
+        values = list(tbl.get("available_realizations") or [])
+    else:
+        values = [
+            it.get("value") for it in (tbl.get("available_timesteps") or [])
+        ]
+    if not values:
+        return
+    old_panel_state = getattr(state, "ui_stats_panel_state", {}) or {}
+    entry = old_panel_state.get(array_path) or {"originals": []}
+    originals = [dict(o) for o in (entry.get("originals") or [])]
+    if not any(o.get("id") == "default" for o in originals):
+        originals.insert(0, {
+            "id": "default", "pinned": False,
+            "real_idx": None, "ts_idx": None,
+        })
+    default = next(o for o in originals if o.get("id") == "default")
+    seen = _pinned_combos(originals)
+    used_ids = {o.get("id") for o in originals}
+    n = 1
+    added = False
+    for v in values:
+        combo = ((v, default.get("ts_idx")) if dimension == "real"
+                 else (default.get("real_idx"), v))
+        if combo in seen:
+            continue
+        while f"custom-{n}" in used_ids:
+            n += 1
+        used_ids.add(f"custom-{n}")
+        originals.append({
+            "id": f"custom-{n}", "pinned": True,
+            "real_idx": combo[0], "ts_idx": combo[1],
+        })
+        seen.add(combo)
+        added = True
+    if not added:
+        return
+    new_panel_state = {}
+    for k, v in old_panel_state.items():
+        new_panel_state[k] = (
+            {**entry, "originals": originals} if k == array_path else v
+        )
+    if array_path not in new_panel_state:
+        new_panel_state[array_path] = {"originals": originals}
+    state.ui_stats_panel_state = new_panel_state
+
+
+def unpin_all_originals(state, array_path):
+    """Drop every pinned row of the card in one go (the default row
+    survives). Same top-down rebuild as `unpin_original`."""
+    if not array_path:
+        return
+    old_panel_state = getattr(state, "ui_stats_panel_state", {}) or {}
+    entry = old_panel_state.get(array_path) or {"originals": []}
+    new_originals = [
+        dict(o) for o in (entry.get("originals") or [])
+        if o.get("id") == "default"
+    ]
+    new_panel_state = {}
+    for k, v in old_panel_state.items():
+        new_panel_state[k] = (
+            {**entry, "originals": new_originals} if k == array_path else v
+        )
     state.ui_stats_panel_state = new_panel_state
 
 
