@@ -18,7 +18,11 @@ def register_upload_route(server) -> bool:
         controller = server.controller
         state.upload_uploading = True
         state.upload_progress = 0
+        # Reset so a REPEATED failed import re-triggers the snackbar
+        # (trame collapses same-value writes).
+        state.load_error = ""
         epc_paths = []
+        rejected = []
         total_size = int(request.headers.get("X-File-Size", 0))
         received = 0
         try:
@@ -37,6 +41,7 @@ def register_upload_route(server) -> bool:
                     continue
                 if not filename.lower().endswith((".epc", ".h5")):
                     print(f"[Upload] rejected non-EPC/H5 upload: {filename!r}", flush=True)
+                    rejected.append(filename)
                     continue
                 filepath = Path(temp_dir) / filename
                 base = Path(temp_dir).resolve()
@@ -78,6 +83,18 @@ def register_upload_route(server) -> bool:
             finally:
                 state.upload_parsing = False
             state.upload_uploading = False
+            # Surface rejected files: the extension filter used to be
+            # server-log-only, so importing e.g. a stray .txt looked
+            # like a silent success — fesapi never even saw the file.
+            # The LoadErrorSnackbar consumes `load_error`.
+            if rejected:
+                names = ", ".join(rejected[:4])
+                if len(rejected) > 4:
+                    names += ", …"
+                state.load_error = (
+                    f"Unsupported file type: {names} — only .epc and .h5"
+                    " files are accepted."
+                )
             state.flush()
             # Return basenames only — never leak absolute server temp paths.
             return aiohttp_web.json_response(
