@@ -460,23 +460,32 @@ _MULTICOLOR_STYLE = (
 )
 
 
+# JS predicate: node auto-deselected because its data is unreadable
+# (see vtk_log._flag_invalid_nodes). Invalid nodes carry NOTHING but
+# the ⚠ badge — no colour chip, no eyes, and a blocked checkbox — so
+# nothing invites the user to re-select them.
+_INVALID_NODE_EXPR = "(ui_invalid_node_ids || []).includes(item.id)"
+
+
 def _chip_slot():
     """Color chip rendered next to a tree node label.
 
     - No chip when the rep_path has no entry in
-      tree_chip_color_by_path (rep not loaded yet).
+      tree_chip_color_by_path (rep not loaded yet) — or when the node
+      is INVALID (unreadable data).
     - Rainbow gradient when the entry is the sentinel "PROPERTY"
       (a dataArray is the active eye on the rep).
     - Conic gradient when the entry is the sentinel "MULTICOLOR"
       (a MarkerFrame whose child markers have 2+ distinct colours).
     - Solid mdi-circle in the assigned colour otherwise."""
-    is_property = (
+    _valid = f"!({_INVALID_NODE_EXPR}) && "
+    is_property = _valid + (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'PROPERTY'"
     )
-    is_multicolor = (
+    is_multicolor = _valid + (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'MULTICOLOR'"
     )
-    is_solid = (
+    is_solid = _valid + (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path]"
         " && tree_chip_color_by_path[item.path] !== 'PROPERTY'"
         " && tree_chip_color_by_path[item.path] !== 'MULTICOLOR'"
@@ -525,7 +534,8 @@ def _stats_slot(controller, select_var):
     is_selected = (
         f"({select_var} || []).indexOf(item.id) !== -1"
     )
-    visible = f"({is_property}) && ({is_selected})"
+    visible = (f"!({_INVALID_NODE_EXPR}) && ({is_property})"
+               f" && ({is_selected})")
     is_pinned = (
         "ui_stats_pinned_paths"
         " && ui_stats_pinned_paths.indexOf(item.path) !== -1"
@@ -580,17 +590,18 @@ def _eye_slot(controller):
     # 'array' on property leaves, 'marker' on marker leaves, absent on the
     # Frame/MarkerFrame folders + groupings. Each block below is gated on
     # its eye token.
-    is_loaded_rep = (
+    _valid = f"!({_INVALID_NODE_EXPR}) && "
+    is_loaded_rep = _valid + (
         "ui_loaded_rep_paths && ui_loaded_rep_paths.indexOf(item.path) !== -1"
         " && item.eye === 'rep'"
     )
-    is_loaded_array = (
+    is_loaded_array = _valid + (
         "ui_loaded_array_paths && ui_loaded_array_paths.indexOf(item.path) !== -1"
         " && item.eye === 'array'"
     )
     # Marker leaves (WellboreMarker, runtime kind 'Marker') — MULTI-select
     # visibility, each independently toggleable per panel.
-    is_loaded_marker = (
+    is_loaded_marker = _valid + (
         "ui_loaded_marker_paths && ui_loaded_marker_paths.indexOf(item.path) !== -1"
         " && item.eye === 'marker'"
     )
@@ -1149,12 +1160,21 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon(
-                    v_if="!item.disabled",
+                    v_if="!item.disabled && !((ui_invalid_node_ids || []).includes(item.id))",
                     icon=(_select_checkbox_icon("ui_select_node_reservoir"),),
                     size="small",
                     color=(_select_checkbox_color("ui_select_node_reservoir"),),
                     style="cursor: pointer; margin-right: 4px;",
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_reservoir']"),
+                )
+                # Blocked checkbox stand-in on INVALID nodes (unreadable
+                # data): not clickable, visibly interdicted.
+                vuetify3.VIcon(
+                    "mdi-cancel",
+                    v_if="!item.disabled && ((ui_invalid_node_ids || []).includes(item.id))",
+                    size="small",
+                    color="grey-lighten-1",
+                    style="margin-right: 4px; cursor: not-allowed;",
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
@@ -1220,12 +1240,19 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon(
-                    v_if="!item.disabled",
+                    v_if="!item.disabled && !((ui_invalid_node_ids || []).includes(item.id))",
                     icon=(_select_checkbox_icon("ui_select_node_surface"),),
                     size="small",
                     color=(_select_checkbox_color("ui_select_node_surface"),),
                     style="cursor: pointer; margin-right: 4px;",
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_surface']"),
+                )
+                vuetify3.VIcon(
+                    "mdi-cancel",
+                    v_if="!item.disabled && ((ui_invalid_node_ids || []).includes(item.id))",
+                    size="small",
+                    color="grey-lighten-1",
+                    style="margin-right: 4px; cursor: not-allowed;",
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
@@ -1287,12 +1314,19 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon(
-                    v_if="!item.disabled",
+                    v_if="!item.disabled && !((ui_invalid_node_ids || []).includes(item.id))",
                     icon=(_select_checkbox_icon("ui_select_node_well"),),
                     size="small",
                     color=(_select_checkbox_color("ui_select_node_well"),),
                     style="cursor: pointer; margin-right: 4px;",
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_well']"),
+                )
+                vuetify3.VIcon(
+                    "mdi-cancel",
+                    v_if="!item.disabled && ((ui_invalid_node_ids || []).includes(item.id))",
+                    size="small",
+                    color="grey-lighten-1",
+                    style="margin-right: 4px; cursor: not-allowed;",
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
