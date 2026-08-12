@@ -190,19 +190,23 @@ def _flag_invalid_nodes(state, new_messages):
                 invalid.append(nid)
             # Keep FESAPI/VTK's OWN wording — it names the exact dataset
             # path that failed, far more actionable than a generic
-            # sentence. The uuid line + its continuation lines arrive in
-            # one queue entry; strip the uuid header, keep the detail.
+            # sentence. Drop the "Error when rendering uuid:" header by
+            # line PREFIX — never by uuid presence: the detail line
+            # ("The HDF5 dataset /RESQML/<uuid>/… could not be opened.")
+            # contains the uuid too, in its dataset path.
             detail = ""
             for msg in new_messages or []:
                 text = str(msg.get("text") or "")
-                if uuid in text:
-                    lines = [
-                        ln.strip() for ln in text.splitlines()
-                        if ln.strip() and uuid not in ln
-                    ]
+                if uuid not in text:
+                    continue
+                lines = [
+                    ln.strip() for ln in text.splitlines()
+                    if ln.strip()
+                    and not ln.strip().startswith("Error when rendering uuid")
+                ]
+                if lines:
                     detail = " ".join(lines)[:300]
-                    if detail:
-                        break
+                    break
             errors[str(nid)] = detail or "Dataset could not be read."
             try:
                 drop = set(tree.find_all_descendant_ids(nid))
@@ -220,12 +224,11 @@ def _flag_invalid_nodes(state, new_messages):
         state.ui_invalid_node_errors = errors
         _mark_disabled_in_subtrees(state, set(invalid))
         if toast:
-            title, nid_key = sorted(set(toast))[0]
-            more = len(set(toast)) - 1
-            suffix = f" (+{more} more)" if more > 0 else ""
+            # The notification IS fesapi's message, verbatim (user
+            # decision) — no "Deselected …" preamble.
+            _title, nid_key = sorted(set(toast))[0]
             state.load_error = (
-                f"Deselected {title}{suffix} — "
-                + (errors.get(nid_key) or "dataset could not be read.")
+                errors.get(nid_key) or "Dataset could not be read."
             )
     except Exception:
         pass
