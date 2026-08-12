@@ -191,6 +191,21 @@ def update_slice_mode(state, controller, source_registry, view, mode):
     if active is not None:
         active.apply_mode(mode or 'full')
         active.show()
+        # The flip swaps which sources render (rep_data / slicers /
+        # volume). Re-fire the active-array ColorBy on the NEW set —
+        # a freshly-shown source may never have been coloured (grid
+        # loaded in full mode, property activated there, then flipped
+        # to slice) — and re-assert the colour bar that the orphan
+        # sweep reaps when every bound display is hidden mid-flip.
+        _recolor_active_grid(state, source_registry, view)
+        try:
+            from fespp_on_trame.app.core.engine import source_resolver
+            source_resolver.reassert_active_scalar_bars(
+                state, source_registry,
+                view=_target_pv_view(state, view),
+            )
+        except Exception:
+            pass
     _render_and_push(state, controller, view)
 
 
