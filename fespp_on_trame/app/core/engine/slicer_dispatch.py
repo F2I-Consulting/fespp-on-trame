@@ -189,7 +189,7 @@ def update_slice_mode(state, controller, source_registry, view, mode):
     slice)."""
     active = _active_ijk_grid(state, source_registry)
     if active is not None:
-        active.apply_mode(mode or 'slice')
+        active.apply_mode(mode or 'full')
         active.show()
     _render_and_push(state, controller, view)
 

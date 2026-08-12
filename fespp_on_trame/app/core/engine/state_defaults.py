@@ -241,7 +241,7 @@ def init_state_defaults(state):
     state.setdefault("ui_slices_range_i", [0, 0])
     state.setdefault("ui_slices_range_j", [0, 0])
     state.setdefault("ui_slices_range_k", [0, 0])
-    state.setdefault("ui_slices_range_mode", "slice")
+    state.setdefault("ui_slices_range_mode", "full")
     state.setdefault("ui_slices_i_visible_list", [True])
     state.setdefault("ui_slices_j_visible_list", [True])
     state.setdefault("ui_slices_k_visible_list", [True])

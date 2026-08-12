@@ -148,11 +148,11 @@ class IjkGrid:
         self._range_i = None
         self._range_j = None
         self._range_k = None
-        # Slice mode by default (user preference): with no slicer added
-        # yet the rep_data still renders the COMPLETE grid, so a fresh
-        # load shows the full geometry either way — the mode only picks
-        # which editing panel opens first.
-        self._range_mode = "slice"
+        # Full-grid mode by default (user preference): the grid shows
+        # whole until the user opts into slicing (Slice is then the
+        # preferred slicer mode) or cropping (Range).
+
+        self._range_mode = "full"
         self._volume_visible = True
 
     # ------------------------------------------------------------------
@@ -559,9 +559,10 @@ class IjkGrid:
         out = [self._src_extract_init]
         if self._range_mode == 'slice':
             out.extend(self._all_slice_sources())
-        else:
+        elif self._range_mode == 'range':
             if self._src_slicer_volume is not None:
                 out.append(self._src_slicer_volume)
+        # 'full': rep_data only — nothing else renders.
         return out
 
     # ------------------------------------------------------------------
@@ -638,7 +639,21 @@ class IjkGrid:
 
         tips = self._visible_leaf_tips()
 
-        if self._range_mode == 'slice':
+        if self._range_mode == 'full':
+            # Full grid: rep_data only — every slicer and the volume
+            # crop hidden. The default mode: a grid shows whole until
+            # the user opts into slicing/cropping.
+            for src in self._all_slice_sources():
+                pvsimple.Hide(proxy=src, view=view)
+                self._hide_chain_for(src, view)
+            if self._src_slicer_volume is not None:
+                pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
+                self._hide_chain_for(self._src_slicer_volume, view)
+            if self._src_extract_init is not None:
+                self._show_source_or_chain(
+                    self._src_extract_init, view, True, tips,
+                )
+        elif self._range_mode == 'slice':
             if self._src_slicer_volume is not None:
                 pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
                 self._hide_chain_for(self._src_slicer_volume, view)

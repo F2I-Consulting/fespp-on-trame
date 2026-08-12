@@ -34,12 +34,13 @@ class SlicerControls:
             # snapshot another panel's IJK slicer / volume / mode state
             # onto the active panel.
             with html.Div(classes="d-flex align-center mb-1"):
-                # Slice | Range as a segmented toggle: the ACTIVE mode is
-                # highlighted (filled primary) — the old switch showed a
-                # bare state-var label and read backwards. Slice is the
-                # default working mode.
+                # Full grid | Slice | Range as a segmented toggle: the
+                # ACTIVE mode is highlighted (filled primary). Full grid
+                # is the DEFAULT — the whole grid renders, no slicer UI;
+                # Slice is the preferred slicer mode once the user opts
+                # in, Range the axis-crop alternative.
                 with vuetify3.VBtnToggle(
-                    v_model=(self._mode_var, "slice"),
+                    v_model=(self._mode_var, "full"),
                     mandatory=True,
                     density="compact",
                     color="primary",
@@ -47,6 +48,10 @@ class SlicerControls:
                     divided=True,
                     style="margin-left: 0.5rem;",
                 ):
+                    vuetify3.VBtn(
+                        "Full grid", value="full", size="small",
+                        classes="text-none font-weight-bold",
+                    )
                     vuetify3.VBtn(
                         "Slice", value="slice", size="small",
                         classes="text-none font-weight-bold",
