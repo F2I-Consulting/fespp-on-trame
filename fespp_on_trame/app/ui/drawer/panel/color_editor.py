@@ -29,6 +29,29 @@ def _apply_nan_color_to_lut(lut):
         pass
 
 
+def pwf_display_points(points, lo, hi):
+    """User-facing view of a scoped PWF: strip the range-alpha
+    emulation (boundary steps at the core edges + the far NaN
+    sentinels) so the COE graph and tables only show the real curve
+    over the LUT core [lo, hi]. Endpoints take the nearest interior
+    value; writing the DISPLAYED curve back through the opacity editor
+    is safe — `_apply_range_alphas` re-appends the emulation on top of
+    whatever the editor writes."""
+    try:
+        pts = list(points or [])
+        quads = [list(pts[i:i + 4]) for i in range(0, len(pts) - 3, 4)]
+        if not quads or hi <= lo:
+            return pts
+        eps = (hi - lo) * 4e-5
+        interior = [q for q in quads if lo + eps < q[0] < hi - eps]
+        first_y = interior[0][1] if interior else 1.0
+        last_y = interior[-1][1] if interior else 1.0
+        out = [[lo, first_y, 0.5, 0.0]] + interior + [[hi, last_y, 0.5, 0.0]]
+        return [c for q in out for c in q]
+    except Exception:
+        return list(points or [])
+
+
 class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
     """ptc.ColorOpacityEditor with a hexa (#RRGGBBAA) NaN color picker
     so the user can pick both the colour and the alpha of NaN cells in
@@ -385,6 +408,12 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         lo, hi = source_resolver.nondegenerate_range(lo, hi)
         if int(getattr(lut, "UseLogScale", 0)) and lo <= 0:
             lo = self._positive_floor(hi)
+        # Strip the range-alpha emulation FIRST, while the LUT still
+        # carries the OLD range: the rescale below remaps the PWF's
+        # full extent proportionally, and the far NaN sentinels would
+        # otherwise be squeezed into the new core, crushing the real
+        # curve into a sliver.
+        self._apply_range_alphas(lut, base, force_opaque=True)
         try:
             lut.RescaleTransferFunction(float(lo), float(hi))
         except Exception:
@@ -395,15 +424,18 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             )
         except Exception:
             pass
-        # PWF in lockstep (proportional control-point remap) so the
-        # opacity features follow the colour range instead of staying
-        # anchored at stale scalar positions.
+        # PWF in lockstep (proportional control-point remap of the PURE
+        # curve) so the opacity features follow the colour range instead
+        # of staying anchored at stale scalar positions.
         try:
             pwf = self._resolve_target_pwf(base)
             if pwf is not None:
                 pwf.RescaleTransferFunction(float(lo), float(hi))
         except Exception:
             pass
+        # Re-emulate the below/above alphas (+ NaN sentinels) on the
+        # NEW span.
+        self._apply_range_alphas(lut, base)
         self.state.scalar_range = [float(lo), float(hi)]
         self._sync_range_fields(lo, hi)
         # Rebuild the COE widget state (gradient graph + stop tables)
@@ -559,6 +591,22 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     # Width of the PWF boundary step, as a fraction of the scalar span.
     _RANGE_ALPHA_EPS = 1e-5
+    # Far-plateau multipliers (× span, beyond hi) for the NaN-decoupling
+    # sentinel points — see `_apply_range_alphas`.
+    _SENTINEL_NEAR = 1e3
+    _SENTINEL_FAR = 2e3
+
+    @staticmethod
+    def _lut_core_range(lut):
+        """The LUT's real scalar range read off its control points —
+        the PWF extent can NOT be used once sentinels exist."""
+        try:
+            pts = list(lut.RGBPoints or [])
+            if len(pts) >= 4:
+                return float(pts[0]), float(pts[-4])
+        except Exception:
+            pass
+        return None, None
 
     @staticmethod
     def _alpha_from_hex(hex_color):
@@ -571,34 +619,42 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 pass
         return 1.0
 
-    def _apply_range_alphas(self, lut, base):
+    def _apply_range_alphas(self, lut, base, force_opaque=False):
         """Emulate below/above-range OPACITY through the scoped PWF.
 
         VTK's LUT has no out-of-range opacity — but the PWF CLAMPS: a
-        value below the range takes the FIRST opacity point's value,
-        above takes the LAST. So a boundary point at exactly `lo`
-        (resp. `hi`) carrying the wanted alpha, followed (preceded) an
-        epsilon inside by the curve's real value, gives out-of-range
-        cells their own opacity while the in-range curve stays intact
-        (the step spans 1e-5 of the range). Alpha 1.0 (or FF / absent)
-        removes the synthetic boundary point on that side. Requires
-        `EnableOpacityMapping` on the LUT — flipped on here whenever
-        either side goes translucent, never flipped back off (an
-        all-opaque PWF renders identically)."""
-        a_below = self._alpha_from_hex(self.state.below_range_color)
-        a_above = self._alpha_from_hex(self.state.above_range_color)
+        value below the range takes the FIRST opacity point's value. So
+        a boundary point at exactly `lo` (resp. `hi`) carrying the
+        wanted alpha, followed (preceded) an epsilon inside by the
+        curve's real value, gives out-of-range cells their own opacity
+        while the in-range curve stays intact (the step spans 1e-5 of
+        the range).
+
+        NaN decoupling (measured, PARAVIEW.md): under
+        `EnableOpacityMapping=1` a NaN cell's opacity is the PWF's
+        very LAST point (`NanOpacity` is IGNORED) — an above-alpha on
+        the last point dragged every NaN cell with it. So when any
+        range alpha is active, two far sentinels are appended: a
+        plateau at `hi + 1e3·span` holding the edge value (what
+        above-range cells interpolate to), then the TRUE last point at
+        `hi + 2e3·span` carrying the NaN-picker's alpha — which is what
+        NaN cells actually read. `force_opaque=True` rebuilds the PURE
+        user curve instead (no steps, no sentinels) — required before
+        any range rescale, else the proportional remap would squeeze
+        the sentinels into the new core and crush the real curve."""
+        if force_opaque:
+            a_below = a_above = 1.0
+        else:
+            a_below = self._alpha_from_hex(self.state.below_range_color)
+            a_above = self._alpha_from_hex(self.state.above_range_color)
         pwf = self._resolve_target_pwf(base)
         if pwf is None:
             return
+        lo, hi = self._lut_core_range(lut)
+        if lo is None or hi is None or hi <= lo:
+            return
         try:
-            pts = list(pwf.Points or [])
-            quads = [pts[i:i + 4] for i in range(0, len(pts) - 3, 4)]
-            if not quads:
-                return
-            lo, hi = quads[0][0], quads[-1][0]
             span = hi - lo
-            if span <= 0:
-                return
             eps = span * self._RANGE_ALPHA_EPS
             obj = pwf.GetClientSideObject()
 
@@ -608,8 +664,10 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 except Exception:
                     return 1.0
 
+            pts = list(pwf.Points or [])
+            quads = [pts[i:i + 4] for i in range(0, len(pts) - 3, 4)]
             # The user's curve = everything strictly inside the two
-            # boundary strips (also drops previous synthetic points).
+            # boundary strips (drops previous steps AND far sentinels).
             interior = [q for q in quads if lo + 2 * eps < q[0] < hi - 2 * eps]
             inner_lo = val(lo + 2.5 * eps)
             inner_hi = val(hi - 2.5 * eps)
@@ -625,9 +683,13 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 new.append([hi, a_above, 0.5, 0.0])
             else:
                 new.append([hi, inner_hi, 0.5, 0.0])
-            pwf.Points = [c for q in new for c in q]
-            if a_below < 0.999 or a_above < 0.999:
+            if not force_opaque and (a_below < 0.999 or a_above < 0.999):
+                nan_alpha = self._alpha_from_hex(self.state.nan_color)
+                edge = new[-1][1]
+                new.append([hi + span * self._SENTINEL_NEAR, edge, 0.5, 0.0])
+                new.append([hi + span * self._SENTINEL_FAR, nan_alpha, 0.5, 0.0])
                 lut.EnableOpacityMapping = 1
+            pwf.Points = [c for q in new for c in q]
         except Exception:
             pass
 
@@ -644,7 +706,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         hex_val = (hex_color or "").lstrip("#")
         requested = "#" + hex_val[:6].upper() if len(hex_val) >= 6 else ""
         requested_alpha = self._alpha_from_hex(hex_color)
-        current_alpha = self._pwf_edge_alpha(base, which)
+        current_alpha = self._pwf_edge_alpha(lut, base, which)
         if (self._range_color_hex(lut, which).upper() == requested
                 and abs(current_alpha - requested_alpha) < 1 / 255):
             return
@@ -663,20 +725,20 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         self._apply_range_alphas(lut, base)
         source_resolver.render_and_push_target(self.server.controller)
 
-    def _pwf_edge_alpha(self, base, which):
+    def _pwf_edge_alpha(self, lut, base, which):
         """The opacity a cell OUTSIDE the range currently renders with
-        on `which` side — the PWF's clamped edge value. 1.0 default."""
+        on `which` side. Bounds come from the LUT's core range (the
+        PWF extent is polluted by the NaN sentinels); the above-side
+        sample lands INSIDE the sentinel plateau, which is precisely
+        what above-range cells interpolate to. 1.0 default."""
         pwf = self._resolve_target_pwf(base)
         if pwf is None:
             return 1.0
+        lo, hi = self._lut_core_range(lut)
+        if lo is None or hi is None or hi <= lo:
+            return 1.0
         try:
-            pts = list(pwf.Points or [])
-            if len(pts) < 8:
-                return 1.0
-            lo, hi = pts[0], pts[-4]
             span = hi - lo
-            if span <= 0:
-                return 1.0
             obj = pwf.GetClientSideObject()
             x = lo - span * 0.01 if which == "below" else hi + span * 0.01
             return float(obj.GetValue(x))
@@ -743,7 +805,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 ("above", "above_range_color", "above_range_auto_color"),
             ):
                 rgb_hex = self._range_color_hex(lut, _side)
-                a = self._pwf_edge_alpha(_base, _side)
+                a = self._pwf_edge_alpha(lut, _base, _side)
                 if a < 0.999:
                     rgb_part = (rgb_hex
                                 or getattr(self.state, _auto_var, "")
@@ -883,6 +945,11 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 1 if (has_transparency or range_alpha) else 0
             )
         super().on_opacities_changed(*args, **kwargs)
+        # The parent rebuilt the PWF from state.opacities — the pure
+        # user curve. Re-append the below/above boundary steps + NaN
+        # sentinels on top of it.
+        if lut is not None and _base:
+            self._apply_range_alphas(lut, _base)
         # Parent's `update_opacity_transfer_function` Renders the FOCUSED
         # panel (active view in pvsimple). Re-Render + push on the drawer
         # target so pinned mode refreshes the right panel.
@@ -904,6 +971,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         if lut is None:
             return
         _apply_nan_color_to_lut(lut)
+        # Under EnableOpacityMapping the NaN opacity is carried by the
+        # PWF's far sentinel, not by NanOpacity — refresh it.
+        self._apply_range_alphas(lut, _base)
         source_resolver.render_and_push_target(self.server.controller)
 
 

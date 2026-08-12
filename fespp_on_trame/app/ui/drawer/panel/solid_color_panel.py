@@ -16,7 +16,9 @@ from trame.app import get_server
 from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
 
-from .color_editor import _FesppColorOpacityEditor, _apply_nan_color_to_lut
+from .color_editor import (
+    _FesppColorOpacityEditor, _apply_nan_color_to_lut, pwf_display_points,
+)
 from .categorical_color_editor import CategoricalColorEditor
 
 from fespp_on_trame.app.core.engine import source_resolver
@@ -593,6 +595,13 @@ class SolidColorPanel(html.Div):
                         smin, 1.0, 0.5, 0.0,
                         smax, 1.0, 0.5, 0.0,
                     ]
+                else:
+                    # Strip the range-alpha emulation (boundary steps +
+                    # far NaN sentinels) from what the COE displays —
+                    # the sentinels sit 1000× the span beyond the core
+                    # and would crush the graph's x-axis.
+                    opacity_points = pwf_display_points(
+                        opacity_points, smin, smax)
                 coe.update_colors(lut.RGBPoints)
                 coe.update_opacities(opacity_points)
 
