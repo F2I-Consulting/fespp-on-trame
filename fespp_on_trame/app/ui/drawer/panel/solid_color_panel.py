@@ -222,8 +222,16 @@ class SolidColorPanel(html.Div):
                     with vuetify3.VExpansionPanelTitle(classes="pa-2"):
                         html.Span("Colors & Opacity", classes="text-body-2 font-weight-medium")
                         vuetify3.VSpacer()
+                        # Chip speaks the user's language, not ParaView's:
+                        # the active PRESET name for a continuous property
+                        # ("Fast", "Viridis", …), "Categories" for a
+                        # discrete/categorical one, "Solid" otherwise.
                         vuetify3.VChip(
-                            f"{{{{ ({_is_array_active}) ? 'LUT/PWF' : 'Solid' }}}}",
+                            f"{{{{ ({_is_array_active})"
+                            " ? ((active_property_kind === 'DiscreteProperty'"
+                            " || active_property_kind === 'CategoricalProperty')"
+                            " ? 'Categories' : (preset_name || 'Colormap'))"
+                            " : 'Solid' }}",
                             size="x-small",
                             variant="tonal",
                             color=(f"({_is_array_active}) ? 'purple' : 'blue'",),

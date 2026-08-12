@@ -946,6 +946,11 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
                     # bar would keep claiming "_real_<idx>" of whichever
                     # realization created it.
                     bar.Title = strip_realization_suffix(name)
+                    # FESPP properties are scalars: the default
+                    # "Component" suffix is noise for a geologist.
+                    # (A vector array would lose its "Magnitude" tag —
+                    # none ships in RESQML properties today.)
+                    bar.ComponentTitle = ""
                     bar.RangeLabelFormat = '%-#6.3g'
                     bar.Resizable = 1
     except Exception:

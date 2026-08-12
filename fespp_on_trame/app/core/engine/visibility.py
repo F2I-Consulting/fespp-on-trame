@@ -186,6 +186,19 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                         sm.UpdateVTKObjects()
             except Exception as _e:
                 pass
+    # Colour-bar invariant on eye flips: re-showing a rep must bring its
+    # active array's bar back (a hide-side sweep dropped it, and nothing
+    # outside a load batch re-shows bars), and hiding must sweep the
+    # now-orphan bar instead of leaving a stale legend.
+    try:
+        if show:
+            source_resolver.reassert_active_scalar_bars(
+                state, source_registry, view=view)
+        else:
+            source_resolver.hide_unused_scalar_bars(view=view)
+            source_resolver.layout_visible_scalar_bars(view)
+    except Exception:
+        pass
     if view is not None:
         try:
             view.SMProxy.UpdateVTKObjects()

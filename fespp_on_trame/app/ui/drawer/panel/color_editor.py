@@ -101,11 +101,13 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             # Min, Max, above-range swatch.
             with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2", align="center"):
                 self._range_color_swatch("below")
+                # Plain text inputs (`v_model_number` still coerces):
+                # `type="number"` grew spinner arrows, meaningless on a
+                # continuous scalar range.
                 with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Min",
                         v_model_number=("color_range_min", 0.0),
-                        type="number",
                         density="compact",
                         variant="outlined",
                         hide_details=True,
@@ -115,7 +117,6 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     vuetify3.VTextField(
                         label="Max",
                         v_model_number=("color_range_max", 1.0),
-                        type="number",
                         density="compact",
                         variant="outlined",
                         hide_details=True,
@@ -328,12 +329,14 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         return base_name, lut
 
     def _sync_range_fields(self, lo, hi):
-        """Reflect a range into the Min/Max inputs. They never auto-apply
-        (apply is explicit via button / Enter), so writing them here can't
-        loop back into a rescale."""
+        """Reflect a range into the Min/Max inputs, rounded to 3
+        decimals (user-requested display precision — the applied range
+        follows the rounded value). They never auto-apply (apply is
+        explicit via button / Enter), so writing them here can't loop
+        back into a rescale."""
         try:
-            self.state.color_range_min = float(lo)
-            self.state.color_range_max = float(hi)
+            self.state.color_range_min = round(float(lo), 3)
+            self.state.color_range_max = round(float(hi), 3)
         except (TypeError, ValueError):
             pass
 
@@ -788,17 +791,56 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     @change("preset_name")
     def on_preset_name_changed(self, *args, **kwargs) -> None:
-        """Wrap the parent's preset handler so the NaN alpha survives.
-        The parent rewrites nan_color in #RRGGBB and would silently
-        drop the alpha component."""
+        """Apply the chosen preset to the SCOPED LUT. ptc's parent
+        targets the global `GetColorTransferFunction(name)` singleton
+        and rescales through the active source's representation — both
+        of which the per-view model no longer renders, so a preset
+        change looked like a total no-op. The current scalar range
+        (pinned or data) is captured first and re-applied after
+        `ApplyPreset` (which would otherwise snap to the preset's own
+        stored range), the NaN ALPHA byte survives (a preset may carry
+        its own RGB NanColor; our alpha lives in state only), and the
+        COE widget state is rebuilt from the updated proxies."""
         if not self._should_apply_state_change():
             return
+        if not self.state.preset_name:
+            return
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        try:
+            pts = list(lut.RGBPoints or [])
+            lo, hi = ((float(pts[0]), float(pts[-4]))
+                      if len(pts) >= 4 else (None, None))
+        except Exception:
+            lo, hi = None, None
+        try:
+            lut.ApplyPreset(self.state.preset_name, True)
+        except Exception:
+            return
+        if lo is not None and hi is not None and hi > lo:
+            try:
+                lut.RescaleTransferFunction(lo, hi)
+            except Exception:
+                pass
         hex_val = (self.state.nan_color or "").lstrip("#")
         saved_alpha = hex_val[6:8] if len(hex_val) >= 8 else "33"
-        super().on_preset_name_changed(*args, **kwargs)
-        current = (self.state.nan_color or "#FF0000").lstrip("#")[:6]
-        self.state.nan_color = f"#{current}{saved_alpha}"
-        # Parent mutates RGBPoints but never Renders. Push to target.
+        try:
+            nc = list(getattr(lut, "NanColor", None) or [])
+            if len(nc) >= 3:
+                self.state.nan_color = "#%02X%02X%02X%s" % (
+                    min(255, max(0, round(float(nc[0]) * 255))),
+                    min(255, max(0, round(float(nc[1]) * 255))),
+                    min(255, max(0, round(float(nc[2]) * 255))),
+                    saved_alpha,
+                )
+        except Exception:
+            pass
+        try:
+            self.server.controller.update_color_editor(
+                self.state.active_color_array_name)
+        except Exception:
+            pass
         source_resolver.render_and_push_target(self.server.controller)
 
     @change("opacities")
@@ -810,13 +852,20 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         all-opaque case so NaN opacity stays effective."""
         if not self._should_apply_state_change():
             return
-        [_, array_name] = self.get_representation_color_array_name()
-        if array_name:
-            lut = pvsimple.GetColorTransferFunction(array_name)
-            if lut:
-                opacities = self.state.opacities or []
-                has_transparency = any(op[1] < 0.999 for op in opacities)
-                lut.EnableOpacityMapping = 1 if has_transparency else 0
+        # SCOPED LUT — the global singleton isn't the one rendered.
+        _base, lut = self._resolve_active_lut()
+        if lut is not None:
+            opacities = self.state.opacities or []
+            has_transparency = any(op[1] < 0.999 for op in opacities)
+            # Never force EOM back OFF if the below/above range alphas
+            # need it (their emulation lives in the PWF boundary pts).
+            range_alpha = (
+                self._alpha_from_hex(self.state.below_range_color) < 0.999
+                or self._alpha_from_hex(self.state.above_range_color) < 0.999
+            )
+            lut.EnableOpacityMapping = (
+                1 if (has_transparency or range_alpha) else 0
+            )
         super().on_opacities_changed(*args, **kwargs)
         # Parent's `update_opacity_transfer_function` Renders the FOCUSED
         # panel (active view in pvsimple). Re-Render + push on the drawer
