@@ -361,8 +361,22 @@ class FesppMultiView(ptc.MultiView):
             if kind == "diff":
                 self._render_diff_chrome(panel_id)
             else:
-                self._render_panel_time_control(panel_id, pv_view)
-                self._render_panel_realization_picker(panel_id)
+                # TimeControl + RealizationPicker SIDE BY SIDE in one
+                # top-centered flex row — each slot keeps its own v_if
+                # and collapses independently, so a TS-only or MR-only
+                # panel centers the remaining widget alone.
+                with html.Div(
+                    style=(
+                        "position:absolute; left:50%;"
+                        " transform:translateX(-50%); top: 4px;"
+                        " z-index: 2; display:flex;"
+                        " align-items:flex-start; gap: 8px;"
+                        " max-width: 95%;"
+                        " pointer-events: none;"
+                    ),
+                ):
+                    self._render_panel_time_control(panel_id, pv_view)
+                    self._render_panel_realization_picker(panel_id)
                 # Camera chrome (magnet + reset/orient/2D-3D) on the
                 # top-left of the 3D area. Render panels only — diff
                 # panels have their own action buttons.
@@ -1251,31 +1265,19 @@ class FesppMultiView(ptc.MultiView):
         The widget binds to `ui_panel_active_mr_specs_by_id[panel_id]`,
         recomputed server-side on every relevant state change.
 
-        Vertical position is reactive: when the TC widget is visible
-        (TS active AND user toggle on), MR sits at top:52px just below
-        it. Otherwise MR climbs to top:4px so the panel never wastes
-        the top slot. The condition mirrors the TC's own v_if in
-        `_render_panel_time_control`."""
+        Sits BESIDE the TimeControl in the shared top-center flex row
+        (see add_view) — when the TC's slot collapses, flex centers
+        the picker alone, so the old reactive top-offset logic is
+        gone."""
         mr_visible_var = f"show_panel_mr_{panel_id}"
-        tc_visible_var = f"show_panel_tc_{panel_id}"
         self.server.state.setdefault(mr_visible_var, True)
         per_panel_show = (
             f"!!(panel_has_mr_by_id && panel_has_mr_by_id['{panel_id}'])"
             f" && {mr_visible_var}"
         )
-        tc_actually_shown = (
-            f"!!(panel_has_ts_by_id && panel_has_ts_by_id['{panel_id}'])"
-            f" && {tc_visible_var}"
-        )
         with html.Div(
             v_if=(per_panel_show, False),
-            style=(
-                f"`position: absolute; left: 50%;"
-                f" transform: translateX(-50%);"
-                f" top: ${{({tc_actually_shown}) ? 52 : 4}}px;"
-                f" z-index: 2;"
-                f" pointer-events: none;`"
-            ,),
+            style="pointer-events: none;",
         ):
             PerViewRealizationPicker(panel_id).render()
 
@@ -1314,10 +1316,10 @@ class FesppMultiView(ptc.MultiView):
         )
         with html.Div(
             v_if=(per_panel_show, False),
+            # Flex child of the shared top-center row (see add_view) —
+            # no positioning of its own.
             style=(
-                "position:absolute; left:50%; transform:translateX(-50%);"
-                " top: 4px; z-index: 2;"
-                " min-width: 360px; max-width: 90%;"
+                "min-width: 360px; max-width: 60vw;"
                 " pointer-events: auto;"
             ),
         ):

@@ -1072,10 +1072,30 @@ class TreeViews:
                                     click=(self.controller.tree_select_kinds,
                                            f"['{tab}', {kinds}, 'remove']"),
                                 ):
-                                    # Stacked boxes with an X in the front
-                                    # one — the blank-boxes variant read
-                                    # as a "copy" icon to users.
-                                    vuetify3.VIcon("mdi-close-box-multiple-outline")
+                                    # MDI has no bare "double cross"
+                                    # matching mdi-check-all's style, so
+                                    # compose one: two mdi-close glyphs
+                                    # overlapped with the same diagonal
+                                    # offset as check-all, in red. (The
+                                    # boxed variants read as "copy".)
+                                    with html.Div(
+                                        style=("position:relative;"
+                                               " width:24px; height:24px;"),
+                                    ):
+                                        vuetify3.VIcon(
+                                            "mdi-close",
+                                            color="red-darken-1",
+                                            size=17,
+                                            style=("position:absolute;"
+                                                   " left:-1px; top:6px;"),
+                                        )
+                                        vuetify3.VIcon(
+                                            "mdi-close",
+                                            color="red-darken-1",
+                                            size=17,
+                                            style=("position:absolute;"
+                                                   " left:7px; top:1px;"),
+                                        )
                                     vuetify3.VTooltip(
                                         "Unselect all", activator="parent",
                                         location="bottom",
