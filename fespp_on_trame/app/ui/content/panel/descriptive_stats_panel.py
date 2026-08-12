@@ -323,8 +323,11 @@ class DescriptiveStatsPanel:
                 ".some(function(r){ return r.kind === 'original'"
                 " && r.id !== 'default'; })"
             )
+            # Labels mirror the table's column titles ("Realization
+            # Index" / "Time Step") so the buttons read as acting on
+            # those columns.
             vuetify3.VBtn(
-                "Pin all reals",
+                "Pin all Realization Index",
                 v_if=(_is_mr_card,),
                 variant="text", density="compact", size="small",
                 color="primary",
@@ -335,7 +338,7 @@ class DescriptiveStatsPanel:
                 click="trigger('stats_pin_all', [array_path, 'real'])",
             )
             vuetify3.VBtn(
-                "Pin all steps",
+                "Pin all Time Steps",
                 v_if=(_is_ts_card,),
                 variant="text", density="compact", size="small",
                 color="primary",
