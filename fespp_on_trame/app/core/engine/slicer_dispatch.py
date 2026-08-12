@@ -14,9 +14,9 @@ Handlers covered:
   - `update_slice_visibility` — per-axis per-slicer visibility.
   - `apply_z_scale` — fan out the global Z exaggeration to every
     rep + IjkGrid slicer / volume.
-  - `propagate_representation` — push the active representation
-    type (Surface / Wireframe / Points / …) onto every proxy in
-    the scene."""
+  - `apply_representation_type` — push a representation
+    type (Surface / Wireframe / Points / …) onto ONE rep's
+    displays in the drawer-target view (strictly per-rep)."""
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import view_routing
@@ -390,55 +390,37 @@ def _collect_legacy_proxies(source_registry):
     return out
 
 
-def propagate_representation(source_registry, scene_registry, controller, representation_active):
-    """Push the active representation type onto every visible proxy.
+def apply_representation_type(state, controller, source_registry, rep_path, rep_type):
+    """Apply a display type to ONE rep — its extractor, chain, slice /
+    clip and per-view IjkGrid displays — in the drawer-target view.
 
-    ptc.RepresentBy only sets `Representation` on a single display
-    (active source × active view), but with per-(rep, view) pipelines
-    the visible displays live on the scene's per-view extractor /
-    chain / slice / clip / per-view IjkGrid proxies, not on the shared
-    sources — so the ptc write would land on hidden displays. Fan the
-    new value out across every scene's visible proxies in that scene's
-    `pv_view`, plus the shared fallbacks.
+    The Attributes panel is strictly per-rep: the previous
+    implementation broadcast `Representation` across every proxy of
+    every scene, so toggling Wireframe on one grid restyled the whole
+    scene. `displays_for_rep_path` resolves exactly the displays the
+    rep renders through (visible or not), same targeting as ColorBy.
 
-    `controller` re-pushes a fresh vtk.js frame to every panel AFTER
-    the per-view writes + Render: ptc.RepresentBy's own
-    `on_data_change` fires *before* this handler, so the client would
-    otherwise keep the old representation. Re-pushing avoids a camera
-    reset."""
-    if not representation_active:
+    `controller` re-pushes a fresh vtk.js frame AFTER the writes +
+    Render: ptc.RepresentBy's own `on_data_change` fires *before*
+    this handler, so the client would otherwise keep the old
+    representation. Re-pushing avoids a camera reset."""
+    if not rep_path or not rep_type:
         return
-    if scene_registry is None or not hasattr(scene_registry, "all_scenes"):
+    from fespp_on_trame.app.core.engine import source_resolver
+    view, _panel = source_resolver.target_view_and_panel()
+    for disp in source_resolver.displays_for_rep_path(
+            source_registry, rep_path, view=view):
+        try:
+            disp.Representation = rep_type
+        except Exception:
+            pass
+    if view is None:
         view = pvsimple.GetActiveView()
-        if view is None:
-            return
-        for p in _collect_legacy_proxies(source_registry):
-            try:
-                disp = pvsimple.GetRepresentation(proxy=p, view=view)
-                if disp is not None:
-                    disp.Representation = representation_active
-            except Exception:
-                pass
-        pvsimple.Render(view=view)
-        _push_all_panels(controller)
-        return
-    # Per-scene fan-out: each scene gets its per-view proxies + the
-    # shared ones. The shared proxies stay hidden in non-fallback
-    # scenes, but a hidden display still accepts the property write at
-    # zero render cost.
-    legacy = _collect_legacy_proxies(source_registry)
-    for scene in scene_registry.all_scenes():
-        view = scene.pv_view
-        if view is None:
-            continue
-        for p in _collect_scene_proxies(scene) + legacy:
-            try:
-                disp = pvsimple.GetRepresentation(proxy=p, view=view)
-                if disp is not None:
-                    disp.Representation = representation_active
-            except Exception:
-                pass
-        pvsimple.Render(view=view)
+    if view is not None:
+        try:
+            pvsimple.Render(view=view)
+        except Exception:
+            pass
     _push_all_panels(controller)
 
 

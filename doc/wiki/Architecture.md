@@ -320,7 +320,7 @@ Vars seeded in [`state_defaults.init_state_defaults`](fespp_on_trame/app/core/en
 | `state.*` | Meaning | Written by | Read by |
 |---|---|---|---|
 | **`ui_scale_z`** | **global vertical exaggeration (source of truth)** | slider | `slicer_dispatch.apply_z_scale`, extractor build, `RepInScene._current_z_scale` |
-| `representation_active` | Surface/Wireframe/Points/… | drawer | `slicer_dispatch.propagate_representation`, extractor build |
+| `representation_active` | Surface/Wireframe/Points/… | drawer | `slicer_dispatch.apply_representation_type` (per-rep, mirrored in `ui_rep_type_by_rep`), extractor build |
 | `marker_orientation` (bool) / `marker_size` (int) | global marker disk-vs-sphere / radius (seeded in boot) | toolbar | `marker_dispatch.apply_marker_options` (on EPCCollector) |
 
 ### Slicer / threshold / slice / clip

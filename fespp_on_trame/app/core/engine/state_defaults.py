@@ -52,6 +52,9 @@ def init_state_defaults(state):
     # is the source of truth, driven by tree eye clicks that carry an
     # explicit panel_id.
     state.setdefault("ui_hidden_rep_paths_by_view", {})
+    # Per-rep display type ("Surface" / "Wireframe" / …) — the
+    # Attributes panel toggle writes the ACTIVE rep's entry only.
+    state.setdefault("ui_rep_type_by_rep", {})
 
     # --- Coloring tracking -----------------------------------------
     # ui_loaded_array_paths: data-array tree nodes whose data is

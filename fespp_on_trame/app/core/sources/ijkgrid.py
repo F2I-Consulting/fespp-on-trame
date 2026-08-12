@@ -6,7 +6,7 @@ from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.tree import Tree
 from fespp_on_trame.app.core.sources.representation import (
     _apply_default_tint, _find_registered_proxy, _sanitize, inherit_display,
-    arrays_from_source, array_range_from_source, resolve_assoc,
+    arrays_from_source, array_range_from_source, rep_type_for, resolve_assoc,
     suppress_selection_labels,
 )
 from fespp_on_trame.app.core.sources import leaf_rep
@@ -315,7 +315,7 @@ class IjkGrid:
         view = self._target_view()
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
         suppress_selection_labels(rep)
-        rep.Representation = state.representation_active or 'Surface'
+        rep.Representation = rep_type_for(state, self.rep_path)
         rep.Scale = [1.0, 1.0, self._current_z_scale()]
         if self._title and self._current_array_type:
             self.update_colors(src, self._current_array_type, self._title,
@@ -463,7 +463,7 @@ class IjkGrid:
             for src in self._all_slice_sources() + [self._src_slicer_volume]:
                 src.UpdatePipelineInformation()
 
-            rep_type = state.representation_active or 'Surface'
+            rep_type = rep_type_for(state, ijkgrid_rep_path)
             grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
             zs = self._current_z_scale()
             for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
@@ -617,7 +617,7 @@ class IjkGrid:
         # toggle) the display is created later with PV's default
         # Representation='Outline' and grey colour, so re-assert
         # Representation + tint on every managed source's display in `view`.
-        rep_type = state.representation_active or 'Surface'
+        rep_type = rep_type_for(state, self.rep_path)
         grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
         zs = self._current_z_scale()
         for src in (

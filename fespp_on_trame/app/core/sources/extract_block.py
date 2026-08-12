@@ -476,7 +476,8 @@ class ExtractBlockRepresentation:
         if view is not None:
             rep = pvsimple.GetRepresentation(proxy=src, view=view)
             if rep is not None:
-                rep.Representation = state.representation_active or "Surface"
+                from fespp_on_trame.app.core.sources.representation import rep_type_for
+                rep.Representation = rep_type_for(state, self._rep_path)
                 zs = self._current_z_scale()
                 rep.Scale = [1.0, 1.0, zs]
                 _apply_default_tint(rep, (state.solid_color_by_rep or {}).get(self._rep_path))

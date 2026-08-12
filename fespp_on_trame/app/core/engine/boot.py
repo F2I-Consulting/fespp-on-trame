@@ -1578,11 +1578,39 @@ def initialize_fespp_engine(
             threshold_set_range, threshold_set_visible,
         )
 
+    # Representation type is PER-REP: the toggle applies to the active
+    # rep only, its choice is remembered in `ui_rep_type_by_rep`, and
+    # switching the active rep re-seeds the control from that map. The
+    # guard stops the programmatic re-seed from re-triggering an apply.
+    _rep_type_sync = {"on": False}
+
     @state.change("representation_active")
-    def _propagate_representation(representation_active, **kwargs):
-        slicer_dispatch.propagate_representation(
-            _source_registry, _scene_registry, controller, representation_active,
+    def _apply_representation_type(representation_active, **kwargs):
+        if _rep_type_sync["on"]:
+            return
+        rep_path = state.active_representation_path or ""
+        if not rep_path or not representation_active:
+            return
+        by_rep = dict(state.ui_rep_type_by_rep or {})
+        by_rep[rep_path] = representation_active
+        state.ui_rep_type_by_rep = by_rep
+        slicer_dispatch.apply_representation_type(
+            state, controller, _source_registry, rep_path, representation_active,
         )
+
+    @state.change("active_representation_path")
+    def _sync_representation_type_from_rep(active_representation_path, **kwargs):
+        rep_path = active_representation_path or ""
+        if not rep_path:
+            return
+        desired = (state.ui_rep_type_by_rep or {}).get(rep_path) or "Surface"
+        if state.representation_active == desired:
+            return
+        _rep_type_sync["on"] = True
+        try:
+            state.representation_active = desired
+        finally:
+            _rep_type_sync["on"] = False
 
     @state.change("ui_slices_i_visible_list", "ui_slices_j_visible_list", "ui_slices_k_visible_list")
     def update_slices_visibility(

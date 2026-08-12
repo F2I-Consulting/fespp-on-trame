@@ -12,7 +12,7 @@ A second cross-cutting theme is the **legacy-vs-per-view duality** introduced ac
 
 ### `fespp_on_trame/app/core/engine/slicer_dispatch.py`
 
-**Responsibility.** Dispatch for IjkGrid slicer/range/volume editing and two global fan-outs: `apply_z_scale` (vertical exaggeration broadcast to every rendered proxy) and `propagate_representation` (Surface/Wireframe/Points type broadcast). Extracted from `boot.initialize_fespp_engine`.
+**Responsibility.** Dispatch for IjkGrid slicer/range/volume editing and two global fan-outs: `apply_z_scale` (vertical exaggeration broadcast to every rendered proxy) and `apply_representation_type` (Surface/Wireframe/Points, strictly PER-REP — writes only the active rep's displays in the drawer-target view, remembered in `ui_rep_type_by_rep`; every default-Representation site reads `representation.rep_type_for(state, rep_path)`). Extracted from `boot.initialize_fespp_engine`.
 
 **Key classes / functions.**
 - `_target_panel_id(state)` — returns `state.drawer_target_view_id or state.fespp_active_panel_id` (drawer picker first, active panel fallback).
@@ -28,7 +28,7 @@ A second cross-cutting theme is the **legacy-vs-per-view duality** introduced ac
 - **`apply_z_scale(state, controller, source_registry, view, zscale)`** — the central function (see Gotchas for the precise sequence). Coerces `zscale` to float (default `1.0`). Calls `source_registry.apply_z_scale(zs)` (legacy ExtractBlocks) **first**, then fans out per-scene.
 - `_collect_scene_proxies(scene)` — per-`(rep, view)` proxies that may have a visible display: the rep's `_extractor`, channel (log-tube) extractors from `rep._channel_extractors` (real geometry → scaled), `rep._chain[*].proxy`, `rep._slice_plane._proxy`, `rep._clip_plane._proxy`, and the per-view IjkGrid pipeline (`ijk.source`, `_src_extract_init`, `_src_slicer_volume`, `_all_slice_sources()`, `all_threshold_sources()`). **Deliberately excludes marker extractors** (they are translated, not scaled).
 - `_collect_legacy_proxies(source_registry)` — shared fallback proxies: `all_sources()`, all thresholds, and each IjkGrid's `_src_extract_init`/`_src_slicer_volume`/slice sources/threshold sources.
-- `propagate_representation(source_registry, scene_registry, controller, representation_active)` — fans `disp.Representation = representation_active` across every scene's per-view proxies (+ legacy), renders each scene's view, then `_push_all_panels`. No-op when `representation_active` is falsy.
+- `apply_representation_type(state, controller, source_registry, rep_path, rep_type)` — sets `Representation` on ONE rep's displays (`displays_for_rep_path`, drawer-target view), renders, `_push_all_panels`. The old broadcast across every proxy made one rep's toggle restyle the whole scene. Boot pairs it with a `ui_rep_type_by_rep` store + a guarded re-seed of `representation_active` on active-rep switch.
 - `_push_all_panels(controller)` — prefers `controller.view_update_all()` (multi-view aware), falls back to `controller.view_update()`.
 
 **State.** Writes `ui_slices_{i,j,k}_list` (via `set_slider_value`) and `ui_slices_{i,j,k}_visible_list` (via `update_slice_positions`). Reads `state.active_representation_path`, `state.drawer_target_view_id`, `state.fespp_active_panel_id`.

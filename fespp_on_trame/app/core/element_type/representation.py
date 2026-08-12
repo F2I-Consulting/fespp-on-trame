@@ -138,7 +138,8 @@ class Representation(ElementType):
             if target_view is not None:
                 disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
                 if disp is not None:
-                    disp.Representation = state.representation_active or "Surface"
+                    from fespp_on_trame.app.core.sources.representation import rep_type_for
+                    disp.Representation = rep_type_for(state, ris.rep_path)
                     disp.Scale = [1.0, 1.0, ris._current_z_scale()]
                     grid_color = (state.solid_color_by_rep or {}).get(ris.rep_path)
                     _apply_default_tint(disp, grid_color)

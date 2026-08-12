@@ -193,6 +193,17 @@ def array_range_from_source(src, array_name):
     return None
 
 
+def rep_type_for(state, rep_path):
+    """Display type ("Surface" / "Wireframe" / …) chosen for ONE rep —
+    the Attributes panel is strictly per-rep, never a broadcast.
+    "Surface" for reps the user never touched."""
+    try:
+        by_rep = getattr(state, "ui_rep_type_by_rep", {}) or {}
+        return by_rep.get(rep_path) or "Surface"
+    except Exception:
+        return "Surface"
+
+
 def resolve_assoc(src, array_name):
     """Association (``"CELLS"`` / ``"POINTS"``) of the named array on `src`,
     or None. Convenience over `arrays_from_source`."""

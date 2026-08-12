@@ -147,7 +147,8 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
             # For other panels the display we're about to flip Vis=1 on
             # has PV's defaults, so re-assert Representation and tint to
             # match the user's pick.
-            rep_type = state.representation_active or "Surface"
+            from fespp_on_trame.app.core.sources.representation import rep_type_for
+            rep_type = rep_type_for(state, rep_path)
             grid_color = (state.solid_color_by_rep or {}).get(rep_path)
             for src in srcs:
                 try:
