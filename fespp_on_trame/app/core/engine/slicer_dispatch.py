@@ -390,7 +390,8 @@ def _collect_legacy_proxies(source_registry):
     return out
 
 
-def apply_representation_type(state, controller, source_registry, rep_path, rep_type):
+def apply_representation_type(state, controller, source_registry, rep_path, rep_type,
+                              marker_path=None):
     """Apply a display type to ONE rep — its extractor, chain, slice /
     clip and per-view IjkGrid displays — in the drawer-target view.
 
@@ -408,27 +409,26 @@ def apply_representation_type(state, controller, source_registry, rep_path, rep_
         return
     from fespp_on_trame.app.core.engine import source_resolver
     view, _panel = source_resolver.target_view_and_panel()
-    for disp in source_resolver.displays_for_rep_path(
-            source_registry, rep_path, view=view):
+    if marker_path:
+        # Single-marker scope: touch ONLY that marker's glyph extractor
+        # (a marker frame shares one rep — writing the rep's displays
+        # would restyle every sibling marker).
         try:
-            disp.Representation = rep_type
-        except Exception:
-            pass
-    # Marker glyphs: their per-marker extractors are NOT part of
-    # `displays_for_rep_path` — without this, Wireframe on a marker
-    # frame left the spheres solid (user expectation: the glyph
-    # follows the pick).
-    try:
-        ris = source_resolver._scene_rep_for_view(rep_path, view)
-        for ext in (getattr(ris, "_marker_extractors", {}) or {}).values():
-            try:
+            ris = source_resolver._scene_rep_for_view(rep_path, view)
+            ext = (getattr(ris, "_marker_extractors", {}) or {}).get(marker_path)
+            if ext is not None:
                 d = pvsimple.GetDisplayProperties(ext, view=view)
                 if d is not None:
                     d.Representation = rep_type
+        except Exception:
+            pass
+    else:
+        for disp in source_resolver.displays_for_rep_path(
+                source_registry, rep_path, view=view):
+            try:
+                disp.Representation = rep_type
             except Exception:
                 pass
-    except Exception:
-        pass
     if view is None:
         view = pvsimple.GetActiveView()
     if view is not None:

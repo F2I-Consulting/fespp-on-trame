@@ -1578,32 +1578,50 @@ def initialize_fespp_engine(
             threshold_set_range, threshold_set_visible,
         )
 
-    # Representation type is PER-REP: the toggle applies to the active
-    # rep only, its choice is remembered in `ui_rep_type_by_rep`, and
-    # switching the active rep re-seeds the control from that map. The
-    # guard stops the programmatic re-seed from re-triggering an apply.
+    # Representation type is PER-REP — and PER-MARKER when a single
+    # marker is the active node: the toggle applies to that element
+    # only, its choice is remembered in `ui_rep_type_by_rep` (keyed by
+    # marker path in the marker case), and switching the active
+    # element re-seeds the control from that map. The guard stops the
+    # programmatic re-seed from re-triggering an apply.
     _rep_type_sync = {"on": False}
+
+    def _active_marker_rep_key():
+        """Path of the active single-Marker node, else None."""
+        try:
+            nodes = state.ui_active_node_well or []
+            if not nodes:
+                return None
+            nid = nodes[0]
+            if (_tree.find_type(nid) or "") != "Marker":
+                return None
+            return _tree.find_path(nid)
+        except Exception:
+            return None
 
     @state.change("representation_active")
     def _apply_representation_type(representation_active, **kwargs):
         if _rep_type_sync["on"]:
             return
         rep_path = state.active_representation_path or ""
-        if not rep_path or not representation_active:
+        marker_path = _active_marker_rep_key()
+        key = marker_path or rep_path
+        if not key or not representation_active:
             return
         by_rep = dict(state.ui_rep_type_by_rep or {})
-        by_rep[rep_path] = representation_active
+        by_rep[key] = representation_active
         state.ui_rep_type_by_rep = by_rep
         slicer_dispatch.apply_representation_type(
             state, controller, _source_registry, rep_path, representation_active,
+            marker_path=marker_path,
         )
 
-    @state.change("active_representation_path")
-    def _sync_representation_type_from_rep(active_representation_path, **kwargs):
-        rep_path = active_representation_path or ""
-        if not rep_path:
+    @state.change("active_representation_path", "ui_active_node_well")
+    def _sync_representation_type_from_rep(**kwargs):
+        key = _active_marker_rep_key() or (state.active_representation_path or "")
+        if not key:
             return
-        desired = (state.ui_rep_type_by_rep or {}).get(rep_path) or "Surface"
+        desired = (state.ui_rep_type_by_rep or {}).get(key) or "Surface"
         if state.representation_active == desired:
             return
         _rep_type_sync["on"] = True
