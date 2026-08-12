@@ -22,7 +22,6 @@ def register_upload_route(server) -> bool:
         # (trame collapses same-value writes).
         state.load_error = ""
         epc_paths = []
-        rejected = []
         total_size = int(request.headers.get("X-File-Size", 0))
         received = 0
         try:
@@ -33,15 +32,14 @@ def register_upload_route(server) -> bool:
                     continue
                 # SECURITY: the multipart filename is fully client-controlled.
                 # Reduce it to a bare basename (defusing `../` and absolute-path
-                # escapes on both `/` and `\` separators) and allow only the two
-                # extensions this app actually consumes, so a POST to /upload can
-                # never create a file outside temp_dir or of an executable type.
+                # escapes on both `/` and `\` separators) so a POST to /upload
+                # can never create a file outside temp_dir. Extensions are NOT
+                # filtered (user decision): fesapi judges by CONTENT, so an EPC
+                # renamed `.txt` must still load — anything that isn't an `.h5`
+                # side-file is handed to fesapi below, and a parse failure
+                # surfaces through the `load_error` snackbar.
                 filename = (field.filename or "").replace("\\", "/").split("/")[-1]
                 if not filename or filename in (".", ".."):
-                    continue
-                if not filename.lower().endswith((".epc", ".h5")):
-                    print(f"[Upload] rejected non-EPC/H5 upload: {filename!r}", flush=True)
-                    rejected.append(filename)
                     continue
                 filepath = Path(temp_dir) / filename
                 base = Path(temp_dir).resolve()
@@ -66,7 +64,11 @@ def register_upload_route(server) -> bool:
                                 state.flush()
                 size_mb = filepath.stat().st_size / (1024 ** 2)
                 print(f"[Upload] {filename} saved ({size_mb:.1f} MB)", flush=True)
-                if filename.lower().endswith(".epc"):
+                # Everything that isn't an .h5 side-file is treated as an
+                # EPC candidate — fesapi judges by content, so an EPC
+                # renamed .txt still loads; genuine junk fails the parse
+                # and surfaces through the load_error snackbar.
+                if not filename.lower().endswith(".h5"):
                     epc_paths.append(str(filepath))
             state.upload_progress = 100
             state.flush()
@@ -83,18 +85,6 @@ def register_upload_route(server) -> bool:
             finally:
                 state.upload_parsing = False
             state.upload_uploading = False
-            # Surface rejected files: the extension filter used to be
-            # server-log-only, so importing e.g. a stray .txt looked
-            # like a silent success — fesapi never even saw the file.
-            # The LoadErrorSnackbar consumes `load_error`.
-            if rejected:
-                names = ", ".join(rejected[:4])
-                if len(rejected) > 4:
-                    names += ", …"
-                state.load_error = (
-                    f"Unsupported file type: {names} — only .epc and .h5"
-                    " files are accepted."
-                )
             state.flush()
             # Return basenames only — never leak absolute server temp paths.
             return aiohttp_web.json_response(
