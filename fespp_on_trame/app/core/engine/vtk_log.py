@@ -177,6 +177,7 @@ def _flag_invalid_nodes(state, new_messages):
         if tree is None:
             return
         invalid = list(state.ui_invalid_node_ids or [])
+        errors = dict(state.ui_invalid_node_errors or {})
         toast = []
         for uuid in uuids:
             try:
@@ -187,6 +188,22 @@ def _flag_invalid_nodes(state, new_messages):
                 continue
             if nid not in invalid:
                 invalid.append(nid)
+            # Keep FESAPI/VTK's OWN wording — it names the exact dataset
+            # path that failed, far more actionable than a generic
+            # sentence. The uuid line + its continuation lines arrive in
+            # one queue entry; strip the uuid header, keep the detail.
+            detail = ""
+            for msg in new_messages or []:
+                text = str(msg.get("text") or "")
+                if uuid in text:
+                    lines = [
+                        ln.strip() for ln in text.splitlines()
+                        if ln.strip() and uuid not in ln
+                    ]
+                    detail = " ".join(lines)[:300]
+                    if detail:
+                        break
+            errors[str(nid)] = detail or "Dataset could not be read."
             try:
                 drop = set(tree.find_all_descendant_ids(nid))
             except Exception:
@@ -198,13 +215,46 @@ def _flag_invalid_nodes(state, new_messages):
                 kept = [i for i in cur if i not in drop]
                 if len(kept) != len(cur):
                     setattr(state, var, kept)
-                    toast.append(tree.find_title(nid) or uuid)
+                    toast.append((tree.find_title(nid) or uuid, str(nid)))
         state.ui_invalid_node_ids = invalid
+        state.ui_invalid_node_errors = errors
+        _mark_disabled_in_subtrees(state, set(invalid))
         if toast:
-            names = ", ".join(sorted(set(toast))[:3])
+            title, nid_key = sorted(set(toast))[0]
+            more = len(set(toast)) - 1
+            suffix = f" (+{more} more)" if more > 0 else ""
             state.load_error = (
-                f"Deselected (unreadable data): {names} — its dataset"
-                " could not be opened (missing or incomplete H5?)."
+                f"Deselected {title}{suffix} — "
+                + (errors.get(nid_key) or "dataset could not be read.")
             )
     except Exception:
         pass
+
+
+def _mark_disabled_in_subtrees(state, node_ids):
+    """Grey invalid nodes the SAME way PARTIAL stubs are greyed: set
+    `disabled` on their published treeview dicts — Vuetify then styles
+    the whole row natively and the checkbox slot (gated on
+    `!item.disabled`) disappears, homogeneous with partials."""
+    if not node_ids:
+        return
+    import copy
+
+    def _walk(items):
+        changed = False
+        for it in items or []:
+            if it.get("id") in node_ids and not it.get("disabled"):
+                it["disabled"] = True
+                changed = True
+            if _walk(it.get("children")):
+                changed = True
+        return changed
+
+    for var in ("ui_subtree_reservoir", "ui_subtree_surface",
+                "ui_subtree_well"):
+        try:
+            items = copy.deepcopy(getattr(state, var, []) or [])
+            if _walk(items):
+                setattr(state, var, items)
+        except Exception:
+            pass

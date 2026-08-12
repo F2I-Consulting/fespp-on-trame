@@ -1178,13 +1178,21 @@ class TreeViews:
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
-                vuetify3.VIcon(
-                    "mdi-alert",
-                    size="small",
-                    color="orange-darken-2",
-                    v_if="(ui_invalid_node_ids || []).includes(item.id)",
-                    classes="ml-1",
-                )
+                with vuetify3.VTooltip(location="bottom", max_width=420):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VIcon(
+                            "mdi-alert",
+                            v_bind="props",
+                            size="small",
+                            color="orange-darken-2",
+                            v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                            classes="ml-1",
+                        )
+                    # FESAPI's own wording for THIS node's failure.
+                    html.Span(
+                        "{{ (ui_invalid_node_errors || {})[item.id]"
+                        " || 'Unreadable data' }}",
+                    )
                 # Secondary badges for synthetic nodes — TimeSeries
                 # (clock) and MultiRealization ("MR" chip) — combined
                 # for MRTS leaves to stack up to 3 icons total
@@ -1256,13 +1264,21 @@ class TreeViews:
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
-                vuetify3.VIcon(
-                    "mdi-alert",
-                    size="small",
-                    color="orange-darken-2",
-                    v_if="(ui_invalid_node_ids || []).includes(item.id)",
-                    classes="ml-1",
-                )
+                with vuetify3.VTooltip(location="bottom", max_width=420):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VIcon(
+                            "mdi-alert",
+                            v_bind="props",
+                            size="small",
+                            color="orange-darken-2",
+                            v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                            classes="ml-1",
+                        )
+                    # FESAPI's own wording for THIS node's failure.
+                    html.Span(
+                        "{{ (ui_invalid_node_errors || {})[item.id]"
+                        " || 'Unreadable data' }}",
+                    )
                 vuetify3.VIcon(
                     "mdi-timeline-clock",
                     v_if="item.is_ts",
@@ -1330,13 +1346,21 @@ class TreeViews:
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
-                vuetify3.VIcon(
-                    "mdi-alert",
-                    size="small",
-                    color="orange-darken-2",
-                    v_if="(ui_invalid_node_ids || []).includes(item.id)",
-                    classes="ml-1",
-                )
+                with vuetify3.VTooltip(location="bottom", max_width=420):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VIcon(
+                            "mdi-alert",
+                            v_bind="props",
+                            size="small",
+                            color="orange-darken-2",
+                            v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                            classes="ml-1",
+                        )
+                    # FESAPI's own wording for THIS node's failure.
+                    html.Span(
+                        "{{ (ui_invalid_node_errors || {})[item.id]"
+                        " || 'Unreadable data' }}",
+                    )
                 vuetify3.VIcon(
                     "mdi-timeline-clock",
                     v_if="item.is_ts",

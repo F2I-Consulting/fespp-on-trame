@@ -57,8 +57,11 @@ def init_state_defaults(state):
     # (keyed by MARKER path when a single marker is active).
     state.setdefault("ui_rep_type_by_rep", {})
     # Nodes whose rendering failed (unreadable dataset) — ⚠ badge in
-    # the tree; filled by `vtk_log._flag_invalid_nodes`.
+    # the tree; filled by `vtk_log._flag_invalid_nodes`. The errors map
+    # keeps FESAPI's own message per node (str(node_id) keys) for the
+    # badge tooltip + snackbar.
     state.setdefault("ui_invalid_node_ids", [])
+    state.setdefault("ui_invalid_node_errors", {})
 
     # --- Coloring tracking -----------------------------------------
     # ui_loaded_array_paths: data-array tree nodes whose data is
