@@ -101,13 +101,17 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             # Min, Max, above-range swatch.
             with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2", align="center"):
                 self._range_color_swatch("below")
-                # Plain text inputs (`v_model_number` still coerces):
-                # `type="number"` grew spinner arrows, meaningless on a
-                # continuous scalar range.
+                # Plain TEXT inputs bound as STRINGS. No `type="number"`
+                # (spinner arrows are meaningless on a continuous range)
+                # and no `v_model_number` either: Vue's `.number`
+                # modifier parseFloat-rewrites the field on every
+                # keystroke, so on a text input typing "0." snapped
+                # back to "0" — decimals could not be typed at all.
+                # Parsing happens server-side on Apply/Enter.
                 with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Min",
-                        v_model_number=("color_range_min", 0.0),
+                        v_model=("color_range_min", "0"),
                         density="compact",
                         variant="outlined",
                         hide_details=True,
@@ -116,7 +120,7 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 with vuetify3.VCol(classes="px-1"):
                     vuetify3.VTextField(
                         label="Max",
-                        v_model_number=("color_range_max", 1.0),
+                        v_model=("color_range_max", "1"),
                         density="compact",
                         variant="outlined",
                         hide_details=True,
@@ -328,15 +332,22 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(base_name)
         return base_name, lut
 
+    @staticmethod
+    def _fmt3(value):
+        """'0.3', '412542912', '0.001' — max 3 decimals, no trailing
+        zeros, never scientific notation (a huge range must stay
+        retypable in the field)."""
+        return f"{float(value):.3f}".rstrip("0").rstrip(".") or "0"
+
     def _sync_range_fields(self, lo, hi):
-        """Reflect a range into the Min/Max inputs, rounded to 3
-        decimals (user-requested display precision — the applied range
-        follows the rounded value). They never auto-apply (apply is
-        explicit via button / Enter), so writing them here can't loop
-        back into a rescale."""
+        """Reflect a range into the Min/Max inputs as STRINGS formatted
+        to 3 decimals max (user-requested display precision — the
+        applied range follows the displayed value). They never
+        auto-apply (apply is explicit via button / Enter), so writing
+        them here can't loop back into a rescale."""
         try:
-            self.state.color_range_min = round(float(lo), 3)
-            self.state.color_range_max = round(float(hi), 3)
+            self.state.color_range_min = self._fmt3(lo)
+            self.state.color_range_max = self._fmt3(hi)
         except (TypeError, ValueError):
             pass
 
@@ -406,14 +417,19 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             pass
         source_resolver.render_and_push_target(self.server.controller)
 
+    @staticmethod
+    def _parse_field(value):
+        """`float()` with French-comma tolerance ('0,3' → 0.3)."""
+        return float(str(value).strip().replace(",", "."))
+
     def apply_color_range(self, *args, **kwargs):
         """Apply the user-entered Min/Max (ignores an inverted / empty
         range where Max <= Min). Wired to the Apply button + Enter."""
         if not self._should_apply_state_change():
             return
         try:
-            lo = float(self.state.color_range_min)
-            hi = float(self.state.color_range_max)
+            lo = self._parse_field(self.state.color_range_min)
+            hi = self._parse_field(self.state.color_range_max)
         except (TypeError, ValueError):
             return
         if hi <= lo:
@@ -752,8 +768,8 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
             return
         if desired:
             try:
-                lo = float(self.state.color_range_min)
-                hi = float(self.state.color_range_max)
+                lo = self._parse_field(self.state.color_range_min)
+                hi = self._parse_field(self.state.color_range_max)
             except (TypeError, ValueError):
                 rng = self.state.scalar_range or [0.0, 1.0]
                 lo, hi = float(rng[0]), float(rng[1])
