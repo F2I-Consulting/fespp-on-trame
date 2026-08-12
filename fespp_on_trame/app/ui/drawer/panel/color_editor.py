@@ -152,13 +152,9 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                         hide_details=True,
                     )
                 self._range_color_swatch("above")
+            # No Apply button: the fields AUTO-APPLY on blur / Enter
+            # (see on_range_fields_changed) — the button was redundant.
             with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1", align="center"):
-                vuetify3.VBtn(
-                    "Apply",
-                    size="small",
-                    variant="tonal",
-                    click=(self.apply_color_range,),
-                )
                 vuetify3.VBtn(
                     "Reset to data range",
                     size="small",
