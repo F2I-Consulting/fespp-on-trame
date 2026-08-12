@@ -183,7 +183,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
         state, tree, present_paths,
     )
-    newly_markers = _update_marker_tracking(state, tree, present_paths)
+    newly_markers, removed_markers = _update_marker_tracking(state, tree, present_paths)
     _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
 
     # Visibility and colouring are ORTHOGONAL: loading a property colours the
@@ -264,15 +264,18 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         scene_reg = getattr(server.context, "scene_registry", None)
         active_pid = getattr(state, "fespp_active_panel_id", "") or ""
         scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
-        if scene is not None and newly_markers:
-            for marker_path in newly_markers:
+        if scene is not None and (newly_markers or removed_markers):
+            for marker_path, m_visible in (
+                [(m, True) for m in newly_markers]
+                + [(m, False) for m in removed_markers]
+            ):
                 n_id = tree.find_node_id(marker_path)
                 r_id = tree.find_representation_node(n_id) if n_id is not None else None
                 r_path = tree.find_path(r_id) if r_id is not None else None
                 rep = scene.get_rep(r_path) if r_path else None
                 if rep is not None:
                     try:
-                        rep.set_marker_visible(marker_path, True)
+                        rep.set_marker_visible(marker_path, m_visible)
                     except Exception:
                         pass
     except Exception:
@@ -547,7 +550,12 @@ def _update_marker_tracking(state, tree, present_paths):
         changed = True
     if changed:
         state.ui_visible_marker_paths_by_view = updated
-    return newly_loaded
+    # Also report the markers that LEFT the loaded set this run: the
+    # caller must set_marker_visible(False) on their extractors — the
+    # state prune above never touched the proxies, so a deselected
+    # marker's glyph ghost-rendered until its whole frame unloaded.
+    removed = [m for m in prev_loaded if m not in loaded_set]
+    return newly_loaded, removed
 
 
 def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set):

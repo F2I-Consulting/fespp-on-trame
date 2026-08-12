@@ -414,6 +414,21 @@ def apply_representation_type(state, controller, source_registry, rep_path, rep_
             disp.Representation = rep_type
         except Exception:
             pass
+    # Marker glyphs: their per-marker extractors are NOT part of
+    # `displays_for_rep_path` — without this, Wireframe on a marker
+    # frame left the spheres solid (user expectation: the glyph
+    # follows the pick).
+    try:
+        ris = source_resolver._scene_rep_for_view(rep_path, view)
+        for ext in (getattr(ris, "_marker_extractors", {}) or {}).values():
+            try:
+                d = pvsimple.GetDisplayProperties(ext, view=view)
+                if d is not None:
+                    d.Representation = rep_type
+            except Exception:
+                pass
+    except Exception:
+        pass
     if view is None:
         view = pvsimple.GetActiveView()
     if view is not None:
