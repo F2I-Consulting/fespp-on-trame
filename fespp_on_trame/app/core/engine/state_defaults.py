@@ -53,8 +53,12 @@ def init_state_defaults(state):
     # explicit panel_id.
     state.setdefault("ui_hidden_rep_paths_by_view", {})
     # Per-rep display type ("Surface" / "Wireframe" / …) — the
-    # Attributes panel toggle writes the ACTIVE rep's entry only.
+    # Attributes panel toggle writes the ACTIVE rep's entry only
+    # (keyed by MARKER path when a single marker is active).
     state.setdefault("ui_rep_type_by_rep", {})
+    # Nodes whose rendering failed (unreadable dataset) — ⚠ badge in
+    # the tree; filled by `vtk_log._flag_invalid_nodes`.
+    state.setdefault("ui_invalid_node_ids", [])
 
     # --- Coloring tracking -----------------------------------------
     # ui_loaded_array_paths: data-array tree nodes whose data is

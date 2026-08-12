@@ -147,3 +147,64 @@ def capture_vtk_messages(state, max_messages: int = 500):
         if new_messages:
             current = list(state.vtk_log_messages or [])
             state.vtk_log_messages = (current + new_messages)[-max_messages:]
+            _flag_invalid_nodes(state, new_messages)
+
+
+_INVALID_UUID_RE = re.compile(r"Error when rendering uuid:\s*([0-9a-fA-F-]{36})")
+
+
+def _flag_invalid_nodes(state, new_messages):
+    """Auto-deselect (and ⚠-badge) tree nodes whose rendering failed.
+
+    FESPP logs 'Error when rendering uuid: <uuid>' when a mapper can't
+    materialise (typically its H5 dataset is unreadable) — and the
+    failing rep RE-LOGS it on every subsequent render of anything,
+    flooding the log and drowning real errors. Deselecting the node
+    stops the loop at its source; the node keeps a persistent badge
+    through `ui_invalid_node_ids` and the user is told via the
+    `load_error` snackbar. Re-checking the node simply re-runs this
+    (self-healing) if the data is still unreadable."""
+    try:
+        uuids = {
+            m
+            for msg in new_messages or []
+            for m in _INVALID_UUID_RE.findall(str(msg.get("text") or ""))
+        }
+        if not uuids:
+            return
+        from fespp_on_trame.app.core import engine as _engine_pkg
+        tree = getattr(_engine_pkg, "_tree", None)
+        if tree is None:
+            return
+        invalid = list(state.ui_invalid_node_ids or [])
+        toast = []
+        for uuid in uuids:
+            try:
+                nid = tree._data_assembly.FindFirstNodeWithName("_" + uuid)
+            except Exception:
+                nid = -1
+            if nid is None or nid < 0:
+                continue
+            if nid not in invalid:
+                invalid.append(nid)
+            try:
+                drop = set(tree.find_all_descendant_ids(nid))
+            except Exception:
+                drop = set()
+            drop.add(nid)
+            for var in ("ui_select_node_reservoir", "ui_select_node_surface",
+                        "ui_select_node_well"):
+                cur = list(getattr(state, var, []) or [])
+                kept = [i for i in cur if i not in drop]
+                if len(kept) != len(cur):
+                    setattr(state, var, kept)
+                    toast.append(tree.find_title(nid) or uuid)
+        state.ui_invalid_node_ids = invalid
+        if toast:
+            names = ", ".join(sorted(set(toast))[:3])
+            state.load_error = (
+                f"Deselected (unreadable data): {names} — its dataset"
+                " could not be opened (missing or incomplete H5?)."
+            )
+    except Exception:
+        pass

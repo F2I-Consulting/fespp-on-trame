@@ -1157,6 +1157,14 @@ class TreeViews:
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_reservoir']"),
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
+                vuetify3.VIcon(
+                    "mdi-alert",
+                    size="small",
+                    color="orange-darken-2",
+                    v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                    classes="ml-1",
+                )
                 # Secondary badges for synthetic nodes — TimeSeries
                 # (clock) and MultiRealization ("MR" chip) — combined
                 # for MRTS leaves to stack up to 3 icons total
@@ -1220,6 +1228,14 @@ class TreeViews:
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_surface']"),
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
+                vuetify3.VIcon(
+                    "mdi-alert",
+                    size="small",
+                    color="orange-darken-2",
+                    v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                    classes="ml-1",
+                )
                 vuetify3.VIcon(
                     "mdi-timeline-clock",
                     v_if="item.is_ts",
@@ -1279,6 +1295,14 @@ class TreeViews:
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_well']"),
                 )
                 vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
+                vuetify3.VIcon(
+                    "mdi-alert",
+                    size="small",
+                    color="orange-darken-2",
+                    v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                    classes="ml-1",
+                )
                 vuetify3.VIcon(
                     "mdi-timeline-clock",
                     v_if="item.is_ts",
