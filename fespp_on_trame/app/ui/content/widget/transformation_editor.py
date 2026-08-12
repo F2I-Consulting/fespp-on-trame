@@ -166,6 +166,18 @@ class TransformationEditor:
             self._state.ui_scale_z = zs
         except Exception:
             pass
+        # FLUSH now: this method runs on a bare event-loop tick (see
+        # `_apply_z_scale`), OUTSIDE any trame request context — without
+        # an explicit flush the `@state.change("ui_scale_z")` fan-out
+        # (IjkGrid slicers / volume, markers, legacy proxies) only ran
+        # at the NEXT client interaction. Symptom: the first Apply
+        # showed ptc's premature camera reset but no scaling, and the
+        # second Apply — or merely closing the dialog — "magically"
+        # applied it.
+        try:
+            self._state.flush()
+        except Exception:
+            pass
         # Recognise marker glyphs so they translate rather than scale.
         from fespp_on_trame.app.core.engine import marker_dispatch
         scene_registry = getattr(self._server.context, "scene_registry", None)
@@ -215,6 +227,13 @@ class TransformationEditor:
                             rep.LookupTable = saved_lut
                     except Exception:
                         pass
+            # Re-fit the camera to the SCALED geometry: ptc's own
+            # apply_changes fires its ResetCamera BEFORE our deferred
+            # scaling, so it framed the old bounds.
+            try:
+                pvsimple.ResetCamera(view)
+            except Exception:
+                pass
             try:
                 pvsimple.Render(view=view)
             except Exception:
