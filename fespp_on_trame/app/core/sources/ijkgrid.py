@@ -148,9 +148,11 @@ class IjkGrid:
         self._range_i = None
         self._range_j = None
         self._range_k = None
-        # Range/full-extent by default so a freshly-loaded grid renders the
-        # complete grid (rep_data) rather than the three mid-plane slices.
-        self._range_mode = "range"
+        # Slice mode by default (user preference): with no slicer added
+        # yet the rep_data still renders the COMPLETE grid, so a fresh
+        # load shows the full geometry either way — the mode only picks
+        # which editing panel opens first.
+        self._range_mode = "slice"
         self._volume_visible = True
 
     # ------------------------------------------------------------------

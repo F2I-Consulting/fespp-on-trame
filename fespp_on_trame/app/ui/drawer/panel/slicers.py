@@ -30,26 +30,31 @@ class SlicerControls:
 
     def render_body(self):
         with html.Div(v_if="ui_active_node_reservoir_type_rep === 'IjkGrid'"):
-            # Hide the native number spinner on the slicer steppers — we provide
-            # explicit -/+ buttons (reliable VBtn clicks) instead, so the arrows
-            # always commit and stay in range.
-            html.Style(
-                ".slicer-num input::-webkit-outer-spin-button,"
-                " .slicer-num input::-webkit-inner-spin-button"
-                " { -webkit-appearance: none; margin: 0; }"
-                " .slicer-num input[type=number] { -moz-appearance: textfield; }"
-            )
             # Header row hosts the Copy-from-view menu so the user can
             # snapshot another panel's IJK slicer / volume / mode state
             # onto the active panel.
-            with html.Div(classes="d-flex align-center"):
-                vuetify3.VSwitch(
-                    v_model=(self._mode_var, "range",),
+            with html.Div(classes="d-flex align-center mb-1"):
+                # Slice | Range as a segmented toggle: the ACTIVE mode is
+                # highlighted (filled primary) — the old switch showed a
+                # bare state-var label and read backwards. Slice is the
+                # default working mode.
+                with vuetify3.VBtnToggle(
+                    v_model=(self._mode_var, "slice"),
+                    mandatory=True,
+                    density="compact",
+                    color="primary",
+                    variant="outlined",
+                    divided=True,
                     style="margin-left: 0.5rem;",
-                    label=(self._mode_var,),
-                    false_value="range",
-                    true_value="slice",
-                )
+                ):
+                    vuetify3.VBtn(
+                        "Slice", value="slice", size="small",
+                        classes="text-none font-weight-bold",
+                    )
+                    vuetify3.VBtn(
+                        "Range", value="range", size="small",
+                        classes="text-none font-weight-bold",
+                    )
                 vuetify3.VSpacer()
                 render_copy_menu("ijk_slicers")
 
@@ -93,6 +98,11 @@ class SlicerControls:
                 style="min-width: 20px; width: 20px; height: 26px;",
                 click=make_assign(clamp(f"({value_expr}) - 1")),
             )
+            # Plain TEXT field: `type="number"` grew the native spinner
+            # despite the CSS kill-switch (browser-dependent), and the
+            # arrows ate the 50px width — the VALUE itself became
+            # invisible. The -/+ buttons are the steppers; blur / Enter
+            # parse and clamp the typed value.
             vuetify3.VTextField(
                 model_value=(value_expr,),
                 classes="slicer-num",
@@ -100,8 +110,8 @@ class SlicerControls:
                 blur=make_assign(clamp(f"(parseInt($event.target.value) || {lo})")),
                 keydown="$event.key === 'Enter' && $event.target.blur()",
                 density="compact", variant="outlined", hide_details=True,
-                style=f"width: {width}; font-size: 0.75rem;",
-                type="number", single_line=True,
+                style=f"width: {width}; font-size: 0.8rem; text-align: center;",
+                single_line=True,
             )
             vuetify3.VBtn(
                 icon="mdi-plus", variant="text", density="compact", size="x-small",
@@ -207,8 +217,10 @@ class SlicerControls:
                     color=(f"{vis_list_var}[idx] !== false ? 'primary' : 'grey'",),
                     style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px; flex-shrink: 0;",
                 )
+                # Trash, not ✕ — harmonised with the threshold chain's
+                # delete affordance (user preference).
                 vuetify3.VBtn(
-                    icon="mdi-close",
+                    icon="mdi-delete",
                     click=(
                         f"{list_var} = {list_var}.filter(function(_, i) {{ return i !== idx; }}); "
                         f"{vis_list_var} = {vis_list_var}.filter(function(_, i) {{ return i !== idx; }})"
