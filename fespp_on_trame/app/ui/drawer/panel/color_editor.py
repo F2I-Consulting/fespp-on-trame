@@ -60,10 +60,11 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
     def __init__(self):
         # Force hexa format BEFORE the parent applies its #RRGGBB default.
         # App convention: valid values get flat-1 opacity via the PWF;
-        # NaN cells default to alpha 00 (transparent) unless the user
-        # dials in an alpha here. The red hue means raising the alpha
-        # yields a visible "no data" marker.
-        state.setdefault("nan_color", "#FF000000")
+        # NaN cells default to a 5% alpha ghost — an all-NaN array (e.g. a
+        # time series whose values never loaded) must not render as an
+        # empty view that reads as "nothing was loaded". The red hue makes
+        # the ghost identifiable as "no data" once noticed.
+        state.setdefault("nan_color", "#FF00000D")
         # Scalar-range + log-scale controls (continuous properties only —
         # this editor is mounted solely for the non-categorical /
         # non-SolidColor case). The buttons bind the INSTANCE methods

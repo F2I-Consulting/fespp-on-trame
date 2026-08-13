@@ -232,7 +232,7 @@ Two cross-cutting design decisions pervade this code and a forker must internali
 **Key classes / functions.**
 - `_apply_nan_color_to_lut(lut)` — applies `state.nan_color` (`#RRGGBB[AA]`) to `lut.NanColor` / `lut.NanOpacity`.
 - `class _FesppColorOpacityEditor(ptc.ColorOpacityEditor)`:
-  - `__init__` — forces hexa format and seeds `nan_color="#FF000000"` (red, alpha 00 → NaN transparent by default).
+  - `__init__` — forces hexa format and seeds `nan_color="#FF00000D"` (red, alpha ≈5% → NaN cells render as a faint ghost by default, so an all-NaN array never reads as an empty view).
   - `build_content` — lays out preset select, the `ColorOpacityEditor` widget, the **Min/Max scalar-range inputs + `Apply` / `Reset to data range` buttons + `Log scale` switch**, the NaN-color `VColorPicker` (hexa), and two collapsible color/opacity transfer-function tables.
   - `_should_apply_state_change() -> bool` — returns `not state.diff_colors_dialog_visible`; the drawer editor must NOT write `state.colors`/`opacities` while the diff-colors dialog owns them.
   - `update_scalar_range()` — overrides ptc: resolves the *base* array name (MR title → `_real_<idx>` via `source_resolver`), then queries the **per-view scene's `RepInScene.source()`** (channel source for wellbore channels, else the scene-registry rep source) for the data range. Forces a full `UpdatePipeline()` (not just info) and falls back to `self.source_proxy`. Widens degenerate ranges via `source_resolver.nondegenerate_range`.
