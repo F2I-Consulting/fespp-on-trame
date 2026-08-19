@@ -5,6 +5,10 @@ FROM paraview:6.0.x AS builder
 
 ENV PARALLEL_NB=12
 ENV PVSB_GIT_TAG="v6.0.1"
+# FESPP ref for the GITHUB build mode — pinned like PVSB_GIT_TAG so this
+# release branch always rebuilds against the FESPP state it was
+# validated with (fot-* anchor tags on F2I-Consulting/fespp).
+ENV FESPP_GIT_TAG="fot-v1.1.0"
 ENV ENABLE="-DENABLE_hdf5=ON"
 ENV USE_SYSTEM="-DUSE_SYSTEM_hdf5=ON -DUSE_SYSTEM_zlib=ON"
 

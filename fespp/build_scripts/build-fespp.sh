@@ -13,10 +13,13 @@ else
     echo "=========================================="
     echo "GITHUB MODE: Cloning FESPP from GitHub"
     echo "=========================================="
-    echo "Repository: https://github.com/F2I-Consulting/fespp (branch: master)"
+    echo "Repository: https://github.com/F2I-Consulting/fespp (ref: ${FESPP_GIT_TAG:-fot-v1.1.0})"
     git clone https://github.com/F2I-Consulting/fespp
     cd fespp
-    git checkout master
+    # Pinned ref (Dockerfile ENV FESPP_GIT_TAG) so this branch always
+    # compiles against the FESPP state it was validated with — a
+    # floating master breaks this branch whenever FESPP moves.
+    git checkout "${FESPP_GIT_TAG:-fot-v1.1.0}"
     cd ${build_root_dir}
     echo "[OK] FESPP cloned from GitHub"
 fi
