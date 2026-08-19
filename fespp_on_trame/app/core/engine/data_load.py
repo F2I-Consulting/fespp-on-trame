@@ -211,6 +211,41 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     newly_markers, removed_markers = _update_marker_tracking(state, tree, present_paths)
     _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
 
+    # Born hidden: a grid GEOMETRY that loaded in THIS run while one of
+    # its blocked wellbores was already present gets its eye closed in
+    # every view (user decision 2026-08-19): with a BW selected,
+    # checking a property must colour the wellbore through the mirror,
+    # not raise the full grid over it. Same toggle machinery as the eye
+    # click, so both pipelines' displays actually hide.
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver as _sres
+        from fespp_on_trame.app.core.engine import visibility as _vis
+        for r in sorted(present_paths - prev_rep_paths):
+            n_id = tree.find_node_id(r)
+            if (tree.find_type(n_id) or "") not in (
+                    "IjkGrid", "UnstructuredGrid"):
+                continue
+            bws = _sres.blocked_wellbore_rep_paths_for(tree, r)
+            if not any(b in present_paths for b in bws):
+                continue
+            for p in (state.fespp_render_panels or []):
+                pid = p.get("id") if isinstance(p, dict) else None
+                if not pid:
+                    continue
+                bucket = (state.ui_hidden_rep_paths_by_view
+                          or {}).get(pid, []) or []
+                if r in bucket:
+                    continue
+                try:
+                    _vis.toggle_rep_visibility(
+                        state, controller, server, source_registry, r,
+                        panel_id=pid, tree=tree,
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # Visibility and colouring are ORTHOGONAL: loading a property colours the
     # rep (array eye) but never re-opens its geometry eye. This used to force
     # freshly-arrayed reps visible ("select a property = load + eye"), which
@@ -485,13 +520,19 @@ def _update_visibility_tracking(state, present_paths):
     Visibility tracking: newly-loaded reps default to visible (eye
     open); reps that were hidden but stayed loaded keep their hidden
     state; reps no longer present are dropped from the hidden set so
-    they don't ghost-hide on a future re-load."""
+    they don't ghost-hide on a future re-load.
+
+    (A grid GEOMETRY loading while one of its blocked wellbores is
+    already present is hidden right after this tracking pass — see the
+    born-hidden block in run().)"""
     # Capture the previous loaded set *before* mutating the state
     # var so we can detect which reps are brand-new in this run.
     prev_loaded = set(state.ui_loaded_rep_paths or [])
     loaded_sorted = sorted(present_paths)
     if list(state.ui_loaded_rep_paths or []) != loaded_sorted:
         state.ui_loaded_rep_paths = loaded_sorted
+    new_reps = [p for p in present_paths if p not in prev_loaded]
+
     prev_hidden = list(state.ui_hidden_rep_paths or [])
     kept_hidden = [p for p in prev_hidden if p in present_paths]
     if kept_hidden != prev_hidden:
@@ -503,7 +544,6 @@ def _update_visibility_tracking(state, present_paths):
     # to the active view — other panels haven't had Show() called
     # on the new source so the chips for those panels should appear
     # closed (rep present but not yet shown there).
-    new_reps = [p for p in present_paths if p not in prev_loaded]
     by_view = state.ui_hidden_rep_paths_by_view or {}
     if not by_view:
         return
@@ -517,7 +557,8 @@ def _update_visibility_tracking(state, present_paths):
         new = [p for p in old if p in present]
         # 2. For non-active panels, append newly-loaded reps that
         #    aren't already in the bucket. The active panel keeps
-        #    the new rep as "visible" (chip open).
+        #    the new rep as "visible" (chip open) — EXCEPT born-hidden
+        #    geometries, hidden in the active panel too.
         if pid != active_panel_id and new_reps:
             bucket_set = set(new)
             for r in new_reps:
