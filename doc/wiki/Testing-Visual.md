@@ -9,7 +9,7 @@ baselines.
 .\test-visual.ps1                      # run every scenario, compare to baselines
 .\test-visual.ps1 -Scenario eye_cycle  # one scenario
 .\test-visual.ps1 -UpdateBaselines     # re-record expected screenshots (after an INTENTIONAL UI change)
-.\test-visual.ps1 -NoGpu               # containers without --gpus all
+.\test-visual.ps1 -Gpu                 # add --gpus all (default: software rendering)
 ```
 
 ## How it works

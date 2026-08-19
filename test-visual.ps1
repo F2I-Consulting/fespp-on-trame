@@ -3,7 +3,8 @@
 #   .\test-visual.ps1                       -> run every scenario, compare to baselines
 #   .\test-visual.ps1 -Scenario eye_cycle   -> run one scenario
 #   .\test-visual.ps1 -UpdateBaselines      -> re-record the expected screenshots
-#   .\test-visual.ps1 -NoGpu                -> run containers without --gpus all
+#   .\test-visual.ps1 -Gpu                  -> add --gpus all (default: software rendering,
+#                                              same as the normally-launched containers)
 #
 # Each scenario boots a throwaway container of $Image with the app in
 # headless scenario mode (FESPP_SCENARIO env -> core/engine/scenario.py),
@@ -14,11 +15,15 @@
 param(
     [string]$Scenario = "all",
     [switch]$UpdateBaselines,
-    [switch]$NoGpu,
+    [switch]$Gpu,
     [string]$Image = "fespp_on_trame:local"
 )
 
-$ErrorActionPreference = "Stop"
+# NOT "Stop": with EAP=Stop, any native command whose redirected stderr
+# emits a line (docker exec on a dead container, docker rm on a missing
+# one) raises a terminating NativeCommandError in PowerShell 5.1.
+# Failures are handled explicitly through exit codes below.
+$ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $visDir = Join-Path $root "tests\visual"
 $scDir = Join-Path $visDir "scenarios"
@@ -41,7 +46,7 @@ foreach ($sc in $scenarios) {
     try { docker rm -f $cname 2>$null | Out-Null } catch {}
 
     $gpuArgs = @()
-    if (-not $NoGpu) { $gpuArgs = @("--gpus", "all") }
+    if ($Gpu) { $gpuArgs = @("--gpus", "all") }
     docker create --name $cname @gpuArgs `
         -e FESPP_SCENARIO=/tmp/scenario.json `
         -e FESPP_SCENARIO_OUT=/tmp/visual_out `
@@ -68,6 +73,9 @@ foreach ($sc in $scenarios) {
     if (Test-Path $scOut) { Remove-Item -Recurse -Force $scOut }
     New-Item -ItemType Directory -Force $scOut | Out-Null
     try { docker cp "${cname}:/tmp/visual_out/." $scOut | Out-Null } catch {}
+    # Keep the app's stdout/stderr — the scenario runner's [SCENARIO]
+    # lines and any engine error land there, not in scenario.log.
+    docker logs $cname > (Join-Path $scOut "app.log") 2>&1
     docker rm -f $cname | Out-Null
 
     if (-not $done) {

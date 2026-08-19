@@ -114,6 +114,18 @@ async def _run(server, state, controller, tree, view, scenario_path):
         # Let boot (plugin load, layout, initial data_load) settle.
         await asyncio.sleep(4.0)
 
+        # Headless: the first render panel is normally created by the
+        # dockview client's `ready` event (content.py) — with no browser
+        # attached it never fires, so the per-view scene machinery
+        # (scene_registry, fespp_active_panel_id, coloring fan-out)
+        # would stay dormant. Create it server-side.
+        mv = getattr(server.context, "multi_view", None)
+        if mv is not None and not getattr(mv, "_first_view_adopted", False):
+            with state:
+                mv.add_view()
+            _log(out, f"panel created: {getattr(state, 'fespp_active_panel_id', '')!r}")
+            await asyncio.sleep(2.0)
+
         for i, step in enumerate(steps):
             op = step.get("op", "")
             _log(out, f"step {i}: {json.dumps(step)}")
