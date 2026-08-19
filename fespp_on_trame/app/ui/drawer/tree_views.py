@@ -243,6 +243,52 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             )
             _state.empty_color_snackbar_visible = False
             _state.empty_color_snackbar_visible = True
+
+        # Geometry veto — same contract as the trajectory veto above: a
+        # grid geometry leaf cannot leave while a SIBLING property (same
+        # PropertiesFolder) is still selected. Keeping it HERE (instead
+        # of only re-adding it in _wire_grid_geometry_on_property's own
+        # later pass) stops the selection from transiting through a
+        # geometry-less value: that transient tore the grid down and
+        # reloaded it, losing the property's ColorBy on the way (grid
+        # back solid while the property stayed checked, eye open).
+        kept_grids = []
+        for node_id in removed:
+            if (tree.find_type(node_id) or "") not in (
+                    "IjkGrid", "UnstructuredGrid"):
+                continue
+            if node_id in seen:
+                continue
+            folder = tree.find_parent_node_id_with_type(
+                node_id, "PropertiesFolder")
+            if folder is None:
+                continue
+            if any(d in seen for d in tree.find_all_descendant_ids(folder)
+                   if d != node_id):
+                result.append(node_id)
+                seen.add(node_id)
+                container = tree.find_parent_node_id_with_type(
+                    folder, "GridContainer")
+                kept_grids.append(
+                    tree.find_title(container or node_id) or "?")
+        if kept_grids:
+            _state.empty_color_snackbar_text = (
+                "Geometry kept for: " + ", ".join(sorted(set(kept_grids)))
+                + " — selected properties render on it. Unselect them"
+                " first, or just close the eye on the geometry to"
+                " hide it."
+            )
+            _state.empty_color_snackbar_visible = False
+            _state.empty_color_snackbar_visible = True
+
+    if set(result) == set(prev_ids or []):
+        # Fully-vetoed change: the effective selection is what it
+        # already was — return the PREVIOUS list verbatim so downstream
+        # (selectors → C++ → data_load) sees a strict no-op instead of
+        # a reordered list. A mere reorder re-ran the load path and
+        # re-coloured the grid through the legacy continuous-LUT path,
+        # trading the categorical rendering for a 0→12 ramp.
+        return list(prev_ids or [])
     return result
 
 
@@ -318,6 +364,16 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
             and curr_active[0] in prev_select and curr_active[0] not in curr_select):
             new_curr = list(curr_select) + [curr_active[0]]
             setattr(_state, select_var, new_curr)
+            # Same resync as the cascade branch below: the re-add can
+            # equal the var's previous SERVER value, so trame collapses
+            # the push and the client checkbox stays visually unchecked
+            # while the node is still selected and rendering (reported
+            # as "3+ clicks on geometry end up deselecting it while
+            # everything stays visible").
+            try:
+                _state.dirty(select_var)
+            except Exception:
+                pass
             return
 
         if not curr_select and not prev_select:
@@ -363,6 +419,10 @@ def _wire_grid_geometry_on_property(tree):
                 added = True
         if added:
             _state.ui_select_node_reservoir = reservoir
+            try:
+                _state.dirty("ui_select_node_reservoir")
+            except Exception:
+                pass
 
 
 def _wire_blocked_well_trajectory(tree):
@@ -390,6 +450,68 @@ def _wire_blocked_well_trajectory(tree):
                 added = True
         if added:
             _state.ui_select_node_well = well
+            try:
+                _state.dirty("ui_select_node_well")
+            except Exception:
+                pass
+
+
+_selection_rules_wired = False
+
+
+def wire_selection_rules(tree):
+    """Register every selection-rule handler ONCE, in dependency order.
+
+    Called from boot BEFORE the selection dispatch handlers so a veto /
+    expansion that rewrites `ui_select_node_*` runs FIRST within the
+    flush — the dispatch then reads the CORRECTED list and the pipeline
+    never sees the transient (e.g. a geometry-less selection that tore
+    the grid down and reloaded it without its ColorBy). Idempotent: the
+    tree-view build calls it again as a fallback and it no-ops."""
+    global _selection_rules_wired
+    if _selection_rules_wired:
+        return
+    _selection_rules_wired = True
+
+    _wire_dependency_expansion(
+        "ui_select_node_reservoir", "_prev_select_reservoir",
+        "ui_active_node_reservoir", tree,
+    )
+    _wire_dependency_expansion(
+        "ui_select_node_surface", "_prev_select_surface",
+        "ui_active_node_surface", tree,
+    )
+    _wire_dependency_expansion(
+        "ui_select_node_well", "_prev_select_well",
+        "ui_active_node_well", tree,
+    )
+
+    # Cross-tab: a BlockedWellbore (reservoir tab) force-checks its
+    # referenced trajectory in the WELL tab.
+    _wire_blocked_well_trajectory(tree)
+
+    # SolidColor variant: checking a grid property force-checks its grid
+    # geometry (a property without its geometry makes no business sense).
+    _wire_grid_geometry_on_property(tree)
+
+    # update_selected from Vuetify gives the FULL selected array, so
+    # writing `active = $event` would always pick array[0] (the first
+    # ever selected), not the last clicked. The handler sets active to
+    # the newly-added node instead, with a sensible fallback on removal.
+    # Wired AFTER the expansion handlers: it maintains `_prev_select_*`,
+    # which the expansion reads BEFORE it is updated for the tick.
+    _wire_select_to_active(
+        "ui_select_node_reservoir", "ui_active_node_reservoir",
+        "_prev_select_reservoir",
+    )
+    _wire_select_to_active(
+        "ui_select_node_surface", "ui_active_node_surface",
+        "_prev_select_surface",
+    )
+    _wire_select_to_active(
+        "ui_select_node_well", "ui_active_node_well",
+        "_prev_select_well",
+    )
 
 
 # --- Custom row checkbox -------------------------------------------------
@@ -978,44 +1100,13 @@ class TreeViews:
 
         self._init_grid_selections()
 
-        _wire_dependency_expansion(
-            "ui_select_node_reservoir", "_prev_select_reservoir",
-            "ui_active_node_reservoir", self._tree,
-        )
-        _wire_dependency_expansion(
-            "ui_select_node_surface", "_prev_select_surface",
-            "ui_active_node_surface", self._tree,
-        )
-        _wire_dependency_expansion(
-            "ui_select_node_well", "_prev_select_well",
-            "ui_active_node_well", self._tree,
-        )
-
-        # Cross-tab: a BlockedWellbore (reservoir tab) force-checks its
-        # referenced trajectory in the WELL tab.
-        _wire_blocked_well_trajectory(self._tree)
-
-        # SolidColor variant: checking a grid property force-checks its grid
-        # geometry (a property without its geometry makes no business sense).
-        _wire_grid_geometry_on_property(self._tree)
-
-        # update_selected from Vuetify gives the FULL selected array,
-        # so writing `active = $event` would always pick array[0]
-        # (the first ever selected), not the last clicked. The Python
-        # handler below sets active to the newly-added node instead,
-        # with a sensible fallback on removal.
-        _wire_select_to_active(
-            "ui_select_node_reservoir", "ui_active_node_reservoir",
-            "_prev_select_reservoir",
-        )
-        _wire_select_to_active(
-            "ui_select_node_surface", "ui_active_node_surface",
-            "_prev_select_surface",
-        )
-        _wire_select_to_active(
-            "ui_select_node_well", "ui_active_node_well",
-            "_prev_select_well",
-        )
+        # Selection rules (dependency expansion, vetoes, select→active).
+        # Normally already wired by boot BEFORE the selection dispatch
+        # handlers — registration order matters: a veto that rewrites the
+        # selection must run FIRST so the dispatch reads the corrected
+        # list in the same flush (see wire_selection_rules). This call is
+        # the idempotent fallback for entry points that skip boot's hook.
+        wire_selection_rules(self._tree)
 
     def _init_grid_selections(self):
         """For each top-level reservoir grid, ensure a per-grid

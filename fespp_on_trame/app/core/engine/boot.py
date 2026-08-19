@@ -1673,6 +1673,17 @@ def initialize_fespp_engine(
     # state; the toolbar Load button pushes the aggregated selection in
     # one shot. Independent from visibility (driven by the eye icons).
 
+    # Selection RULES (dependency expansion, trajectory/geometry vetoes,
+    # select→active) MUST register before the dispatch handlers below:
+    # trame runs same-var handlers in registration order, so a veto that
+    # rewrites `ui_select_node_*` mid-flush makes the dispatch read the
+    # CORRECTED list — the pipeline never sees the transient (a
+    # geometry-less selection used to tear the grid down and reload it
+    # without its ColorBy). UI-layer import is deliberate: the rules
+    # live next to the tree they govern.
+    from fespp_on_trame.app.ui.drawer.tree_views import wire_selection_rules
+    wire_selection_rules(_tree)
+
     @state.change("ui_select_node_surface")
     def on_change_ui_select_node_surface(**kwargs):
         selection_dispatch.on_change_ui_select_node_surface(state, _selector)

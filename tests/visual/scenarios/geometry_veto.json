@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "shot", "name": "facies_colored" },
+    { "op": "uncheck", "title": "SolidColor", "settle": 6 },
+    { "op": "shot", "name": "after_geometry_uncheck_attempt" }
+  ]
+}
