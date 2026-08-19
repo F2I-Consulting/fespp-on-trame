@@ -186,6 +186,20 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
         is_rep = tree.find_representation_node(node_id) == node_id
         if is_rep or (kind in _GROUPING_KINDS):
             descendants_to_drop.update(tree.find_all_descendant_ids(node_id))
+        # SolidColor layout: a grid geometry's dependents are its SIBLING
+        # properties (same PropertiesFolder), not descendants. Unchecking
+        # the geometry deselects them all in the same move (user decision
+        # 2026-08-19, replacing the short-lived geometry veto): a property
+        # cannot render without its geometry. Blocked wellbores live in
+        # their own folder and KEEP their selection — losing the grid's
+        # properties reverts their coloring to solid.
+        if kind in ("IjkGrid", "UnstructuredGrid"):
+            folder = tree.find_parent_node_id_with_type(
+                node_id, "PropertiesFolder")
+            if folder is not None:
+                descendants_to_drop.update(
+                    d for d in tree.find_all_descendant_ids(folder)
+                    if d != node_id)
 
     result = []
     seen = set()
@@ -239,43 +253,6 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
                 "Trajectory kept for: " + ", ".join(sorted(set(kept_wells)))
                 + " — selected logs/markers depend on it. Unselect them"
                 " first, or just close the eye on the trajectory to"
-                " hide it."
-            )
-            _state.empty_color_snackbar_visible = False
-            _state.empty_color_snackbar_visible = True
-
-        # Geometry veto — same contract as the trajectory veto above: a
-        # grid geometry leaf cannot leave while a SIBLING property (same
-        # PropertiesFolder) is still selected. Keeping it HERE (instead
-        # of only re-adding it in _wire_grid_geometry_on_property's own
-        # later pass) stops the selection from transiting through a
-        # geometry-less value: that transient tore the grid down and
-        # reloaded it, losing the property's ColorBy on the way (grid
-        # back solid while the property stayed checked, eye open).
-        kept_grids = []
-        for node_id in removed:
-            if (tree.find_type(node_id) or "") not in (
-                    "IjkGrid", "UnstructuredGrid"):
-                continue
-            if node_id in seen:
-                continue
-            folder = tree.find_parent_node_id_with_type(
-                node_id, "PropertiesFolder")
-            if folder is None:
-                continue
-            if any(d in seen for d in tree.find_all_descendant_ids(folder)
-                   if d != node_id):
-                result.append(node_id)
-                seen.add(node_id)
-                container = tree.find_parent_node_id_with_type(
-                    folder, "GridContainer")
-                kept_grids.append(
-                    tree.find_title(container or node_id) or "?")
-        if kept_grids:
-            _state.empty_color_snackbar_text = (
-                "Geometry kept for: " + ", ".join(sorted(set(kept_grids)))
-                + " — selected properties render on it. Unselect them"
-                " first, or just close the eye on the geometry to"
                 " hide it."
             )
             _state.empty_color_snackbar_visible = False
@@ -589,6 +566,54 @@ _MULTICOLOR_STYLE = (
 _INVALID_NODE_EXPR = "(ui_invalid_node_ids || []).includes(item.id)"
 
 
+# --- Inline SVG glyphs (v_html template literals — single quotes ONLY,
+# trame wraps HTML attributes in double quotes). No <mask> so the same
+# markup can repeat per row/panel without DOM-id collisions. ------------
+
+# Unified "hidden" eye: BLUE eye with a BLACK slash over it. mdi-eye-off
+# tints its slash the icon colour, so the two-tone pair needs raw SVG.
+_MDI_EYE_PATH = (
+    "M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9"
+    "M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17"
+    "M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 "
+    "21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"
+)
+_SLASHED_EYE_SVG = (
+    "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+    " width='16' height='16'>"
+    f"<path d='{_MDI_EYE_PATH}' fill='#1E88E5'/>"
+    "<path d='M4.5 20.5 L19.5 3.5' stroke='#000000' stroke-width='2.4'"
+    " stroke-linecap='round' fill='none'/></svg>`"
+)
+
+# Stats toggle, unpinned state: the normal teal chart glyph with a black
+# slash — NOT greyed (grey read as disabled/unclickable).
+_MDI_CHART_BOX_OUTLINE_PATH = (
+    "M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17M19,19H5V5H19V19"
+    "M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5"
+    "A2,2 0 0,0 19,3Z"
+)
+_SLASHED_CHART_SVG = (
+    "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+    " width='16' height='16'>"
+    f"<path d='{_MDI_CHART_BOX_OUTLINE_PATH}' fill='#00897B'/>"
+    "<path d='M4.5 20.5 L19.5 3.5' stroke='#000000' stroke-width='2.4'"
+    " stroke-linecap='round' fill='none'/></svg>`"
+)
+
+# UnstructuredGrid node icon: a wireframe tetrahedron (user-sketched),
+# same green as the other tree icons (green-darken-1). tree_icons.py
+# maps the kind to the 'fespp-tetra' sentinel the icon slots branch on.
+_TETRA_SVG = (
+    "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+    " width='16' height='16'>"
+    "<path d='M12 2.8 L3 18.4 L21 18.4 Z M12 2.8 L12 21.4"
+    " M3 18.4 L12 21.4 L21 18.4'"
+    " stroke='#43A047' stroke-width='1.8' stroke-linejoin='round'"
+    " stroke-linecap='round' fill='none'/></svg>`"
+)
+
+
 def _chip_slot():
     """Color chip rendered next to a tree node label.
 
@@ -671,11 +696,20 @@ def _stats_slot(controller, select_var):
             " : ('Show stats for ' + item.title + ' in the Stats panel')",
         ),
     ):
+        # Pinned: filled teal chart. Unpinned: the SAME teal glyph with a
+        # black slash — grey used to read as "disabled / not clickable".
         vuetify3.VIcon(
-            icon=(f"({is_pinned}) ? 'mdi-chart-box' : 'mdi-chart-box-outline'",),
+            "mdi-chart-box",
+            v_if=(is_pinned,),
             size="small",
-            color=(f"({is_pinned}) ? 'teal-darken-2' : 'grey-lighten-1'",),
+            color="teal-darken-2",
             style="cursor: pointer;",
+            click=(controller.toggle_stats_display, "[item.path]"),
+        )
+        html.Div(
+            v_if=f"!({is_pinned})",
+            v_html=(_SLASHED_CHART_SVG,),
+            style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
             click=(controller.toggle_stats_display, "[item.path]"),
         )
 
@@ -789,11 +823,9 @@ def _eye_slot(controller):
             classes="d-inline-flex align-center ml-1",
             title=("'Hidden in every view — click to show in the active view'",),
         ):
-            vuetify3.VIcon(
-                icon="mdi-eye-closed",
-                size="small",
-                color="grey-darken-1",
-                style="cursor: pointer;",
+            html.Div(
+                v_html=(_SLASHED_EYE_SVG,),
+                style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                 click=(controller.toggle_rep_visibility, "[item.path]"),
             )
         # Per-panel chip row (the common case).
@@ -808,30 +840,31 @@ def _eye_slot(controller):
                 style="gap: 1px; margin-left: 4px;",
                 title=("'Toggle visibility of ' + item.title + ' in ' + panel.title",),
             ):
+                # Unified chip styling (user request): the view label is
+                # BLACK on every node kind (bold when the panel shows
+                # it), and the eye is always the blue open eye /
+                # blue-with-black-slash pair.
                 html.Span(
                     "{{ panel.title }}",
                     classes="text-caption",
                     style=(
-                        "{ fontSize: '9px', lineHeight: 1,"
-                        f" color: !({has_active_array_in_panel}) ? '#616161' : '#bdbdbd',"
-                        f" fontWeight: !({has_active_array_in_panel}) ? '700' : '400' }}"
+                        "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
+                        f" fontWeight: !({is_hidden_in_panel}) ? '700' : '400' }}"
                         ,
                     ),
                 )
-                # Blue when shown, grey when hidden — ALWAYS, whether or not a
-                # property is colouring the rep. It used to dim to
-                # `grey-lighten-1` under an active array, back when this eye's
-                # first click meant "give up the colouring" and it really was
-                # secondary. It is now the ONLY visibility control (colouring
-                # belongs to the array eye below), so dimming it misread as
-                # disabled exactly when it matters most: hiding a coloured rep.
                 vuetify3.VIcon(
-                    icon=(f"({is_hidden_in_panel}) ? 'mdi-eye-closed' : 'mdi-eye'",),
+                    "mdi-eye",
+                    v_if=(f"!({is_hidden_in_panel})",),
                     size="small",
-                    color=(
-                        f"({is_hidden_in_panel}) ? 'grey-darken-1' : 'blue-darken-1'",
-                    ),
+                    color="blue-darken-1",
                     style="cursor: pointer;",
+                    click=(controller.toggle_rep_visibility, "[item.path, panel.id]"),
+                )
+                html.Div(
+                    v_if=(is_hidden_in_panel,),
+                    v_html=(_SLASHED_EYE_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                     click=(controller.toggle_rep_visibility, "[item.path, panel.id]"),
                 )
 
@@ -844,11 +877,9 @@ def _eye_slot(controller):
             classes="d-inline-flex align-center ml-1",
             title=("'Not active in any view — click to set as the colour array in the active view'",),
         ):
-            vuetify3.VIcon(
-                icon="mdi-eye-outline",
-                size="small",
-                color="grey-darken-1",
-                style="cursor: pointer;",
+            html.Div(
+                v_html=(_SLASHED_EYE_SVG,),
+                style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                 click=(controller.toggle_dataarray_color, "[item.path]"),
             )
         with html.Div(
@@ -870,19 +901,23 @@ def _eye_slot(controller):
                     "{{ panel.title }}",
                     classes="text-caption",
                     style=(
-                        "{ fontSize: '9px', lineHeight: 1,"
-                        f" color: ({array_is_active_in_panel}) ? '#6a1b9a' : '#bdbdbd',"
+                        "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
                         f" fontWeight: ({array_is_active_in_panel}) ? '700' : '400' }}"
                         ,
                     ),
                 )
                 vuetify3.VIcon(
-                    icon=(f"({array_is_active_in_panel}) ? 'mdi-eye' : 'mdi-eye-outline'",),
+                    "mdi-eye",
+                    v_if=(array_is_active_in_panel,),
                     size="small",
-                    color=(
-                        f"({array_is_active_in_panel}) ? 'purple-darken-1' : 'grey-lighten-1'",
-                    ),
+                    color="blue-darken-1",
                     style="cursor: pointer;",
+                    click=(controller.toggle_dataarray_color, "[item.path, panel.id]"),
+                )
+                html.Div(
+                    v_if=f"!({array_is_active_in_panel})",
+                    v_html=(_SLASHED_EYE_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                     click=(controller.toggle_dataarray_color, "[item.path, panel.id]"),
                 )
 
@@ -895,11 +930,9 @@ def _eye_slot(controller):
             classes="d-inline-flex align-center ml-1",
             title=("'Hidden in every view — click to show in the active view'",),
         ):
-            vuetify3.VIcon(
-                icon="mdi-eye-outline",
-                size="small",
-                color="grey-darken-1",
-                style="cursor: pointer;",
+            html.Div(
+                v_html=(_SLASHED_EYE_SVG,),
+                style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                 click=(controller.toggle_marker_visibility, "[item.path]"),
             )
         with html.Div(
@@ -917,19 +950,23 @@ def _eye_slot(controller):
                     "{{ panel.title }}",
                     classes="text-caption",
                     style=(
-                        "{ fontSize: '9px', lineHeight: 1,"
-                        f" color: ({marker_visible_in_panel}) ? '#e65100' : '#bdbdbd',"
+                        "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
                         f" fontWeight: ({marker_visible_in_panel}) ? '700' : '400' }}"
                         ,
                     ),
                 )
                 vuetify3.VIcon(
-                    icon=(f"({marker_visible_in_panel}) ? 'mdi-eye' : 'mdi-eye-outline'",),
+                    "mdi-eye",
+                    v_if=(marker_visible_in_panel,),
                     size="small",
-                    color=(
-                        f"({marker_visible_in_panel}) ? 'deep-orange-darken-1' : 'grey-lighten-1'",
-                    ),
+                    color="blue-darken-1",
                     style="cursor: pointer;",
+                    click=(controller.toggle_marker_visibility, "[item.path, panel.id]"),
+                )
+                html.Div(
+                    v_if=f"!({marker_visible_in_panel})",
+                    v_html=(_SLASHED_EYE_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                     click=(controller.toggle_marker_visibility, "[item.path, panel.id]"),
                 )
 
@@ -952,9 +989,10 @@ class TreeViews:
               slot also hides the checkbox icon for them, so this
               branch is just belt-and-braces.
             - Grouping nodes (Collection / Wellbore / Feature /
-              Interpretation) cycle "empty/some → all" then "all →
-              empty": click adds grouping + every descendant when
-              not all are in, removes them all when all are in.
+              Interpretation): "empty → all", and BOTH "some" and
+              "all" → empty. Clicking an INDETERMINATE box clears the
+              subtree (user decision 2026-08-19 — it used to
+              select-all, which read as the wrong direction).
               Matches the tri-state visual rendered by
               `_select_checkbox_icon`.
             - Leaves and reps: plain toggle. The selection-cascade
@@ -978,8 +1016,9 @@ class TreeViews:
                 descendants = self._tree.find_all_selectable_descendant_ids(node_id)
                 if descendants:
                     curr_set = set(curr)
-                    all_in = all(d in curr_set for d in descendants)
-                    if all_in:
+                    any_in = any(d in curr_set for d in descendants)
+                    if any_in:
+                        # partial OR all → clear the whole subtree.
                         to_drop = set(descendants)
                         to_drop.add(node_id)
                         new_curr = [x for x in curr if x not in to_drop]
@@ -1267,7 +1306,16 @@ class TreeViews:
                     color="grey-lighten-1",
                     style="margin-right: 4px; cursor: not-allowed;",
                 )
-                vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                html.Div(
+                    v_if="item.icon === 'fespp-tetra'",
+                    v_html=(_TETRA_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;",
+                )
+                vuetify3.VIcon(
+                    "{{item.icon}}",
+                    v_if="item.icon !== 'fespp-tetra'",
+                    size="small", color="green-darken-1",
+                )
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
                 with vuetify3.VTooltip(location="bottom", max_width=420):
                     with vuetify3.Template(v_slot_activator="{ props }"):
@@ -1353,7 +1401,16 @@ class TreeViews:
                     color="grey-lighten-1",
                     style="margin-right: 4px; cursor: not-allowed;",
                 )
-                vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                html.Div(
+                    v_if="item.icon === 'fespp-tetra'",
+                    v_html=(_TETRA_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;",
+                )
+                vuetify3.VIcon(
+                    "{{item.icon}}",
+                    v_if="item.icon !== 'fespp-tetra'",
+                    size="small", color="green-darken-1",
+                )
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
                 with vuetify3.VTooltip(location="bottom", max_width=420):
                     with vuetify3.Template(v_slot_activator="{ props }"):
@@ -1435,7 +1492,16 @@ class TreeViews:
                     color="grey-lighten-1",
                     style="margin-right: 4px; cursor: not-allowed;",
                 )
-                vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                html.Div(
+                    v_if="item.icon === 'fespp-tetra'",
+                    v_html=(_TETRA_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;",
+                )
+                vuetify3.VIcon(
+                    "{{item.icon}}",
+                    v_if="item.icon !== 'fespp-tetra'",
+                    size="small", color="green-darken-1",
+                )
                 # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
                 with vuetify3.VTooltip(location="bottom", max_width=420):
                     with vuetify3.Template(v_slot_activator="{ props }"):
