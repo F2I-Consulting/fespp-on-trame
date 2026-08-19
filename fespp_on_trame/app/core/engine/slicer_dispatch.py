@@ -188,6 +188,7 @@ def update_volumes(state, controller, source_registry, view,
         active.show()
     if added:
         _recolor_active_grid(state, source_registry, view)
+    _reassert_scalar_bars(state, source_registry, view)
     _render_and_push(state, controller, view)
 
 
@@ -218,6 +219,21 @@ def update_slice_mode(state, controller, source_registry, view, mode):
     _render_and_push(state, controller, view)
 
 
+def _reassert_scalar_bars(state, source_registry, fallback_view):
+    """Bring the active array's colour bar back after an eye cycle: the
+    orphan sweep reaps the bar while every bound display is hidden
+    (all volume / slicer eyes closed), and nothing re-shows it when an
+    eye reopens ([visual-test ijk_modes] diagnosis: range_crop had the
+    bar, range_back after the eye off/on cycle did not)."""
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver
+        source_resolver.reassert_active_scalar_bars(
+            state, source_registry, view=_target_pv_view(state, fallback_view),
+        )
+    except Exception:
+        pass
+
+
 def update_slice_visibility(state, controller, source_registry, view,
                             vis_i, vis_j, vis_k):
     active = _active_ijk_grid(state, source_registry)
@@ -228,6 +244,7 @@ def update_slice_visibility(state, controller, source_registry, view,
             vis_k or [],
         )
         active.show()
+    _reassert_scalar_bars(state, source_registry, view)
     _render_and_push(state, controller, view)
 
 
