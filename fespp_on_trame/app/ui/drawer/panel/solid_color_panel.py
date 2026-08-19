@@ -642,11 +642,40 @@ class SolidColorPanel(html.Div):
                 state.solid_color_by_marker = by_marker
                 _apply_solid(path, solid_color)   # fans onto every visible marker
                 return
-            # Non-marker rep.
+            # Non-marker rep. FAMILY invariant: a grid geometry and its
+            # BlockedWellbores share ONE solid colour — editing any member
+            # recolours them all (grid → fan out to the BWs; BW → resolve
+            # the family geometry and fan out from there).
+            family = [path]
+            try:
+                from fespp_on_trame.app.core import engine as _eng
+                from fespp_on_trame.app.core.engine import source_resolver
+                _tree = getattr(_eng, "_tree", None)
+                if _tree is not None:
+                    anchor = path
+                    n_id = _tree.find_node_id(path)
+                    if (_tree.find_type(n_id) or "") == "BlockedWellbore":
+                        cont = _tree.find_parent_node_id_with_type(
+                            n_id, "GridContainer")
+                        g_id = (_tree.find_representation_node(cont)
+                                if cont is not None else None)
+                        g_path = _tree.find_path(g_id) if g_id is not None else None
+                        if g_path:
+                            anchor = g_path
+                    bws = source_resolver.blocked_wellbore_rep_paths_for(
+                        _tree, anchor)
+                    if bws or anchor != path:
+                        family = [anchor] + [b for b in bws if b != anchor]
+                        if path not in family:
+                            family.append(path)
+            except Exception:
+                family = [path]
             colors = dict(state.solid_color_by_rep or {})
-            colors[path] = solid_color
+            for p in family:
+                colors[p] = solid_color
             state.solid_color_by_rep = colors
-            _apply_solid(path, solid_color)
+            for p in family:
+                _apply_solid(p, solid_color)
 
         @state.change("solid_color_by_rep", "ui_active_array_by_rep", "solid_color_by_marker")
         def _refresh_tree_chip_colors(solid_color_by_rep, ui_active_array_by_rep, **_):

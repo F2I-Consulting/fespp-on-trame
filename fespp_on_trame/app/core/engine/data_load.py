@@ -86,8 +86,34 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             r_path = cached
         if not r_path or r_path in colors:
             continue
-        colors[r_path] = color_for_index(next_idx)
-        next_idx += 1
+        # FAMILY colour: a grid geometry and every BlockedWellbore of the
+        # same GridContainer share ONE solid colour, anchored on the
+        # GEOMETRY's rep_path — whichever member loads first fixes it
+        # (a BW loading first also writes the anchor, so the geometry
+        # arriving later reuses the family colour instead of drawing a
+        # fresh one).
+        family_anchor = None
+        try:
+            n_id2 = tree.find_node_id(r_path)
+            kind2 = tree.find_type(n_id2) or ""
+            if kind2 == "BlockedWellbore":
+                cont = tree.find_parent_node_id_with_type(n_id2, "GridContainer")
+                g_id = tree.find_representation_node(cont) if cont is not None else None
+                family_anchor = tree.find_path(g_id) if g_id is not None else None
+            elif kind2 in ("IjkGrid", "UnstructuredGrid"):
+                family_anchor = r_path
+        except Exception:
+            family_anchor = None
+        if family_anchor:
+            fam_color = colors.get(family_anchor)
+            if fam_color is None:
+                fam_color = color_for_index(next_idx)
+                next_idx += 1
+                colors[family_anchor] = fam_color
+            colors[r_path] = fam_color
+        else:
+            colors[r_path] = color_for_index(next_idx)
+            next_idx += 1
     state._selector_rep_cache = sel_cache
     state.solid_color_by_rep = colors
     state.solid_color_next_idx = next_idx
@@ -373,6 +399,33 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                             chain_snap_by_grid[geom_path] = grid_rep.snapshot_threshold_chain()
                         except Exception:
                             pass
+                    # A NEW blocked wellbore defaults its grid's GEOMETRY
+                    # eye to CLOSED in every view (user decision
+                    # 2026-08-19): the wells render INSIDE the grid, so a
+                    # visible geometry buries them. The user re-opens the
+                    # eye deliberately to see the geometry over the wells
+                    # — and later re-opens survive (only a NEW wellbore
+                    # of the grid re-closes it).
+                    if geom_path in present_paths:
+                        from fespp_on_trame.app.core.engine import (
+                            visibility as _vis,
+                        )
+                        for p in (state.fespp_render_panels or []):
+                            pid = p.get("id") if isinstance(p, dict) else None
+                            if not pid:
+                                continue
+                            bucket = (state.ui_hidden_rep_paths_by_view
+                                      or {}).get(pid, []) or []
+                            if geom_path in bucket:
+                                continue
+                            try:
+                                _vis.toggle_rep_visibility(
+                                    state, controller, server,
+                                    source_registry, geom_path,
+                                    panel_id=pid, tree=tree,
+                                )
+                            except Exception:
+                                pass
                 # A fresh wellbore inherits its grid's THRESHOLD chain too:
                 # the dispatch mirror (`sync_blocked_wellbore_chains`) only
                 # fires on threshold OPS, so a wellbore checked after the
