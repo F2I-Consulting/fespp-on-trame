@@ -5,10 +5,6 @@ FROM paraview:6.0.x AS builder
 
 ENV PARALLEL_NB=12
 ENV PVSB_GIT_TAG="v6.0.1"
-# FESPP ref for the GITHUB build mode — pinned like PVSB_GIT_TAG so this
-# release branch always rebuilds against the FESPP state it was
-# validated with (fot-* anchor tags on F2I-Consulting/fespp).
-ENV FESPP_GIT_TAG="fot-v1.1.0"
 ENV ENABLE="-DENABLE_hdf5=ON"
 ENV USE_SYSTEM="-DUSE_SYSTEM_hdf5=ON -DUSE_SYSTEM_zlib=ON"
 
@@ -31,7 +27,14 @@ RUN bash /root/build-fesapi.sh
 RUN bash /root/build-fetpapi-dependencies.sh
 RUN bash /root/build-fetpapi.sh
 
-# Build mode: local (copy from host) or github (git clone)
+# Build mode: local (copy from host) or github (git clone).
+# FESPP ref for the GITHUB mode — pinned like PVSB_GIT_TAG so this
+# release branch always rebuilds against the FESPP state it was
+# validated with (fot-* anchor tags on F2I-Consulting/fespp).
+# Placed HERE (not at the top): an ENV line invalidates the cache of
+# every later layer — above build.bash it would retrigger the full
+# ParaView superbuild.
+ENV FESPP_GIT_TAG="fot-v1.1.0"
 COPY fespp-src-local* ${FESPP_BUILD_ROOT_DIR}/fespp/
 
 RUN bash /root/build-fespp.sh
