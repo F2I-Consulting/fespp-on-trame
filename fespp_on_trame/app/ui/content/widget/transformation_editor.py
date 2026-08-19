@@ -123,17 +123,22 @@ class TransformationEditor:
         return bool(name and name.startswith("mrk_"))
 
     def _apply_z_scale(self):
-        """Apply the editor's Scale on the NEXT event-loop tick.
+        """Apply the editor's Scale shortly after the click.
 
         The ptc VNumberInput commits its typed value to state on blur;
         clicking Apply blurs the field, but that blur→state sync races
         with the Apply click trigger, so reading the typed value
         synchronously here gets the PREVIOUS value — the user had to
-        click Apply twice. Deferring one tick lets the committed value
-        land first, so a single click applies the new exaggeration."""
+        click Apply twice. Deferring lets the committed value land
+        first (0.3s covers ptc's input debounce, 0.1s did not always),
+        and a LATE self-check re-applies if the commit arrived after
+        even that — a single click then always wins, without the
+        "first Apply jumps the camera but keeps the old scale" feel."""
         import asyncio
         try:
-            asyncio.get_event_loop().call_later(0.1, self._apply_z_scale_now)
+            loop = asyncio.get_event_loop()
+            loop.call_later(0.3, self._apply_z_scale_now)
+            loop.call_later(1.0, self._apply_z_scale_now)
         except Exception:
             # No running loop (shouldn't happen inside the trame server)
             # — fall back to an immediate apply.
@@ -159,6 +164,15 @@ class TransformationEditor:
         except Exception:
             return
         zs = scale[2]
+        # Idempotence: the late self-check tick (and a no-op Apply)
+        # lands here with the already-applied value — skip the whole
+        # pass INCLUDING the camera re-fit, so Apply never jumps the
+        # view without a visual change.
+        try:
+            if float(zs) == float(getattr(self._state, "ui_scale_z", 1.0) or 1.0):
+                return
+        except (TypeError, ValueError):
+            pass
         # Persist the GLOBAL exaggeration so creation hooks + the
         # on-load re-apply can read it (a single state var is the
         # source of truth).
