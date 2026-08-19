@@ -301,6 +301,20 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         except Exception:
             n_cells = 0
         if n_cells > 0:
+            # Reset the camera SYNCHRONOUSLY (pure server-side) so the
+            # final render+push at the end of this run already carries
+            # the framed camera. The sentinel path below resolves in a
+            # LATER state flush — after this run's frame push — through
+            # an async html-widget reset, so the client would keep the
+            # empty-scene default camera (pos z≈6.7 at origin) until
+            # the next manual interaction ([CAM]-probe diagnosis).
+            # The sentinel is still set: on_view_reset_camera also
+            # refreshes per-block visibility and re-syncs the client.
+            try:
+                pvsimple.ResetCamera(view)
+                view.CenterOfRotation = list(view.CameraFocalPoint)
+            except Exception:
+                pass
             state.view_reset_camera = True
             state.has_data_loaded_once = True
 
