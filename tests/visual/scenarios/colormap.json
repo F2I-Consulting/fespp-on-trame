@@ -1,0 +1,12 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Temperature", "settle": 12 },
+    { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "shot", "name": "continuous_default" },
+    { "op": "set", "var": "below_range_color", "value": "#0000FF", "settle": 2 },
+    { "op": "set", "var": "above_range_color", "value": "#FF00FF", "settle": 2 },
+    { "op": "narrow_color_range", "fraction": [0.3, 0.7], "settle": 4 },
+    { "op": "shot", "name": "narrowed_below_above" }
+  ]
+}

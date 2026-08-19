@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from paraview import simple as pvsimple
@@ -232,6 +233,18 @@ def initialize_fespp_engine(
     @controller.add("on_server_ready")
     def _set_upload_session_id(**kwargs):
         resolve_upload_session_id(server)
+
+    # Headless visual-test hook — inert unless FESPP_SCENARIO is set
+    # (see core/engine/scenario.py and tests/visual/).
+    _scenario_path = os.environ.get("FESPP_SCENARIO")
+    if _scenario_path:
+        from fespp_on_trame.app.core.engine import scenario as _scenario
+
+        @controller.add("on_server_ready")
+        def _launch_scenario(**kwargs):
+            _scenario.schedule(
+                server, state, controller, _tree, _view, _scenario_path,
+            )
 
     state.flush()
 

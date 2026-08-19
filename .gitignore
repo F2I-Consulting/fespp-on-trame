@@ -89,3 +89,7 @@ doc/v2/
 fespp_on_trame/v2/
 # Local Podman deploy kit (image tar + scripts) — local only, not committed
 deploy/
+# Visual-regression artifacts: baselines depend on this machine's GPU
+# rendering and partly on private datasets; out/ is per-run output.
+tests/visual/baselines/
+tests/visual/out/

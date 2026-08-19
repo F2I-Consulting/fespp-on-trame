@@ -1,0 +1,17 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "shot", "name": "full" },
+    { "op": "set", "var": "ui_slices_range_mode", "value": "slice", "settle": 6 },
+    { "op": "shot", "name": "slice_mid" },
+    { "op": "set", "var": "ui_slices_range_mode", "value": "range", "settle": 6 },
+    { "op": "volumes_fraction", "i": [0.4, 1.0], "j": [0, 1], "k": [0, 1], "settle": 6 },
+    { "op": "shot", "name": "range_crop" },
+    { "op": "set", "var": "ui_volumes_visible_list", "value": [false], "settle": 3 },
+    { "op": "shot", "name": "range_all_eyes_closed" },
+    { "op": "set", "var": "ui_volumes_visible_list", "value": [true], "settle": 3 },
+    { "op": "shot", "name": "range_back" }
+  ]
+}

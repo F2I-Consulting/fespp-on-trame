@@ -5,6 +5,7 @@
 **Orientation**
 - [[Architecture]]
 - [[Build and Run|Build-and-Run]]
+- [[Testing — Visual|Testing-Visual]]
 - [[Glossary]]
 
 **File reference**

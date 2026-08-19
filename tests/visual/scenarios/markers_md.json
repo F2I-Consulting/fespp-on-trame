@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Drilled trajectory", "settle": 6 },
+    { "op": "check", "title": "Stratigraphic Marker Set", "settle": 8 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "trajectory_markers" }
+  ]
+}
