@@ -551,6 +551,16 @@ def _update_visibility_tracking(state, present_paths):
     changed = False
     present = set(present_paths)
     active_panel_id = state.fespp_active_panel_id or ""
+    # The "visible by default" panel must be a RENDER panel: with a
+    # stats / distribution tab focused, fespp_active_panel_id points at
+    # a non-render panel, no bucket matches it, and a bulk load would
+    # arrive hidden in EVERY view (reported on select-all surfaces).
+    # Fall back to the drawer-target render panel, else the first one.
+    render_ids = [p.get("id") for p in (state.fespp_render_panels or [])
+                  if isinstance(p, dict) and p.get("id")]
+    if render_ids and active_panel_id not in render_ids:
+        target = getattr(state, "drawer_target_view_id", "") or ""
+        active_panel_id = target if target in render_ids else render_ids[0]
     for pid, paths in by_view.items():
         old = list(paths or [])
         # 1. Drop unloaded reps.

@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "call", "method": "tree_select_kinds",
+      "args": ["surface", ["Grid2d", "TriangulatedSet", "PointSet", "Polyline", "PolylineSet"], "add"],
+      "settle": 12 },
+    { "op": "dump", "vars": ["fespp_active_panel_id", "ui_hidden_rep_paths_by_view", "ui_hidden_rep_paths"] },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "all_surfaces_visible" }
+  ]
+}

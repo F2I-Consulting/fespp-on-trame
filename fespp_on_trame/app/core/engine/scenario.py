@@ -214,6 +214,20 @@ async def _run(server, state, controller, tree, view, scenario_path):
                     state.dirty("color_range_min")
                     state.dirty("color_range_max")
 
+            elif op == "call":
+                # Invoke a registered controller method: {"op":"call",
+                # "method":"tree_select_kinds","args":["surface",[...],"add"]}
+                fn = getattr(controller, step["method"])
+                with state:
+                    fn(*step.get("args", []))
+
+            elif op == "dump":
+                # Log state vars into scenario.log for assertions /
+                # debugging: {"op":"dump","vars":["ui_hidden_rep_paths_by_view"]}
+                for name in step.get("vars", []):
+                    _log(out, f"dump {name} = "
+                              f"{getattr(state, name, None)!r}")
+
             elif op == "reset_camera":
                 pvsimple.ResetCamera(v)
                 v.CenterOfRotation = list(v.CameraFocalPoint)

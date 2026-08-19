@@ -570,18 +570,21 @@ _INVALID_NODE_EXPR = "(ui_invalid_node_ids || []).includes(item.id)"
 # trame wraps HTML attributes in double quotes). No <mask> so the same
 # markup can repeat per row/panel without DOM-id collisions. ------------
 
-# Unified "hidden" eye: BLUE eye with a BLACK slash over it. mdi-eye-off
-# tints its slash the icon colour, so the two-tone pair needs raw SVG.
-_MDI_EYE_PATH = (
-    "M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9"
-    "M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17"
-    "M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 "
-    "21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"
+# Unified "hidden" eye: blue OUTLINE eye with a BLACK slash over it —
+# filled-vs-outline plus the slash separates the two states, mirroring
+# the stats toggle (user request). mdi-eye-off tints its slash the icon
+# colour, so the two-tone pair needs raw SVG.
+_MDI_EYE_OUTLINE_PATH = (
+    "M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9"
+    "M12,4.5C17,4.5 21.27,7.61 23,12C21.27,16.39 17,19.5 12,19.5C7,19.5 "
+    "2.73,16.39 1,12C2.73,7.61 7,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 "
+    "12,17.5C15.76,17.5 19.17,15.36 20.82,12C19.17,8.64 15.76,6.5 12,6.5"
+    "C8.24,6.5 4.83,8.64 3.18,12Z"
 )
 _SLASHED_EYE_SVG = (
     "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
     " width='16' height='16'>"
-    f"<path d='{_MDI_EYE_PATH}' fill='#1E88E5'/>"
+    f"<path d='{_MDI_EYE_OUTLINE_PATH}' fill='#1E88E5'/>"
     "<path d='M4.5 20.5 L19.5 3.5' stroke='#000000' stroke-width='2.4'"
     " stroke-linecap='round' fill='none'/></svg>`"
 )
@@ -846,6 +849,9 @@ def _eye_slot(controller):
                 # blue-with-black-slash pair.
                 html.Span(
                     "{{ panel.title }}",
+                    # Single view: the label is pure noise — it only
+                    # earns its place once a second panel exists.
+                    v_if="(fespp_render_panels || []).length > 1",
                     classes="text-caption",
                     style=(
                         "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
@@ -899,6 +905,9 @@ def _eye_slot(controller):
             ):
                 html.Span(
                     "{{ panel.title }}",
+                    # Single view: the label is pure noise — it only
+                    # earns its place once a second panel exists.
+                    v_if="(fespp_render_panels || []).length > 1",
                     classes="text-caption",
                     style=(
                         "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
@@ -948,6 +957,9 @@ def _eye_slot(controller):
             ):
                 html.Span(
                     "{{ panel.title }}",
+                    # Single view: the label is pure noise — it only
+                    # earns its place once a second panel exists.
+                    v_if="(fespp_render_panels || []).length > 1",
                     classes="text-caption",
                     style=(
                         "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
