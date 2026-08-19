@@ -145,13 +145,19 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
 
     if show:
         # For IjkGrid the per-mode Show/Hide pattern is intricate
-        # (slice vs range, volume eye, deepest threshold leaf) — let
+        # (slice vs range, volume eyes, deepest threshold leaf) — let
         # IjkGrid.show() decide which sources to actually render in
-        # the target view, on BOTH instances (legacy shared + per-view)
-        # so whichever pipeline currently renders gets re-shown. For
-        # non-IjkGrid reps, plain Show on the source proxy is right.
+        # the target view. Re-show ONLY the pipeline that renders in
+        # this view: the per-view IjkGrid when the scene has one, else
+        # the legacy shared instance. Re-showing BOTH painted the
+        # legacy full-grid rep_data — whose mode and coloring never
+        # track the per-view state — on top of the per-view crops /
+        # slices ([DISP]-probe diagnosis: legacy extractor Vis=1 over
+        # the per-view crop after a geometry-eye re-show). The HIDE
+        # side still sweeps both instances — belt and braces.
         ijk = source_registry.get_ijk_grid(rep_path)
-        for ijk_inst in (ijk, _per_view_ijk_for(rep_path, view)):
+        per_view_ijk = _per_view_ijk_for(rep_path, view)
+        for ijk_inst in ([per_view_ijk] if per_view_ijk is not None else [ijk]):
             if ijk_inst is None:
                 continue
             try:
