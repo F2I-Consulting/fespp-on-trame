@@ -63,23 +63,33 @@ def _log(out, msg):
         f.write(msg + "\n")
 
 
-def _find_node_by_title(tree, title):
-    """First assembly node whose title (fallback: label) equals `title`."""
+def _find_node_by_title(tree, title, under=None):
+    """First assembly node whose title (fallback: label) equals `title`.
+    `under` (optional) scopes the search to the subtree of the first
+    node titled `under` — disambiguates titles repeated across
+    containers (every grid has a "SolidColor" geometry leaf)."""
     asm = tree._data_assembly
     if asm is None:
         return None
     hits = []
 
-    def walk(nid):
+    def walk(nid, want):
         t = (asm.GetAttributeOrDefault(nid, "title", None)
              or asm.GetAttributeOrDefault(nid, "label", None))
-        if t == title:
+        if t == want:
             hits.append(nid)
             return
         for i in range(asm.GetNumberOfChildren(nid)):
-            walk(asm.GetChild(nid, i))
+            walk(asm.GetChild(nid, i), want)
 
-    walk(asm.GetRootNode())
+    root = asm.GetRootNode()
+    if under:
+        walk(root, under)
+        if not hits:
+            return None
+        root = hits[0]
+        hits = []
+    walk(root, title)
     return hits[0] if hits else None
 
 
@@ -136,7 +146,7 @@ async def _run(server, state, controller, tree, view, scenario_path):
                     controller.load_epc_file(step["path"])
 
             elif op in ("check", "uncheck"):
-                nid = _find_node_by_title(tree, step["title"])
+                nid = _find_node_by_title(tree, step["title"], step.get("under"))
                 if nid is None:
                     raise RuntimeError(f"node not found: {step['title']!r}")
                 var = step.get("var") or _select_var_for(tree, nid)
@@ -150,7 +160,7 @@ async def _run(server, state, controller, tree, view, scenario_path):
                     state.dirty(var)
 
             elif op == "activate":
-                nid = _find_node_by_title(tree, step["title"])
+                nid = _find_node_by_title(tree, step["title"], step.get("under"))
                 if nid is None:
                     raise RuntimeError(f"node not found: {step['title']!r}")
                 var = step.get("var", "ui_active_node_reservoir")
@@ -159,7 +169,7 @@ async def _run(server, state, controller, tree, view, scenario_path):
                     state.dirty(var)
 
             elif op == "eye":
-                nid = _find_node_by_title(tree, step["title"])
+                nid = _find_node_by_title(tree, step["title"], step.get("under"))
                 if nid is None:
                     raise RuntimeError(f"node not found: {step['title']!r}")
                 r_id = tree.find_representation_node(nid)

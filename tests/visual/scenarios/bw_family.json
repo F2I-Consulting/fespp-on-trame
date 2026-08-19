@@ -1,0 +1,12 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "shot", "name": "grid_colored" },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "bw_added_geometry_eye_closed" },
+    { "op": "uncheck", "title": "SolidColor", "under": "Four by Three by Two Left Handed", "settle": 6 },
+    { "op": "shot", "name": "geometry_cascade_bw_solid" }
+  ]
+}
