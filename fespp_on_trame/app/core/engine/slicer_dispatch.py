@@ -8,9 +8,9 @@ Handlers covered:
   - `set_slider_value` — write the first slice position for an axis
     into the corresponding `ui_slices_{i,j,k}_list`.
   - `update_slice_positions` — slicer position lists per axis.
-  - `update_slice_range` — slicer range bounds per axis.
+  - `update_volumes` — range-mode volume crops (count + per-volume
+    IJK ranges + per-volume eye).
   - `update_slice_mode` — slice vs range mode toggle.
-  - `update_volume_visible` — show/hide the volume crop.
   - `update_slice_visibility` — per-axis per-slicer visibility.
   - `apply_z_scale` — fan out the global Z exaggeration to every
     rep + IjkGrid slicer / volume.
@@ -173,12 +173,21 @@ def update_slice_positions(state, controller, source_registry, view,
     _render_and_push(state, controller, view)
 
 
-def update_slice_range(state, controller, source_registry, view,
-                      range_i, range_j, range_k):
+def update_volumes(state, controller, source_registry, view,
+                   volumes, visible_list):
+    """Range-mode volume crops: sync count + ranges + eyes on the
+    active grid. A newly-added volume crop would inherit the IjkGrid's
+    stale `_title` — re-fire the active-array ColorBy on add so it
+    paints the current property (same rationale as new slicers)."""
     active = _active_ijk_grid(state, source_registry)
+    added = False
     if active is not None:
-        active.apply_range(range_i, range_j, range_k)
+        before = len(active._src_volumes)
+        active.apply_volumes(volumes or [], visible_list or [])
+        added = len(active._src_volumes) > before
         active.show()
+    if added:
+        _recolor_active_grid(state, source_registry, view)
     _render_and_push(state, controller, view)
 
 
@@ -206,14 +215,6 @@ def update_slice_mode(state, controller, source_registry, view, mode):
             )
         except Exception:
             pass
-    _render_and_push(state, controller, view)
-
-
-def update_volume_visible(state, controller, source_registry, view, visible):
-    active = _active_ijk_grid(state, source_registry)
-    if active is not None:
-        active.apply_volume_visible(visible)
-        active.show()
     _render_and_push(state, controller, view)
 
 
@@ -323,8 +324,7 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
     ijk_srcs = []
     for ijk in source_registry.ijk_grids():
         ijk_srcs.extend(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            ijk_srcs.append(ijk._src_slicer_volume)
+        ijk_srcs.extend(ijk._src_volumes)
     for src in ijk_srcs:
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
         if rep is not None:
@@ -366,8 +366,7 @@ def _collect_scene_proxies(scene):
                 out.append(ijk.source)
             if getattr(ijk, "_src_extract_init", None) is not None:
                 out.append(ijk._src_extract_init)
-            if getattr(ijk, "_src_slicer_volume", None) is not None:
-                out.append(ijk._src_slicer_volume)
+            out.extend(getattr(ijk, "_src_volumes", []) or [])
             try:
                 out.extend(ijk._all_slice_sources())
             except Exception:
@@ -396,8 +395,7 @@ def _collect_legacy_proxies(source_registry):
         for ijk in source_registry.ijk_grids():
             if ijk._src_extract_init is not None:
                 out.append(ijk._src_extract_init)
-            if ijk._src_slicer_volume is not None:
-                out.append(ijk._src_slicer_volume)
+            out.extend(ijk._src_volumes)
             out.extend(ijk._all_slice_sources())
             out.extend(ijk.all_threshold_sources())
     except Exception:

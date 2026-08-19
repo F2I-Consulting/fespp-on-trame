@@ -35,9 +35,8 @@ The package is mid-migration from a **legacy single-view model** (one shared `So
 | `@state.change("ui_active_array_by_rep")` | `_on_active_array_change` | `active_array.on_active_array_change` |
 | `@state.change("ui_active_array_by_rep_by_view")` | `_on_active_array_by_view_change` | `active_array.on_active_array_by_view_change` (+ `_refresh_panel_mr_specs`) |
 | `@state.change("ui_slices_i/j/k_list")` | `update_slice` | `slicer_dispatch.update_slice_positions` |
-| `@state.change("ui_slices_range_i/j/k")` | `update_range_slicer` | `slicer_dispatch.update_slice_range` |
+| `@state.change("ui_volumes_list", "ui_volumes_visible_list")` | `update_volumes` | `slicer_dispatch.update_volumes` |
 | `@state.change("ui_slices_range_mode")` | `update_mode_slicer` | `slicer_dispatch.update_slice_mode` |
-| `@state.change("ui_slices_volume_visible")` | `update_volume_visible` | `slicer_dispatch.update_volume_visible` |
 | `@state.change("ui_slices_i/j/k_visible_list")` | `update_slices_visibility` | `slicer_dispatch.update_slice_visibility` |
 | `@state.change("active_representation_path","ui_active_node_reservoir_type_rep")` | `on_active_grid_change` | threshold UI + `_push_active_ijk_state_to_ui` + `slice_dispatch.publish_slice_state` + `clip_dispatch.publish_clip_state` + stats |
 | `@state.change("ui_stats_pinned_paths", …, ui_slices_*)` (big union) | `_on_stats_inputs_change` | `_refresh_descriptive_stats` |
@@ -88,7 +87,7 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
   - Realizations: `ui_active_realization_by_array_by_view` (`{panel_id: {array_path: idx}}`), `ui_panel_active_mr_specs_by_id`, `panel_has_mr_by_id`, `ui_global_mr_specs`, `ui_global_mr_selected_path`, `ui_global_mr_selected_spec`.
   - Diff / ETP / view-status / VTK-log / upload-progress blocks.
   - Slice plane (`ui_slice_enabled/axis/offset/bounds` + server-resolved `ui_slice_offset_min/max/step`), Clip plane (parallel `ui_clip_*` incl. `ui_clip_inside_out`), `ui_plane_edit_mode` (`"slice"|"clip"|None`).
-  - IJK slicer (`ui_range_i/j/k`, `ui_slices_*_list`, `ui_slices_range_*`, `ui_slices_*_visible_list`, `ui_threshold_chain`, etc.).
+  - IJK slicer (`ui_range_i/j/k`, `ui_slices_*_list`, `ui_volumes_list`, `ui_volumes_visible_list`, `ui_slices_*_visible_list`, `ui_threshold_chain`, etc.).
   - Descriptive stats (Brique B): `ui_stats_pinned_paths`, `ui_stats_panel_state`, `ui_stats_tables`, `ui_stats_publish_version`, `ui_per_view_time_pulse`, `ui_stats_compare`, `ui_stats_compare_panel`, `ui_stats_compare_dist_panel`, `ui_stats_compare_items`.
   - Drawer target: `drawer_target_view_id` (`""`), `drawer_target_view_pinned` (`False`).
   - Panel ids / overlay flags: `fespp_stats_panel_id`, `ui_stats_panel_minimized`, `ui_stats_panel_maximized`, `ui_distribution_contexts`, `ui_slicers_tab` (`"ijk"`).

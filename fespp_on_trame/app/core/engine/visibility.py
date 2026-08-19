@@ -206,10 +206,10 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
         for _ijk_inst in (_ijk_legacy, _per_view_ijk_for(rep_path, view)):
             if _ijk_inst is None:
                 continue
-            for _attr in ("_src_extract_init", "_src_slicer_volume"):
-                _p = getattr(_ijk_inst, _attr, None)
-                if _p is not None:
-                    all_srcs.append(_p)
+            _p = getattr(_ijk_inst, "_src_extract_init", None)
+            if _p is not None:
+                all_srcs.append(_p)
+            all_srcs.extend(getattr(_ijk_inst, "_src_volumes", []) or [])
             try:
                 all_srcs.extend(_ijk_inst._all_slice_sources())
             except Exception:

@@ -152,8 +152,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             except Exception:
                 pass
             slicer_sources = list(ijk._all_slice_sources())
-            if ijk._src_slicer_volume is not None:
-                slicer_sources.append(ijk._src_slicer_volume)
+            slicer_sources.extend(ijk._src_volumes)
             for slc in slicer_sources:
                 try:
                     slc.GetClientSideObject().Modified()

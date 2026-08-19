@@ -286,7 +286,7 @@ class Activator:
         if target_source is None:
             target_source = _pick_visible(ijk._all_slice_sources())
         if target_source is None:
-            target_source = _pick_visible([ijk._src_slicer_volume])
+            target_source = _pick_visible(ijk._src_volumes)
         return target_source
 
     def _refresh_active_property_editor(self, rep_block_path, rep_type,

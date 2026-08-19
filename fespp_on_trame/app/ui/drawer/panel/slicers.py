@@ -17,9 +17,9 @@ IJK_TAB_VISIBLE = "ui_active_node_reservoir_type_rep === 'IjkGrid'"
 
 
 class SlicerControls:
-    """IJK slicer body — axis crop (range mode) and per-axis multi-
-    position cuts (slice mode). Rendered inside the SlicersPanel's IJK
-    tab. Threshold lives in `ThresholdPanel` (attributes drawer) because
+    """IJK slicer body — multi-volume axis crops (range mode) and
+    per-axis multi-position cuts (slice mode). Rendered inside the
+    SlicersPanel's IJK tab. Threshold lives in `ThresholdPanel` (attributes drawer) because
     it's a per-rep value-based filter, not a cut. Realization is per-view:
     each render panel's overlay carries a `PerViewRealizationPicker`
     populated from the per-view MR specs computed by
@@ -63,24 +63,60 @@ class SlicerControls:
                 vuetify3.VSpacer()
                 render_copy_menu("ijk_slicers")
 
-            # Single eye for the full volume in range mode.
+            # Range mode: N independent volume crops. Header row hosts
+            # the add button; each volume gets its own eye / delete and
+            # one range slider per axis. Closing every eye (or deleting
+            # every volume) renders nothing.
             with html.Div(
                 v_if=f"{self._mode_var} === 'range'",
-                style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;",
+                style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;",
             ):
-                html.Div("Volume", classes="text-caption font-weight-bold",
+                html.Div("Volumes", classes="text-caption font-weight-bold",
                          style="font-size: 0.75rem;")
                 vuetify3.VBtn(
-                    icon=("ui_slices_volume_visible ? 'mdi-eye' : 'mdi-eye-off'",),
-                    click="ui_slices_volume_visible = !ui_slices_volume_visible",
+                    icon="mdi-plus",
+                    click=(
+                        "ui_volumes_list = ui_volumes_list.concat([["
+                        "[ui_range_i[0], ui_range_i[1]], "
+                        "[ui_range_j[0], ui_range_j[1]], "
+                        "[ui_range_k[0], ui_range_k[1]]]]); "
+                        "ui_volumes_visible_list = ui_volumes_visible_list.concat([true])"
+                    ),
                     variant="text", density="compact", size="x-small",
-                    color=("ui_slices_volume_visible ? 'primary' : 'grey'",),
+                    color="primary",
                     style="margin: 0; padding: 0; min-width: 28px; width: 28px; height: 28px;",
                 )
 
-            self.RangeSlider("i")
-            self.RangeSlider("j")
-            self.RangeSlider("k")
+            with html.Div(v_if=f"{self._mode_var} === 'range'"):
+                with html.Div(
+                    v_for="(vol, vdx) in ui_volumes_list",
+                    key=("vdx",),
+                    classes="mb-1",
+                ):
+                    with html.Div(style="display: flex; align-items: center; gap: 2px;"):
+                        html.Div("Volume {{ vdx + 1 }}",
+                                 classes="text-caption font-weight-bold",
+                                 style="font-size: 0.72rem;")
+                        vuetify3.VBtn(
+                            icon=("ui_volumes_visible_list[vdx] !== false ? 'mdi-eye' : 'mdi-eye-off'",),
+                            click="ui_volumes_visible_list = ui_volumes_visible_list.map(function(v, i) { return i === vdx ? !v : v; })",
+                            variant="text", density="compact", size="x-small",
+                            color=("ui_volumes_visible_list[vdx] !== false ? 'primary' : 'grey'",),
+                            style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
+                        )
+                        vuetify3.VBtn(
+                            icon="mdi-delete",
+                            click=(
+                                "ui_volumes_list = ui_volumes_list.filter(function(_, i) { return i !== vdx; }); "
+                                "ui_volumes_visible_list = ui_volumes_visible_list.filter(function(_, i) { return i !== vdx; })"
+                            ),
+                            variant="text", density="compact", size="x-small",
+                            color="grey",
+                            style="margin: 0; padding: 0; min-width: 24px; width: 24px; height: 24px;",
+                        )
+                    self.VolumeAxisSlider(0, "i")
+                    self.VolumeAxisSlider(1, "j")
+                    self.VolumeAxisSlider(2, "k")
 
             self.MultiSlider("i")
             self.MultiSlider("j")
@@ -124,29 +160,41 @@ class SlicerControls:
                 click=make_assign(clamp(f"({value_expr}) + 1")),
             )
 
-    def RangeSlider(self, index: Literal["i", "j", "k"]):
-        """Range slider for the volume crop on the given axis."""
-        range_var = f"ui_range_{index}"
-        slices_range_var = f"ui_slices_range_{index}"
+    def VolumeAxisSlider(self, axis_idx: int, letter: Literal["i", "j", "k"]):
+        """One axis of ONE range-mode volume: a range slider bound to
+        `vol[axis_idx]` inside the volumes v-for, with the same reset /
+        min-max stepper affordances as the slice sliders. Writes commit
+        functionally into `ui_volumes_list` (map by volume index `vdx`,
+        then by axis index) — the nested pair can't be v_model'd."""
+        range_var = f"ui_range_{letter}"
+
+        def write(pair_js):
+            # Replace this volume's axis pair; `p` is the current pair
+            # inside the inner map (usable in `pair_js`).
+            return (
+                "ui_volumes_list = ui_volumes_list.map(function(v, __i) "
+                "{ return __i === vdx ? v.map(function(p, __a) "
+                "{ return __a === " + str(axis_idx) + " ? (" + pair_js + ") : p; }) : v; })"
+            )
 
         with vuetify3.VRangeSlider(
-            v_if=(f"{self._mode_var} === 'range'"),
             strict=True,
             min=(f"{range_var}[0]",),
             max=(f"{range_var}[1]",),
             step=1,
-            v_model=(slices_range_var,),
+            model_value=(f"vol[{axis_idx}]",),
+            end=write("$event"),
             thumb_label=False,
             hide_details=True,
             classes="mx-n4",
         ):
             with html.Template(v_slot_prepend=""):
                 with html.Div(style="display: flex; align-items: center; gap: 4px;"):
-                    html.Div(index.upper(), classes="text-caption", style="width: 10px; text-align: center; font-size: 0.65rem;")
+                    html.Div(letter.upper(), classes="text-caption", style="width: 10px; text-align: center; font-size: 0.65rem;")
 
                     vuetify3.VBtn(
                         icon="mdi-refresh",
-                        click=f"{slices_range_var} = [{range_var}[0], {range_var}[1]]",
+                        click=write(f"[{range_var}[0], {range_var}[1]]"),
                         variant="text",
                         density="compact",
                         size="x-small",
@@ -156,17 +204,17 @@ class SlicerControls:
 
                     # min of the crop: clamp to [grid-min, current-max]
                     self._num_stepper(
-                        f"{slices_range_var}[0]",
-                        lambda v: f"{slices_range_var} = [{v}, {slices_range_var}[1]]",
-                        f"{range_var}[0]", f"{slices_range_var}[1]",
+                        f"vol[{axis_idx}][0]",
+                        lambda v: write(f"[({v}), p[1]]"),
+                        f"{range_var}[0]", f"vol[{axis_idx}][1]",
                     )
 
             with html.Template(v_slot_append=""):
                 # max of the crop: clamp to [current-min, grid-max]
                 self._num_stepper(
-                    f"{slices_range_var}[1]",
-                    lambda v: f"{slices_range_var} = [{slices_range_var}[0], {v}]",
-                    f"{slices_range_var}[0]", f"{range_var}[1]",
+                    f"vol[{axis_idx}][1]",
+                    lambda v: write(f"[p[0], ({v})]"),
+                    f"vol[{axis_idx}][0]", f"{range_var}[1]",
                 )
 
     def MultiSlider(self, index: Literal["i", "j", "k"]):

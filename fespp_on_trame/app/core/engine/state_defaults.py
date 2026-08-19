@@ -238,14 +238,15 @@ def init_state_defaults(state):
     state.setdefault("ui_slices_k_active", False)
     state.setdefault("ui_slices_k_list", [0])
     state.setdefault("ui_slices_range_active", False)
-    state.setdefault("ui_slices_range_i", [0, 0])
-    state.setdefault("ui_slices_range_j", [0, 0])
-    state.setdefault("ui_slices_range_k", [0, 0])
     state.setdefault("ui_slices_range_mode", "full")
     state.setdefault("ui_slices_i_visible_list", [True])
     state.setdefault("ui_slices_j_visible_list", [True])
     state.setdefault("ui_slices_k_visible_list", [True])
-    state.setdefault("ui_slices_volume_visible", True)
+    # Range-mode volume crops: per-volume [[i0,i1],[j0,j1],[k0,k1]]
+    # ranges + per-volume eye. The active grid seeds one full-extent
+    # volume; the UI's "+" grows the lists.
+    state.setdefault("ui_volumes_list", [])
+    state.setdefault("ui_volumes_visible_list", [])
     state.setdefault("ui_threshold_chain", [])
     state.setdefault("ui_threshold_arrays_available", [])
     state.setdefault("ui_threshold_pending_action", None)

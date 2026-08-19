@@ -154,8 +154,7 @@ class RepInScene:
             if legacy_ijk._src_extract_init is not None:
                 sources.append(legacy_ijk._src_extract_init)
             sources.extend(legacy_ijk._all_slice_sources())
-            if legacy_ijk._src_slicer_volume is not None:
-                sources.append(legacy_ijk._src_slicer_volume)
+            sources.extend(getattr(legacy_ijk, "_src_volumes", []) or [])
             try:
                 sources.extend(legacy_ijk.all_threshold_sources())
             except Exception:
@@ -1035,16 +1034,14 @@ class RepInScene:
                     snap.get("ui_slices_j_visible_list") or [],
                     snap.get("ui_slices_k_visible_list") or [],
                 )
-            ri = snap.get("ui_slices_range_i")
-            rj = snap.get("ui_slices_range_j")
-            rk = snap.get("ui_slices_range_k")
-            if ri and rj and rk:
-                ijk.apply_range(ri, rj, rk)
+            vols = snap.get("ui_volumes_list")
+            if vols is not None:
+                ijk.apply_volumes(
+                    vols, snap.get("ui_volumes_visible_list") or [],
+                )
             mode = snap.get("ui_slices_range_mode")
             if mode:
                 ijk.apply_mode(mode)
-            if "ui_slices_volume_visible" in snap:
-                ijk.apply_volume_visible(snap.get("ui_slices_volume_visible"))
             if hasattr(ijk, "show"):
                 ijk.show()
         except Exception as exc:

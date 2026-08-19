@@ -244,8 +244,7 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
     if ijk is not None:
         tips = ijk._visible_leaf_tips()
         grid_sources = list(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            grid_sources.append(ijk._src_slicer_volume)
+        grid_sources.extend(ijk._src_volumes)
         # Include rep_data — visible in range mode at full extent; harmless
         # in the hide path when already hidden in slice mode.
         if ijk._src_extract_init is not None:
@@ -318,8 +317,7 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
         out.extend(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            out.append(ijk._src_slicer_volume)
+        out.extend(ijk._src_volumes)
         if ijk._src_extract_init is not None:
             out.append(ijk._src_extract_init)
         try:

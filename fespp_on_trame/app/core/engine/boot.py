@@ -463,23 +463,17 @@ def initialize_fespp_engine(
             ui_slices_i_list, ui_slices_j_list, ui_slices_k_list,
         )
 
-    @state.change("ui_slices_range_i", "ui_slices_range_j", "ui_slices_range_k")
-    def update_range_slicer(ui_slices_range_i, ui_slices_range_j, ui_slices_range_k, **kwargs):
-        slicer_dispatch.update_slice_range(
+    @state.change("ui_volumes_list", "ui_volumes_visible_list")
+    def update_volumes(ui_volumes_list=None, ui_volumes_visible_list=None, **kwargs):
+        slicer_dispatch.update_volumes(
             state, controller, _source_registry, _view,
-            ui_slices_range_i, ui_slices_range_j, ui_slices_range_k,
+            ui_volumes_list, ui_volumes_visible_list,
         )
 
     @state.change("ui_slices_range_mode")
     def update_mode_slicer(ui_slices_range_mode=None, **kwargs):
         slicer_dispatch.update_slice_mode(
             state, controller, _source_registry, _view, ui_slices_range_mode,
-        )
-
-    @state.change("ui_slices_volume_visible")
-    def update_volume_visible(ui_slices_volume_visible=None, **kwargs):
-        slicer_dispatch.update_volume_visible(
-            state, controller, _source_registry, _view, ui_slices_volume_visible,
         )
 
     # slicer_dispatch writes slicer state directly onto the active view's
@@ -1152,11 +1146,9 @@ def initialize_fespp_engine(
         "ui_slices_i_visible_list",
         "ui_slices_j_visible_list",
         "ui_slices_k_visible_list",
-        "ui_slices_range_i",
-        "ui_slices_range_j",
-        "ui_slices_range_k",
+        "ui_volumes_list",
+        "ui_volumes_visible_list",
         "ui_slices_range_mode",
-        "ui_slices_volume_visible",
     )
     def _on_stats_inputs_change(**_):
         """Recompute the multi-property stats tables whenever an input

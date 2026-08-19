@@ -141,7 +141,7 @@ registry.py
 - `class IjkGridRep(GridRep)` — `KINDS = ("IjkGrid",)`. The only kind that goes through the modal IjkGrid pipeline (I/J/K slicers + volume crop + threshold chain, range vs slice mode). Overrides:
   - `visibility_policy()` → `IJK_MODAL`.
   - `refresh_primary_visibility(self, ris)` — does **not** Show `rep_data`; instead defers to `ris._per_view_ijk.show(view=...)`, which is the authority on which sources render for the current range/slice mode.
-  - `hide_in_view(self, ris)` — Hides *every* IJK source: `ijk._all_slice_sources()` + `ijk._src_slicer_volume` + `ijk._src_extract_init` + `ijk.all_threshold_sources()`.
+  - `hide_in_view(self, ris)` — Hides *every* IJK source: `ijk._all_slice_sources()` + `ijk._src_volumes` + `ijk._src_extract_init` + `ijk.all_threshold_sources()`.
   - `ensure_extractor(self, ris)` → **`None`** (IJK reps don't use the standard extractor).
   - `ensure_source(self, ris)` → the per-view IjkGrid's `ijk.source` (rep_data extractor) or the legacy fallback.
   - `ensure_per_view_ijk(self, ris)` — lazily builds a per-(rep, view) `IjkGrid` instance rooted on `scene.clone`, mirroring the legacy shared IjkGrid's selected property (reads the legacy via `ctx.source_registry.get_ijk_grid(rep_path)`, maps `legacy._property_path` → node id via `scene.tree.find_node_id`, drives `set_node_id`). Forces `clone.UpdatePipeline()` first, then hides the legacy IjkGrid's rendered sources in this view. Caches on `ris._per_view_ijk`. Returns `None` if the legacy isn't initialised (no property selected).

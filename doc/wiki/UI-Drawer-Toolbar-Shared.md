@@ -152,11 +152,12 @@ Two cross-cutting design decisions pervade this code and a forker must internali
 **Key classes / functions.**
 - `IJK_TAB_VISIBLE = "ui_active_node_reservoir_type_rep === 'IjkGrid'"` — exported for `SlicersPanel`.
 - `class SlicerControls` (`_mode_var = "ui_slices_range_mode"`):
-  - `render_body(self)` — gated on IjkGrid. Header row: a `VSwitch` toggling range/slice mode + `render_copy_menu("ijk_slicers")`. In range mode, a single "Volume" eye toggling `ui_slices_volume_visible`. Then `RangeSlider("i"/"j"/"k")` and `MultiSlider("i"/"j"/"k")`.
+  - `render_body(self)` — gated on IjkGrid. Header row: a `VBtnToggle` (Full grid | Slice | Range) + `render_copy_menu("ijk_slicers")`. In range mode, a "Volumes" header with a `+` button (appends a full-extent volume to `ui_volumes_list` + `true` to `ui_volumes_visible_list`), then one block per volume: label "Volume N" + eye + trash, and `VolumeAxisSlider(0/1/2, "i"/"j"/"k")`. Then `MultiSlider("i"/"j"/"k")` (slice mode).
+  - `VolumeAxisSlider(axis_idx, letter)` — one axis of ONE volume: a `VRangeSlider` bound to `vol[axis_idx]` inside the volumes v-for, committing on `end` via a functional map into `ui_volumes_list` (by volume index `vdx`, then axis index); reset + min/max steppers reuse `_num_stepper` with the same nested write.
   - `RangeSlider(self, index)` — a `VRangeSlider` (visible in range mode) over `ui_range_<axis>`, bound to `ui_slices_range_<axis>`, with a refresh button (reset to full range) and min/max `VTextField`s editable on blur/Enter.
   - `MultiSlider(self, index)` — visible in slice mode; manages `ui_slices_<axis>_list` (positions) and `ui_slices_<axis>_visible_list` (per-slicer eyes). A `+` button appends a slicer at mid-range (and a `true` visibility entry); each row has a `VSlider`, a numeric field, an eye toggle, and a delete button — all manipulated via inline JS `.map`/`.filter`/`.concat`.
 
-**State.** Binds `ui_slices_range_mode`, `ui_slices_volume_visible`, `ui_range_<axis>`, `ui_slices_range_<axis>`, `ui_slices_<axis>_list`, `ui_slices_<axis>_visible_list`. Reads `ui_active_node_reservoir_type_rep`.
+**State.** Binds `ui_slices_range_mode`, `ui_volumes_list`, `ui_volumes_visible_list`, `ui_range_<axis>`, `ui_slices_<axis>_list`, `ui_slices_<axis>_visible_list`. Reads `ui_active_node_reservoir_type_rep`.
 
 **Collaborators.** `render_copy_menu` from `copy_from_view_menu`. Backend consumes the list/range state (slicer dispatch).
 
