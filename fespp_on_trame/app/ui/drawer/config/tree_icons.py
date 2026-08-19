@@ -3,7 +3,9 @@
 TREE_ICONS = {
     # Reservoir
     "IjkGrid": "mdi-axis-arrow-info",
-    "UnstructuredGrid": "mdi-data-matrix",
+    # Sentinel, not an MDI name: the tree icon slots render the inline
+    # wireframe-tetrahedron SVG (tree_views._TETRA_SVG) for this value.
+    "UnstructuredGrid": "fespp-tetra",
     "Property": "mdi-chart-box-outline",
     "ContinuousProperty": "mdi-chart-line",
     "DiscreteProperty": "mdi-chart-bar",
