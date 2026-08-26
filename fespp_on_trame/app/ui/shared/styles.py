@@ -12,6 +12,17 @@ def inject_global_styles() -> None:
     # Vertical centering fix for ptc components.
     trame_client.Style(".te-align-center .v-row { align-items: center; }")
 
+    # The AppBar title ("FESPP on TRAME") is a flex item Vuetify lets
+    # shrink with an ellipsis — at exactly 100% browser zoom the flex
+    # rounding truncated it while 90% / 110% showed it whole. Pin it
+    # to its natural width.
+    trame_client.Style(
+        ".v-app-bar .v-toolbar-title {"
+        "  flex: 0 0 auto;"
+        "  min-width: max-content;"
+        "}"
+    )
+
     # Hide the default trame footer. The --v-layout-bottom reset stops
     # Vuetify reserving space for the now-hidden footer.
     trame_client.Style(

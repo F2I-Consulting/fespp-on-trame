@@ -5,6 +5,7 @@ app that actually serves HTTP requests (Trame creates several
 aiohttp.Application instances during startup; the one we want is the
 one AppRunner.setup wires up — not necessarily the first one we see).
 """
+import asyncio
 from pathlib import Path
 from aiohttp import web as aiohttp_web
 
@@ -17,6 +18,9 @@ def register_upload_route(server) -> bool:
         controller = server.controller
         state.upload_uploading = True
         state.upload_progress = 0
+        # Reset so a REPEATED failed import re-triggers the snackbar
+        # (trame collapses same-value writes).
+        state.load_error = ""
         epc_paths = []
         total_size = int(request.headers.get("X-File-Size", 0))
         received = 0
@@ -26,8 +30,22 @@ def register_upload_route(server) -> bool:
             async for field in reader:
                 if not field.filename:
                     continue
-                filename = field.filename
+                # SECURITY: the multipart filename is fully client-controlled.
+                # Reduce it to a bare basename (defusing `../` and absolute-path
+                # escapes on both `/` and `\` separators) so a POST to /upload
+                # can never create a file outside temp_dir. Extensions are NOT
+                # filtered: fesapi judges by CONTENT, so an EPC
+                # renamed `.txt` must still load — anything that isn't an `.h5`
+                # side-file is handed to fesapi below, and a parse failure
+                # surfaces through the `load_error` snackbar.
+                filename = (field.filename or "").replace("\\", "/").split("/")[-1]
+                if not filename or filename in (".", ".."):
+                    continue
                 filepath = Path(temp_dir) / filename
+                base = Path(temp_dir).resolve()
+                if base != filepath.resolve() and base not in filepath.resolve().parents:
+                    print(f"[Upload] rejected path escape: {filename!r}", flush=True)
+                    continue
                 print(f"[Upload] Receiving {filename}...", flush=True)
                 if filepath.exists():
                     print(f"[Upload] File {filename} already exists, ignored.", flush=True)
@@ -46,19 +64,37 @@ def register_upload_route(server) -> bool:
                                 state.flush()
                 size_mb = filepath.stat().st_size / (1024 ** 2)
                 print(f"[Upload] {filename} saved ({size_mb:.1f} MB)", flush=True)
-                if filename.lower().endswith(".epc"):
+                # Everything that isn't an .h5 side-file is treated as an
+                # EPC candidate — fesapi judges by content, so an EPC
+                # renamed .txt still loads; genuine junk fails the parse
+                # and surfaces through the load_error snackbar.
+                if not filename.lower().endswith(".h5"):
                     epc_paths.append(str(filepath))
             state.upload_progress = 100
             state.flush()
-            for path in epc_paths:
-                controller.load_epc_file(path)
+            # The C++ EPC parse below BLOCKS the event loop for 1-2 s
+            # (measured). Flip the overlay to "Reading EPC…" and yield ONCE so
+            # the flush actually reaches the client BEFORE the blocking loop —
+            # without the sleep(0) the message would only ship after it.
+            state.upload_parsing = True
+            state.flush()
+            await asyncio.sleep(0)
+            try:
+                for path in epc_paths:
+                    controller.load_epc_file(path)
+            finally:
+                state.upload_parsing = False
             state.upload_uploading = False
             state.flush()
-            return aiohttp_web.json_response({"status": "ok", "epc_paths": epc_paths})
+            # Return basenames only — never leak absolute server temp paths.
+            return aiohttp_web.json_response(
+                {"status": "ok", "epc_paths": [Path(p).name for p in epc_paths]})
         except Exception as exc:
             state.upload_uploading = False
             state.upload_progress = 0
-            return aiohttp_web.json_response({"status": "error", "message": str(exc)}, status=500)
+            print(f"[Upload] error: {exc}", flush=True)  # server-side log only
+            return aiohttp_web.json_response(
+                {"status": "error", "message": "upload failed"}, status=500)
 
     global _registered_handler
     _registered_handler = handle_upload

@@ -195,6 +195,48 @@ def hide_unused_scalar_bars():
     source_resolver.hide_unused_scalar_bars()
 
 
+def sync_blocked_wellbore_chains(scene_registry, provider, rep_path, view_id):
+    """Mirror the grid's threshold chain onto its LOADED BlockedWellbores.
+
+    FESPP mirrors the grid's CELL arrays onto every loaded wellbore
+    (same names, restricted to the crossed cells), so the grid's
+    threshold ranges apply verbatim on the wells: they keep only the
+    cells whose value matches the grid's filter — the well-side twin of
+    "the wells follow the grid's colouring".
+
+    Declarative reconcile: replay the grid chain snapshot through
+    `apply_threshold_chain` (full replace, idempotent) on each wellbore
+    `RepInScene`, so add / delete / set_range / set_visible all reduce
+    to the same call. Only wellbores with an EXISTING per-view rep are
+    touched — an unchecked one has none and must not be materialised by
+    a threshold op. Cost: one proxy teardown + rebuild per (loaded BW,
+    chain entry) per op — fine for the handful of wells a chain user
+    keeps loaded; revisit if mass-loaded wells meet heavy chains."""
+    if scene_registry is None or not view_id or not rep_path:
+        return
+    tree = getattr(getattr(provider, "scene", None), "tree", None)
+    if tree is None or not hasattr(provider, "snapshot_threshold_chain"):
+        return  # legacy fallback provider (early boot) — nothing to mirror
+    from fespp_on_trame.app.core.engine.source_resolver import (
+        blocked_wellbore_rep_paths_for,
+    )
+    bw_paths = blocked_wellbore_rep_paths_for(tree, rep_path)
+    if not bw_paths:
+        return
+    try:
+        snap = provider.snapshot_threshold_chain()
+    except Exception:
+        return
+    for bw_path in bw_paths:
+        bw_rep = scene_registry.get_rep(view_id, bw_path)
+        if bw_rep is None or bw_rep is provider:
+            continue
+        try:
+            bw_rep.apply_threshold_chain(snap)
+        except Exception:
+            pass
+
+
 def _is_per_view_provider(provider):
     """True when the provider follows the no-rep-path call convention
     (`IjkGrid` and `RepInScene`); False when it's the legacy
@@ -266,6 +308,58 @@ def refresh_threshold_ui_for_active_grid(state, scene_registry, source_registry,
     publish_threshold_chain(state, scene_registry, source_registry, view_id=view_id)
 
 
+def chain_entries_for_property(state, scene_registry, source_registry, tree, prop_node_id):
+    """Threshold entries fed by the given PROPERTY node, across every
+    view's chain of its grid: `[(view_id, entry_name), ...]`
+    (`view_id=None` for the legacy single-registry provider). Matches
+    the property's sanitized base array name and its MR `_real_<idx>`
+    variants. Used by the unselect guard: unchecking the
+    property that feeds a chain must ask before killing the entries."""
+    from fespp_on_trame.app.core.element_type import for_kind as _fk
+    kind = tree.find_type(prop_node_id) or ""
+    if not _fk(kind).is_property():
+        return []
+    rep_id = tree.find_representation_node(prop_node_id)
+    rep_path = tree.find_path(rep_id) if rep_id is not None else None
+    if not rep_path:
+        return []
+    title = tree.find_title(prop_node_id) or ""
+    if _fk(kind).is_multi_realization():
+        prop_title = tree.find_attribute_value(prop_node_id, "propTitle")
+        if prop_title:
+            title = prop_title
+    base = make_valid_vtk_name(title)
+    if not base:
+        return []
+
+    def _matches(arr):
+        return arr == base or arr.startswith(base + "_real_")
+
+    out = []
+    view_ids = list(scene_registry.view_ids()) if scene_registry is not None else []
+    for vid in view_ids:
+        rep = scene_registry.get_rep(vid, rep_path)
+        if rep is None:
+            continue
+        try:
+            chain = rep.get_chain()
+        except Exception:
+            continue
+        for entry in chain or []:
+            if _matches(entry.get("array") or ""):
+                out.append((vid, entry["name"]))
+    if not view_ids and source_registry is not None:
+        ijk = source_registry.get_ijk_grid(rep_path)
+        if ijk is not None:
+            try:
+                for entry in ijk.get_chain() or []:
+                    if _matches(entry.get("array") or ""):
+                        out.append((None, entry["name"]))
+            except Exception:
+                pass
+    return out
+
+
 def threshold_add(state, controller, scene_registry, source_registry, activator, view,
                   parent_name=None, array=None, view_id=None, tree=None):
     """Add a threshold under `parent_name` (or the rep root if None).
@@ -280,7 +374,14 @@ def threshold_add(state, controller, scene_registry, source_registry, activator,
     if provider is None:
         return
     if not array:
-        array = state.active_color_array_name or None
+        # Reservoir-scoped active property first — the shared
+        # `active_color_array_name` is clobbered by well/surface tab
+        # activations (see activator._handle_reservoir_change).
+        array = (
+            getattr(state, "ui_active_node_reservoir_array_name", "")
+            or state.active_color_array_name
+            or None
+        )
     if not array:
         return
     vid = view_id or _active_view_id(state)
@@ -294,6 +395,7 @@ def threshold_add(state, controller, scene_registry, source_registry, activator,
         new_name = provider.add_threshold(rep_path, parent_name, array)
     if new_name is None:
         return
+    sync_blocked_wellbore_chains(scene_registry, provider, rep_path, vid)
     publish_threshold_chain(state, scene_registry, source_registry, view_id=view_id)
     if activator is not None:
         try:
@@ -312,6 +414,8 @@ def threshold_delete(state, controller, scene_registry, source_registry, view, n
         provider.delete_threshold(name)
     else:
         provider.delete_threshold(rep_path, name)
+    sync_blocked_wellbore_chains(
+        scene_registry, provider, rep_path, view_id or _active_view_id(state))
     publish_threshold_chain(state, scene_registry, source_registry, view_id=view_id)
     hide_unused_scalar_bars()
     _render_and_push(state, controller, view)
@@ -331,6 +435,8 @@ def threshold_set_range(state, controller, scene_registry, source_registry, view
         provider.set_range(name, low, high)
     else:
         provider.set_range(rep_path, name, low, high)
+    sync_blocked_wellbore_chains(
+        scene_registry, provider, rep_path, view_id or _active_view_id(state))
     publish_threshold_chain(state, scene_registry, source_registry, view_id=view_id)
     _render_and_push(state, controller, view)
 
@@ -344,6 +450,8 @@ def threshold_set_visible(state, controller, scene_registry, source_registry, ac
         provider.set_visible(name, bool(visible))
     else:
         provider.set_visible(rep_path, name, bool(visible))
+    sync_blocked_wellbore_chains(
+        scene_registry, provider, rep_path, view_id or _active_view_id(state))
     publish_threshold_chain(state, scene_registry, source_registry, view_id=view_id)
     if activator is not None:
         try:

@@ -340,6 +340,17 @@ def _rep_title_for_array_path(tree, array_path):
         if rep_id is None:
             return ""
         title = tree.find_title(rep_id) or ""
+        # A grid property's rep node is the geometry LEAF, literally
+        # titled "SolidColor" (the C++ grid-folder layout) — a
+        # meaningless card prefix. Climb to the enclosing GridContainer
+        # and use the actual grid name instead.
+        if title == "SolidColor":
+            container = tree.find_parent_node_id_with_type(
+                rep_id, "GridContainer")
+            if container is not None:
+                container_title = tree.find_title(container) or ""
+                if container_title:
+                    return container_title
         if title:
             return title
         rep_path = tree.find_path(rep_id) or ""
@@ -348,6 +359,16 @@ def _rep_title_for_array_path(tree, array_path):
         return ""
     except Exception:
         return ""
+
+
+# Human labels of a property's VALUE TYPE — shown as a card-header
+# chip. (The PWLS property kind — volume, depth, … — is NOT exposed by
+# FESPP today; this is the value type only.)
+_PROP_TYPE_LABELS = {
+    "ContinuousProperty": "Continuous property",
+    "DiscreteProperty": "Discrete property",
+    "CategoricalProperty": "Categorical property",
+}
 
 
 def _title_and_kind(tree, array_path):
@@ -798,6 +819,17 @@ def _build_table_for_path(state, scene_registry, source_registry, tree,
     is_mr = element_type.for_kind(kind).is_multi_realization()
     is_ts = element_type.for_kind(kind).is_time_series()
     prop_kind = _prop_kind_for_array_path(tree, array_path, kind)
+    # PWLS / local property-kind title (volume, depth, …) — FESPP's
+    # `propertyKind` assembly attribute. Empty on EPCs whose
+    # properties use standard 2.0.1 Energistics kinds (no object to
+    # read C++-side) and on plugins built before the attribute existed.
+    pwls_kind = ""
+    try:
+        _nid = tree.find_node_id(array_path)
+        if _nid is not None:
+            pwls_kind = tree.find_attribute_value(_nid, "propertyKind") or ""
+    except Exception:
+        pwls_kind = ""
     try:
         from fespp_on_trame.app.ui.drawer.config.tree_icons import (
             get_primary_icon,
@@ -811,6 +843,8 @@ def _build_table_for_path(state, scene_registry, source_registry, tree,
         "rows": rows,
         "kind": kind,
         "prop_kind": prop_kind,
+        "prop_type_label": _PROP_TYPE_LABELS.get(prop_kind, ""),
+        "property_kind_title": pwls_kind,
         "icon": icon,
         "is_mr": is_mr,
         "is_ts": is_ts,
@@ -1072,6 +1106,11 @@ def pin_original(state, array_path, original_id):
     target = next((o for o in originals if o.get("id") == original_id), None)
     if target is None or target.get("id") != "default":
         return
+    # Never two rows for the same (real, ts) combination — re-pinning
+    # an unchanged default silently no-ops instead of stacking
+    # indistinguishable duplicates.
+    if (target.get("real_idx"), target.get("ts_idx")) in _pinned_combos(originals):
+        return
     used_ids = {o.get("id") for o in originals}
     n = 1
     while f"custom-{n}" in used_ids:
@@ -1099,6 +1138,93 @@ def pin_original(state, array_path, original_id):
             new_panel_state[k] = v
     if array_path not in new_panel_state:
         new_panel_state[array_path] = {"originals": new_originals}
+    state.ui_stats_panel_state = new_panel_state
+
+
+def _pinned_combos(originals):
+    """The set of (real_idx, ts_idx) pairs already pinned as custom
+    rows (the default row doesn't count)."""
+    return {
+        (o.get("real_idx"), o.get("ts_idx"))
+        for o in originals if o.get("id") != "default"
+    }
+
+
+def pin_all_originals(state, array_path, dimension):
+    """Bulk-pin one row per available value of `dimension`:
+    'real' → every loaded realization at the default row's current
+    time step; 'ts' → every time step at the default row's current
+    realization. Values come from the PUBLISHED table
+    (`ui_stats_tables[..].available_*` — same source as the row
+    dropdowns). Combos already pinned are skipped, so the button is
+    idempotent and composes with hand-pinned rows."""
+    if not array_path or dimension not in ("real", "ts"):
+        return
+    tables = getattr(state, "ui_stats_tables", {}) or {}
+    tbl = tables.get(array_path) or {}
+    if dimension == "real":
+        values = list(tbl.get("available_realizations") or [])
+    else:
+        values = [
+            it.get("value") for it in (tbl.get("available_timesteps") or [])
+        ]
+    if not values:
+        return
+    old_panel_state = getattr(state, "ui_stats_panel_state", {}) or {}
+    entry = old_panel_state.get(array_path) or {"originals": []}
+    originals = [dict(o) for o in (entry.get("originals") or [])]
+    if not any(o.get("id") == "default" for o in originals):
+        originals.insert(0, {
+            "id": "default", "pinned": False,
+            "real_idx": None, "ts_idx": None,
+        })
+    default = next(o for o in originals if o.get("id") == "default")
+    seen = _pinned_combos(originals)
+    used_ids = {o.get("id") for o in originals}
+    n = 1
+    added = False
+    for v in values:
+        combo = ((v, default.get("ts_idx")) if dimension == "real"
+                 else (default.get("real_idx"), v))
+        if combo in seen:
+            continue
+        while f"custom-{n}" in used_ids:
+            n += 1
+        used_ids.add(f"custom-{n}")
+        originals.append({
+            "id": f"custom-{n}", "pinned": True,
+            "real_idx": combo[0], "ts_idx": combo[1],
+        })
+        seen.add(combo)
+        added = True
+    if not added:
+        return
+    new_panel_state = {}
+    for k, v in old_panel_state.items():
+        new_panel_state[k] = (
+            {**entry, "originals": originals} if k == array_path else v
+        )
+    if array_path not in new_panel_state:
+        new_panel_state[array_path] = {"originals": originals}
+    state.ui_stats_panel_state = new_panel_state
+
+
+def unpin_all_originals(state, array_path):
+    """Drop every pinned row of the card in one go (the default row
+    survives). Same top-down rebuild as `unpin_original`."""
+    if not array_path:
+        return
+    old_panel_state = getattr(state, "ui_stats_panel_state", {}) or {}
+    entry = old_panel_state.get(array_path) or {"originals": []}
+    new_originals = [
+        dict(o) for o in (entry.get("originals") or [])
+        if o.get("id") == "default"
+    ]
+    new_panel_state = {}
+    for k, v in old_panel_state.items():
+        new_panel_state[k] = (
+            {**entry, "originals": new_originals} if k == array_path else v
+        )
     state.ui_stats_panel_state = new_panel_state
 
 

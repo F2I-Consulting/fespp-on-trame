@@ -21,7 +21,6 @@ from .dialog import (
     ViewSettingsDialog,
     NewViewContentDialog,
 )
-from .widget.tools_band import ToolsBand
 from .widget.busy_overlay import BusyOverlay
 from .widget.busy_progress_bar import BusyProgressBar
 from .widget.vtk_log_panel import VtkLogPanel
@@ -41,11 +40,14 @@ class Content:
     def render(self):
         BusyOverlay().render()
 
-        # Flex column: tools band (fixed) + multi-view (grows) + log
-        # panel (fixed at bottom). Tools band has flex-shrink:0 so the
-        # multi-view always gets the leftover height.
+        # Flex column: multi-view (grows) + log panel (fixed at
+        # bottom). The old top ToolsBand (global TC / MR picker /
+        # stats button / settings cog) is NOT mounted: the single-view
+        # v1 carries every one of those on the view itself (in-view TC
+        # + MR toggles, per-view ⚙ dialog for Z-scale / background /
+        # orientation) or in the tree (per-property chart icon opens
+        # Stats), and a second copy read as unfinished multi-view UI.
         with html.Div(style="display: flex; flex-direction: column; height: 100%; width: 100%;"):
-            ToolsBand().render()
             self._render_view_area()
             VtkLogPanel().render()
 

@@ -179,7 +179,8 @@ class FrameRep(Representation):
             if target_view is not None:
                 disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
                 if disp is not None:
-                    disp.Representation = state.representation_active or "Surface"
+                    from fespp_on_trame.app.core.sources.representation import rep_type_for
+                    disp.Representation = rep_type_for(state, ris.rep_path)
                     self._apply_child_z(ris, disp, ext, ris._current_z_scale())
                     _apply_default_tint(disp, self._child_tint(ris, child_path, state))
             return ext

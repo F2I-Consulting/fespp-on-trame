@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "shot", "name": "base" },
+    { "op": "eye", "title": "Geogrid", "settle": 3 },
+    { "op": "shot", "name": "hidden" },
+    { "op": "eye", "title": "Geogrid", "settle": 3 },
+    { "op": "shot", "name": "reshown" }
+  ]
+}

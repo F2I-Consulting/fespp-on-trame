@@ -47,6 +47,18 @@ class TransformationEditor:
             self._te.scale_name.x: False,
             self._te.scale_name.y: False,
         })
+        # Neutralise ptc's OWN apply. `ptc.TransformEditor.apply_changes()`
+        # runs apply_translation/origin/orientation/scale BEFORE calling the
+        # `on_apply_clicked` hook, and those write
+        # `display_properties.PolarAxes.<x>` / `.DataAxesGrid.<x>`
+        # unconditionally. Since `leaf_rep` patches `GetDisplayProperties`
+        # globally, ptc gets a LEAF SurfaceRepresentation, which carries no
+        # PolarAxes / DataAxesGrid sub-proxy -> AttributeError -> apply_changes
+        # dies before the hook, so the Z scale silently never applied.
+        # Each ptc apply_* bails early when this returns None, letting
+        # apply_changes reach the hook; we do the real, scope-aware apply in
+        # `_apply_z_scale_now` (which guards those sub-proxies properly).
+        self._te._get_display_properties = lambda: None
         self._te.bind_on_apply_button_clicked(self._apply_z_scale)
 
     def _current_scope(self) -> str:
@@ -111,17 +123,22 @@ class TransformationEditor:
         return bool(name and name.startswith("mrk_"))
 
     def _apply_z_scale(self):
-        """Apply the editor's Scale on the NEXT event-loop tick.
+        """Apply the editor's Scale shortly after the click.
 
         The ptc VNumberInput commits its typed value to state on blur;
         clicking Apply blurs the field, but that blur→state sync races
         with the Apply click trigger, so reading the typed value
         synchronously here gets the PREVIOUS value — the user had to
-        click Apply twice. Deferring one tick lets the committed value
-        land first, so a single click applies the new exaggeration."""
+        click Apply twice. Deferring lets the committed value land
+        first (0.3s covers ptc's input debounce, 0.1s did not always),
+        and a LATE self-check re-applies if the commit arrived after
+        even that — a single click then always wins, without the
+        "first Apply jumps the camera but keeps the old scale" feel."""
         import asyncio
         try:
-            asyncio.get_event_loop().call_later(0.1, self._apply_z_scale_now)
+            loop = asyncio.get_event_loop()
+            loop.call_later(0.3, self._apply_z_scale_now)
+            loop.call_later(1.0, self._apply_z_scale_now)
         except Exception:
             # No running loop (shouldn't happen inside the trame server)
             # — fall back to an immediate apply.
@@ -147,11 +164,32 @@ class TransformationEditor:
         except Exception:
             return
         zs = scale[2]
+        # Idempotence: the late self-check tick (and a no-op Apply)
+        # lands here with the already-applied value — skip the whole
+        # pass INCLUDING the camera re-fit, so Apply never jumps the
+        # view without a visual change.
+        try:
+            if float(zs) == float(getattr(self._state, "ui_scale_z", 1.0) or 1.0):
+                return
+        except (TypeError, ValueError):
+            pass
         # Persist the GLOBAL exaggeration so creation hooks + the
         # on-load re-apply can read it (a single state var is the
         # source of truth).
         try:
             self._state.ui_scale_z = zs
+        except Exception:
+            pass
+        # FLUSH now: this method runs on a bare event-loop tick (see
+        # `_apply_z_scale`), OUTSIDE any trame request context — without
+        # an explicit flush the `@state.change("ui_scale_z")` fan-out
+        # (IjkGrid slicers / volume, markers, legacy proxies) only ran
+        # at the NEXT client interaction. Symptom: the first Apply
+        # showed ptc's premature camera reset but no scaling, and the
+        # second Apply — or merely closing the dialog — "magically"
+        # applied it.
+        try:
+            self._state.flush()
         except Exception:
             pass
         # Recognise marker glyphs so they translate rather than scale.
@@ -203,6 +241,13 @@ class TransformationEditor:
                             rep.LookupTable = saved_lut
                     except Exception:
                         pass
+            # Re-fit the camera to the SCALED geometry: ptc's own
+            # apply_changes fires its ResetCamera BEFORE our deferred
+            # scaling, so it framed the old bounds.
+            try:
+                pvsimple.ResetCamera(view)
+            except Exception:
+                pass
             try:
                 pvsimple.Render(view=view)
             except Exception:

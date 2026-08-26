@@ -21,8 +21,78 @@ from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 # Domain-level dependency: a WellboreChannel or WellboreMarker requires
 # its Wellbore's Trajectory (the geometry that anchors per-depth log
 # values or marker positions). When the user checks one of these, we
-# auto-check the Wellbore's Trajectory child too.
-_WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY = ("WellboreChannel", "WellboreMarker")
+# auto-check the Wellbore's Trajectory child too. The trigger is
+# STRUCTURAL — "an element of a frame" — not leaf-kind-based: a well log
+# carries a plain property kind ("ContinuousProperty"/"DiscreteProperty"
+# under a Frame; the `kind` attribute is the RESQML XML tag, never the
+# "Wellbore…"-prefixed enum names the original kind list assumed, which
+# made this auto-check a silent no-op since day one). The kinds below
+# scope the rule: an element of one of these (or the container itself,
+# whose check cascades to its elements) pulls the trajectory in. The
+# completions belong here too: a perforation is COMPUTED from the
+# trajectory (the C++ mapper converts its MD values to XYZ along it —
+# WitsmlWellboreCompletionPerforationToVtkPolyData), so it renders
+# nonsensically without the well path. Both tag and legacy spellings.
+_FRAME_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
+                "WellboreFrame", "WellboreMarkerFrame",
+                "WellboreCompletion", "Completion",
+                "Perforation", "Perfo")
+# The CONTAINER subset of the above — the only kinds the empty-shell
+# garbage collection may drop. A Perforation is an ELEMENT: it has no
+# descendants and must never be collected as an "empty container".
+_FRAME_CONTAINER_KINDS = ("Frame", "MarkerFrame", "SeismicWellboreFrame",
+                          "WellboreFrame", "WellboreMarkerFrame",
+                          "WellboreCompletion", "Completion")
+
+# The "Select / unselect ▾" menu, per tab: (label, kinds acted on,
+# kinds COUNTED for the "(N)" badge). The two differ when the action
+# targets a grouping folder: "All blocked wellbores" selects the ONE
+# BlockedWellboreFolder (its check cascades) but the user reads the
+# number of WELLBORES.
+_BULK_ACTIONS = {
+    "reservoir": [
+        ("All grids", ["IjkGrid", "UnstructuredGrid"],
+         ["IjkGrid", "UnstructuredGrid"]),
+        ("All blocked wellbores", ["BlockedWellboreFolder"],
+         ["BlockedWellbore"]),
+    ],
+    "surface": [
+        ("All surfaces",
+         ["Grid2d", "TriangulatedSet", "PointSet", "Polyline", "PolylineSet"],
+         ["Grid2d", "TriangulatedSet", "PointSet", "Polyline", "PolylineSet"]),
+    ],
+    "well": [
+        ("All trajectories", ["Trajectory", "WellboreTrajectory"],
+         ["Trajectory", "WellboreTrajectory"]),
+        ("All markers", ["Marker", "WellboreMarker"],
+         ["Marker", "WellboreMarker"]),
+    ],
+}
+
+
+def _count_kinds(items, wanted):
+    """Recursive count of subtree items whose type is in `wanted`."""
+    n = 0
+    for it in items or []:
+        if it.get("type") in wanted:
+            n += 1
+        n += _count_kinds(it.get("children"), wanted)
+    return n
+
+
+_state.setdefault("ui_bulk_counts", {})
+
+
+@_state.change("ui_subtree_reservoir", "ui_subtree_surface", "ui_subtree_well")
+def _recompute_bulk_counts(**_):
+    """Refresh the "(N)" badges of the Select / unselect menu whenever a
+    tab's subtree is (re)published — import, hierarchy-mode switch."""
+    counts = {}
+    for tab, actions in _BULK_ACTIONS.items():
+        items = getattr(_state, f"ui_subtree_{tab}", []) or []
+        for label, _sel_kinds, count_kinds in actions:
+            counts[f"{tab}|{label}"] = _count_kinds(items, set(count_kinds))
+    _state.ui_bulk_counts = counts
 
 
 def _expand_selection_with_deps(curr_ids, prev_ids, tree):
@@ -80,11 +150,28 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             # partial stub (no checkbox, can't load) to the selection.
             for desc in tree.find_all_selectable_descendant_ids(node_id):
                 _add_implicit(desc)
-        if kind in _WELLBORE_LEAF_KINDS_NEEDING_TRAJECTORY:
+        # Trajectory dependency, scoped by _FRAME_KINDS: logs, markers and
+        # perforations all render ALONG (or are computed FROM) the well's
+        # trajectory, so checking one pulls the trajectory in. The frame /
+        # completion container triggers too (its check cascades to its
+        # elements). Deliberately NOT any-node-under-a-Wellbore, to leave
+        # future wellbore children without this coupling unless decided.
+        in_frame_scope = kind in _FRAME_KINDS or any(
+            tree.find_parent_node_id_with_type(node_id, fk) is not None
+            for fk in _FRAME_KINDS
+        )
+        if in_frame_scope:
             wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
             if wb is not None:
-                traj = tree.find_first_child_of_type(wb, "WellboreTrajectory")
-                _add_implicit(traj)
+                traj = (tree.find_first_child_of_type(wb, "Trajectory")
+                        or tree.find_first_child_of_type(wb, "WellboreTrajectory"))
+                if traj is not None and traj != node_id:
+                    _add_implicit(traj)
+        # NOTE: a BlockedWellbore also force-displays its referenced trajectory,
+        # but that trajectory lives in the WELL tab (a different per-tab
+        # selection var) while the blocked well is in the RESERVOIR tab — it
+        # can't be added here, which only expands the current tab. The cross-tab
+        # add is done by _wire_blocked_well_trajectory.
         # Property → its rep ancestor. `find_representation_node`
         # returns node_id itself when it's already a rep, so a rep
         # being added is a no-op here.
@@ -99,6 +186,19 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
         is_rep = tree.find_representation_node(node_id) == node_id
         if is_rep or (kind in _GROUPING_KINDS):
             descendants_to_drop.update(tree.find_all_descendant_ids(node_id))
+        # SolidColor layout: a grid geometry's dependents are its SIBLING
+        # properties (same PropertiesFolder), not descendants. Unchecking
+        # the geometry deselects them all in the same move: a property
+        # cannot render without its geometry. Blocked wellbores live in
+        # their own folder and KEEP their selection — losing the grid's
+        # properties reverts their coloring to solid.
+        if kind in ("IjkGrid", "UnstructuredGrid"):
+            folder = tree.find_parent_node_id_with_type(
+                node_id, "PropertiesFolder")
+            if folder is not None:
+                descendants_to_drop.update(
+                    d for d in tree.find_all_descendant_ids(folder)
+                    if d != node_id)
 
     result = []
     seen = set()
@@ -110,27 +210,163 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
         if x not in descendants_to_drop and x not in seen:
             result.append(x)
             seen.add(x)
+
+    if removed:
+        # Garbage-collect frame / completion containers left with NO selected
+        # descendant. Checking a marker implicitly adds its MarkerFrame (the
+        # rep), but unchecking the marker never removed it — the stale, empty
+        # frame then counted as a "dependent" and wrongly vetoed a bulk
+        # trajectory unselect right after select-all + unselect-all markers.
+        empty_shells = set()
+        for x in result:
+            if (tree.find_type(x) or "") not in _FRAME_CONTAINER_KINDS:
+                continue
+            if not any(d in seen for d in tree.find_all_descendant_ids(x)):
+                empty_shells.add(x)
+        if empty_shells:
+            result = [x for x in result if x not in empty_shells]
+            seen -= empty_shells
+
+        # Trajectory veto — the ONE place it lives, so the unitary uncheck
+        # and the bulk unselect behave identically: a trajectory cannot
+        # leave while its well still has selected frame-scope nodes (logs,
+        # markers, perforations render along / are computed from it).
+        kept_wells = []
+        for node_id in removed:
+            if (tree.find_type(node_id) or "") not in (
+                    "Trajectory", "WellboreTrajectory"):
+                continue
+            if node_id in seen:
+                continue  # already retained (e.g. re-added implicitly)
+            wb = tree.find_parent_node_id_with_type(node_id, "Wellbore")
+            if wb is None:
+                continue
+            if any(d in seen for d in tree.find_all_descendant_ids(wb)
+                   if d != node_id):
+                result.append(node_id)
+                seen.add(node_id)
+                kept_wells.append(tree.find_title(wb) or "?")
+        if kept_wells:
+            # The app's amber warning snackbar (free-text body).
+            _state.empty_color_snackbar_text = (
+                "Trajectory kept for: " + ", ".join(sorted(set(kept_wells)))
+                + " — selected logs/markers depend on it. Unselect them"
+                " first, or just close the eye on the trajectory to"
+                " hide it."
+            )
+            _state.empty_color_snackbar_visible = False
+            _state.empty_color_snackbar_visible = True
+
+        # Threshold guard: unchecking THE property that
+        # feeds threshold entries would silently retarget or kill the
+        # chain. Veto the unitary uncheck and open the confirm dialog
+        # instead — its "Delete & unselect" deletes the entries in every
+        # view then re-applies the uncheck (which then passes, the refs
+        # being gone). Bulk unselects keep today's behaviour.
+        if len(removed) == 1 and removed[0] not in seen:
+            _guard_id = removed[0]
+            _refs = _threshold_refs_for(tree, _guard_id)
+            if _refs:
+                result.append(_guard_id)
+                seen.add(_guard_id)
+                _state.thr_unselect_dialog = {
+                    "node_id": _guard_id,
+                    "title": tree.find_title(_guard_id) or "?",
+                    "count": len(_refs),
+                }
+                _state.thr_unselect_dialog_visible = True
+
+    if set(result) == set(prev_ids or []):
+        # Fully-vetoed change: the effective selection is what it
+        # already was — return the PREVIOUS list verbatim so downstream
+        # (selectors → C++ → data_load) sees a strict no-op instead of
+        # a reordered list. A mere reorder re-ran the load path and
+        # re-coloured the grid through the legacy continuous-LUT path,
+        # trading the categorical rendering for a 0→12 ramp.
+        return list(prev_ids or [])
     return result
 
 
-def _wire_select_to_active(select_var: str, active_var: str, prev_var: str):
+# Ids ADDED to a select list by a CASCADE during the current flush
+# (dependency expansion, geometry autoload on property check, forced
+# trajectory of a blocked well) — keyed by select var. Consumed by
+# `_wire_select_to_active` (registered last within the flush) so the
+# activation follows USER-checked nodes only: a cascade-added geometry
+# or trajectory must not steal the focus from the node the user actually
+# clicked (a stolen focus greys every "active property"-gated panel,
+# e.g. the reservoir threshold chain).
+_cascade_added: dict = {}
+
+
+def _note_cascade_added(select_var, ids):
+    if ids:
+        _cascade_added.setdefault(select_var, set()).update(ids)
+
+
+def _threshold_refs_for(tree, node_id):
+    """Threshold entries fed by this property node (all views), or []."""
+    try:
+        from trame.app import get_server
+        from fespp_on_trame.app.core.engine import threshold_dispatch
+        ctx = get_server().context
+        return threshold_dispatch.chain_entries_for_property(
+            _state,
+            getattr(ctx, "scene_registry", None),
+            getattr(ctx, "source_registry", None),
+            tree, node_id,
+        )
+    except Exception:
+        return []
+
+
+def _fallback_active(tree, old_id, curr):
+    """Where the focus goes when the ACTIVE node leaves the selection:
+    deterministically to the geometry of the same grid when it is still
+    checked, else to the node's rep when still checked, else NOWHERE
+    (`[]`) — never an arbitrary `curr[0]`, which
+    could silently promote another property and retarget the colour /
+    threshold gates without a user click."""
+    try:
+        folder = tree.find_parent_node_id_with_type(old_id, "PropertiesFolder")
+        if folder is not None:
+            geom = tree.find_first_child_of_type(folder, "IjkGrid") \
+                or tree.find_first_child_of_type(folder, "UnstructuredGrid")
+            if geom is not None and geom != old_id and geom in curr:
+                return [geom]
+        rep = tree.find_representation_node(old_id)
+        if rep is not None and rep != old_id and rep in curr:
+            return [rep]
+    except Exception:
+        pass
+    return []
+
+
+def _wire_select_to_active(select_var: str, active_var: str, prev_var: str, tree):
     """When a new node is checked in `select_var`, set `active_var` to
-    that newly-added id. When the currently-active node is unchecked,
-    fall back to any remaining selected node. Activating via label
-    click does NOT alter selection (Vuetify's separate
-    update_activated callback handles that)."""
+    the newly-added USER-checked id (cascade-added ids never grab the
+    focus). When the currently-active node is unchecked, fall back
+    deterministically via `_fallback_active` (geometry → rep → none).
+    Activating via label click does NOT alter selection (Vuetify's
+    separate update_activated callback handles that)."""
     @_state.change(select_var)
     def _on_change(**_):
         curr = list(getattr(_state, select_var) or [])
         prev = list(getattr(_state, prev_var, []) or [])
         prev_set = set(prev)
         new_ones = [x for x in curr if x not in prev_set]
-        if new_ones:
-            setattr(_state, active_var, [new_ones[-1]])
+        cascade = _cascade_added.get(select_var)
+        user_new = [x for x in new_ones if not (cascade and x in cascade)]
+        if cascade:
+            # Same-flush consumption: registrations happen in the
+            # earlier-registered cascade handlers of this very flush.
+            cascade.clear()
+        if user_new:
+            setattr(_state, active_var, [user_new[-1]])
         else:
             active = getattr(_state, active_var) or []
             if active and active[0] not in curr:
-                setattr(_state, active_var, [curr[0]] if curr else [])
+                setattr(_state, active_var,
+                        _fallback_active(tree, active[0], curr) if curr else [])
         setattr(_state, prev_var, curr)
 
 
@@ -185,13 +421,155 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
             and curr_active[0] in prev_select and curr_active[0] not in curr_select):
             new_curr = list(curr_select) + [curr_active[0]]
             setattr(_state, select_var, new_curr)
+            # Same resync as the cascade branch below: the re-add can
+            # equal the var's previous SERVER value, so trame collapses
+            # the push and the client checkbox stays visually unchecked
+            # while the node is still selected and rendering.
+            try:
+                _state.dirty(select_var)
+            except Exception:
+                pass
             return
 
         if not curr_select and not prev_select:
             return
         expanded = _expand_selection_with_deps(curr_select, prev_select, tree)
+        _note_cascade_added(select_var, set(expanded) - set(curr_select))
         if set(expanded) != set(curr_select):
             setattr(_state, select_var, expanded)
+            # Force the client resync even when the re-expanded value
+            # equals the var's PREVIOUS server value (trame collapses
+            # same-value writes): under rapid clicking the checkbox
+            # model could otherwise stay desynced — box unchecked
+            # while the vetoed trajectory still renders.
+            try:
+                _state.dirty(select_var)
+            except Exception:
+                pass
+
+
+def _wire_grid_geometry_on_property(tree):
+    """SolidColor variant: when a grid PROPERTY is checked, also check its
+    grid's geometry rep (the "SolidColor" leaf under the PropertiesFolder) so
+    the geometry's own checkbox reflects that it renders and — being ADD-ONLY —
+    the geometry PERSISTS when the property is later unchecked (a property
+    without its geometry makes no business sense; the geometry leaves only when
+    nothing references it). FESPP also autoloads the geometry server-side
+    (selectNodeId); this keeps the reservoir selection / checkbox in sync."""
+    @_state.change("ui_select_node_reservoir")
+    def _on_change(**_):
+        reservoir = list(getattr(_state, "ui_select_node_reservoir", []) or [])
+        added = False
+        for node_id in list(reservoir):
+            # The geometry rep lives under the props folder too — skip it; only
+            # real property leaves (with a PropertiesFolder ancestor) pull it in.
+            if tree.find_type(node_id) in ("IjkGrid", "UnstructuredGrid"):
+                continue
+            folder = tree.find_parent_node_id_with_type(node_id, "PropertiesFolder")
+            if folder is None:
+                continue
+            geom = tree.find_first_child_of_type(folder, "IjkGrid") \
+                or tree.find_first_child_of_type(folder, "UnstructuredGrid")
+            if geom is not None and geom not in reservoir:
+                reservoir.append(geom)
+                _note_cascade_added("ui_select_node_reservoir", [geom])
+                added = True
+        if added:
+            _state.ui_select_node_reservoir = reservoir
+            try:
+                _state.dirty("ui_select_node_reservoir")
+            except Exception:
+                pass
+
+
+def _wire_blocked_well_trajectory(tree):
+    """Force a BlockedWellbore's referenced WellboreTrajectory checked.
+
+    The blocked well lives in the RESERVOIR tab (under its supporting grid),
+    but the trajectory lives in the WELL tab — a different per-tab selection
+    var. Both the trajectory's checkbox AND its rendering are driven by
+    `ui_select_node_well` (the per-tab selectors are merged downstream), so the
+    trajectory must be written into the WELL selection, not the reservoir one.
+    Add-only: unchecking the blocked well keeps the trajectory selected, per the
+    feature spec."""
+    @_state.change("ui_select_node_reservoir")
+    def _on_change(**_):
+        reservoir = list(getattr(_state, "ui_select_node_reservoir", []) or [])
+        well = list(getattr(_state, "ui_select_node_well", []) or [])
+        added = False
+        for node_id in reservoir:
+            if tree.find_type(node_id) != "BlockedWellbore":
+                continue
+            traj_uuid = tree.find_attribute_value(node_id, "trajectoryUuid")
+            traj = tree.find_node_id_by_uuid(traj_uuid) if traj_uuid else None
+            if traj is not None and traj not in well:
+                well.append(traj)
+                _note_cascade_added("ui_select_node_well", [traj])
+                added = True
+        if added:
+            _state.ui_select_node_well = well
+            try:
+                _state.dirty("ui_select_node_well")
+            except Exception:
+                pass
+
+
+_selection_rules_wired = False
+
+
+def wire_selection_rules(tree):
+    """Register every selection-rule handler ONCE, in dependency order.
+
+    Called from boot BEFORE the selection dispatch handlers so a veto /
+    expansion that rewrites `ui_select_node_*` runs FIRST within the
+    flush — the dispatch then reads the CORRECTED list and the pipeline
+    never sees the transient (e.g. a geometry-less selection that tore
+    the grid down and reloaded it without its ColorBy). Idempotent: the
+    tree-view build calls it again as a fallback and it no-ops."""
+    global _selection_rules_wired
+    if _selection_rules_wired:
+        return
+    _selection_rules_wired = True
+
+    _wire_dependency_expansion(
+        "ui_select_node_reservoir", "_prev_select_reservoir",
+        "ui_active_node_reservoir", tree,
+    )
+    _wire_dependency_expansion(
+        "ui_select_node_surface", "_prev_select_surface",
+        "ui_active_node_surface", tree,
+    )
+    _wire_dependency_expansion(
+        "ui_select_node_well", "_prev_select_well",
+        "ui_active_node_well", tree,
+    )
+
+    # Cross-tab: a BlockedWellbore (reservoir tab) force-checks its
+    # referenced trajectory in the WELL tab.
+    _wire_blocked_well_trajectory(tree)
+
+    # SolidColor variant: checking a grid property force-checks its grid
+    # geometry (a property without its geometry makes no business sense).
+    _wire_grid_geometry_on_property(tree)
+
+    # update_selected from Vuetify gives the FULL selected array, so
+    # writing `active = $event` would always pick array[0] (the first
+    # ever selected), not the last clicked. The handler sets active to
+    # the newly-added node instead, with a sensible fallback on removal.
+    # Wired AFTER the expansion handlers: it maintains `_prev_select_*`,
+    # which the expansion reads BEFORE it is updated for the tick.
+    _wire_select_to_active(
+        "ui_select_node_reservoir", "ui_active_node_reservoir",
+        "_prev_select_reservoir", tree,
+    )
+    _wire_select_to_active(
+        "ui_select_node_surface", "ui_active_node_surface",
+        "_prev_select_surface", tree,
+    )
+    _wire_select_to_active(
+        "ui_select_node_well", "ui_active_node_well",
+        "_prev_select_well", tree,
+    )
 
 
 # --- Custom row checkbox -------------------------------------------------
@@ -262,23 +640,83 @@ _MULTICOLOR_STYLE = (
 )
 
 
+# JS predicate: node auto-deselected because its data is unreadable
+# (see vtk_log._flag_invalid_nodes). Invalid nodes carry NOTHING but
+# the ⚠ badge — no colour chip, no eyes, and a blocked checkbox — so
+# nothing invites the user to re-select them.
+_INVALID_NODE_EXPR = "(ui_invalid_node_ids || []).includes(item.id)"
+
+
+# --- Inline SVG glyphs (v_html template literals — single quotes ONLY,
+# trame wraps HTML attributes in double quotes). No <mask> so the same
+# markup can repeat per row/panel without DOM-id collisions. ------------
+
+# Unified "hidden" eye: blue OUTLINE eye with a BLACK slash over it —
+# filled-vs-outline plus the slash separates the two states, mirroring
+# the stats toggle (user request). mdi-eye-off tints its slash the icon
+# colour, so the two-tone pair needs raw SVG.
+_MDI_EYE_OUTLINE_PATH = (
+    "M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9"
+    "M12,4.5C17,4.5 21.27,7.61 23,12C21.27,16.39 17,19.5 12,19.5C7,19.5 "
+    "2.73,16.39 1,12C2.73,7.61 7,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 "
+    "12,17.5C15.76,17.5 19.17,15.36 20.82,12C19.17,8.64 15.76,6.5 12,6.5"
+    "C8.24,6.5 4.83,8.64 3.18,12Z"
+)
+_SLASHED_EYE_SVG = (
+    "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+    " width='16' height='16'>"
+    f"<path d='{_MDI_EYE_OUTLINE_PATH}' fill='#1E88E5'/>"
+    "<path d='M4.5 20.5 L19.5 3.5' stroke='#000000' stroke-width='2.4'"
+    " stroke-linecap='round' fill='none'/></svg>`"
+)
+
+# Stats toggle, unpinned state: the normal teal chart glyph with a black
+# slash — NOT greyed (grey read as disabled/unclickable).
+_MDI_CHART_BOX_OUTLINE_PATH = (
+    "M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17M19,19H5V5H19V19"
+    "M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5"
+    "A2,2 0 0,0 19,3Z"
+)
+_SLASHED_CHART_SVG = (
+    "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+    " width='16' height='16'>"
+    f"<path d='{_MDI_CHART_BOX_OUTLINE_PATH}' fill='#00897B'/>"
+    "<path d='M4.5 20.5 L19.5 3.5' stroke='#000000' stroke-width='2.4'"
+    " stroke-linecap='round' fill='none'/></svg>`"
+)
+
+# UnstructuredGrid node icon: a wireframe tetrahedron (user-sketched),
+# same green as the other tree icons (green-darken-1). tree_icons.py
+# maps the kind to the 'fespp-tetra' sentinel the icon slots branch on.
+_TETRA_SVG = (
+    "`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+    " width='16' height='16'>"
+    "<path d='M12 2.8 L3 18.4 L21 18.4 Z M12 2.8 L12 21.4"
+    " M3 18.4 L12 21.4 L21 18.4'"
+    " stroke='#43A047' stroke-width='1.8' stroke-linejoin='round'"
+    " stroke-linecap='round' fill='none'/></svg>`"
+)
+
+
 def _chip_slot():
     """Color chip rendered next to a tree node label.
 
     - No chip when the rep_path has no entry in
-      tree_chip_color_by_path (rep not loaded yet).
+      tree_chip_color_by_path (rep not loaded yet) — or when the node
+      is INVALID (unreadable data).
     - Rainbow gradient when the entry is the sentinel "PROPERTY"
       (a dataArray is the active eye on the rep).
     - Conic gradient when the entry is the sentinel "MULTICOLOR"
       (a MarkerFrame whose child markers have 2+ distinct colours).
     - Solid mdi-circle in the assigned colour otherwise."""
-    is_property = (
+    _valid = f"!({_INVALID_NODE_EXPR}) && "
+    is_property = _valid + (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'PROPERTY'"
     )
-    is_multicolor = (
+    is_multicolor = _valid + (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path] === 'MULTICOLOR'"
     )
-    is_solid = (
+    is_solid = _valid + (
         "tree_chip_color_by_path && tree_chip_color_by_path[item.path]"
         " && tree_chip_color_by_path[item.path] !== 'PROPERTY'"
         " && tree_chip_color_by_path[item.path] !== 'MULTICOLOR'"
@@ -327,7 +765,8 @@ def _stats_slot(controller, select_var):
     is_selected = (
         f"({select_var} || []).indexOf(item.id) !== -1"
     )
-    visible = f"({is_property}) && ({is_selected})"
+    visible = (f"!({_INVALID_NODE_EXPR}) && ({is_property})"
+               f" && ({is_selected})")
     is_pinned = (
         "ui_stats_pinned_paths"
         " && ui_stats_pinned_paths.indexOf(item.path) !== -1"
@@ -341,11 +780,20 @@ def _stats_slot(controller, select_var):
             " : ('Show stats for ' + item.title + ' in the Stats panel')",
         ),
     ):
+        # Pinned: filled teal chart. Unpinned: the SAME teal glyph with a
+        # black slash — grey used to read as "disabled / not clickable".
         vuetify3.VIcon(
-            icon=(f"({is_pinned}) ? 'mdi-chart-box' : 'mdi-chart-box-outline'",),
+            "mdi-chart-box",
+            v_if=(is_pinned,),
             size="small",
-            color=(f"({is_pinned}) ? 'teal-darken-2' : 'grey-lighten-1'",),
+            color="teal-darken-2",
             style="cursor: pointer;",
+            click=(controller.toggle_stats_display, "[item.path]"),
+        )
+        html.Div(
+            v_if=f"!({is_pinned})",
+            v_html=(_SLASHED_CHART_SVG,),
+            style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
             click=(controller.toggle_stats_display, "[item.path]"),
         )
 
@@ -382,17 +830,18 @@ def _eye_slot(controller):
     # 'array' on property leaves, 'marker' on marker leaves, absent on the
     # Frame/MarkerFrame folders + groupings. Each block below is gated on
     # its eye token.
-    is_loaded_rep = (
+    _valid = f"!({_INVALID_NODE_EXPR}) && "
+    is_loaded_rep = _valid + (
         "ui_loaded_rep_paths && ui_loaded_rep_paths.indexOf(item.path) !== -1"
         " && item.eye === 'rep'"
     )
-    is_loaded_array = (
+    is_loaded_array = _valid + (
         "ui_loaded_array_paths && ui_loaded_array_paths.indexOf(item.path) !== -1"
         " && item.eye === 'array'"
     )
     # Marker leaves (WellboreMarker, runtime kind 'Marker') — MULTI-select
     # visibility, each independently toggleable per panel.
-    is_loaded_marker = (
+    is_loaded_marker = _valid + (
         "ui_loaded_marker_paths && ui_loaded_marker_paths.indexOf(item.path) !== -1"
         " && item.eye === 'marker'"
     )
@@ -458,11 +907,9 @@ def _eye_slot(controller):
             classes="d-inline-flex align-center ml-1",
             title=("'Hidden in every view — click to show in the active view'",),
         ):
-            vuetify3.VIcon(
-                icon="mdi-eye-closed",
-                size="small",
-                color="grey-darken-1",
-                style="cursor: pointer;",
+            html.Div(
+                v_html=(_SLASHED_EYE_SVG,),
+                style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                 click=(controller.toggle_rep_visibility, "[item.path]"),
             )
         # Per-panel chip row (the common case).
@@ -477,25 +924,34 @@ def _eye_slot(controller):
                 style="gap: 1px; margin-left: 4px;",
                 title=("'Toggle visibility of ' + item.title + ' in ' + panel.title",),
             ):
+                # Unified chip styling (user request): the view label is
+                # BLACK on every node kind (bold when the panel shows
+                # it), and the eye is always the blue open eye /
+                # blue-with-black-slash pair.
                 html.Span(
                     "{{ panel.title }}",
+                    # Single view: the label is pure noise — it only
+                    # earns its place once a second panel exists.
+                    v_if="(fespp_render_panels || []).length > 1",
                     classes="text-caption",
                     style=(
-                        "{ fontSize: '9px', lineHeight: 1,"
-                        f" color: !({has_active_array_in_panel}) ? '#616161' : '#bdbdbd',"
-                        f" fontWeight: !({has_active_array_in_panel}) ? '700' : '400' }}"
+                        "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
+                        f" fontWeight: !({is_hidden_in_panel}) ? '700' : '400' }}"
                         ,
                     ),
                 )
                 vuetify3.VIcon(
-                    icon=(f"({is_hidden_in_panel}) ? 'mdi-eye-closed' : 'mdi-eye'",),
+                    "mdi-eye",
+                    v_if=(f"!({is_hidden_in_panel})",),
                     size="small",
-                    color=(
-                        f"!({has_active_array_in_panel})"
-                        f" ? (({is_hidden_in_panel}) ? 'grey-darken-1' : 'blue-darken-1')"
-                        " : 'grey-lighten-1'",
-                    ),
+                    color="blue-darken-1",
                     style="cursor: pointer;",
+                    click=(controller.toggle_rep_visibility, "[item.path, panel.id]"),
+                )
+                html.Div(
+                    v_if=(is_hidden_in_panel,),
+                    v_html=(_SLASHED_EYE_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                     click=(controller.toggle_rep_visibility, "[item.path, panel.id]"),
                 )
 
@@ -508,11 +964,9 @@ def _eye_slot(controller):
             classes="d-inline-flex align-center ml-1",
             title=("'Not active in any view — click to set as the colour array in the active view'",),
         ):
-            vuetify3.VIcon(
-                icon="mdi-eye-outline",
-                size="small",
-                color="grey-darken-1",
-                style="cursor: pointer;",
+            html.Div(
+                v_html=(_SLASHED_EYE_SVG,),
+                style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                 click=(controller.toggle_dataarray_color, "[item.path]"),
             )
         with html.Div(
@@ -532,21 +986,28 @@ def _eye_slot(controller):
             ):
                 html.Span(
                     "{{ panel.title }}",
+                    # Single view: the label is pure noise — it only
+                    # earns its place once a second panel exists.
+                    v_if="(fespp_render_panels || []).length > 1",
                     classes="text-caption",
                     style=(
-                        "{ fontSize: '9px', lineHeight: 1,"
-                        f" color: ({array_is_active_in_panel}) ? '#6a1b9a' : '#bdbdbd',"
+                        "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
                         f" fontWeight: ({array_is_active_in_panel}) ? '700' : '400' }}"
                         ,
                     ),
                 )
                 vuetify3.VIcon(
-                    icon=(f"({array_is_active_in_panel}) ? 'mdi-eye' : 'mdi-eye-outline'",),
+                    "mdi-eye",
+                    v_if=(array_is_active_in_panel,),
                     size="small",
-                    color=(
-                        f"({array_is_active_in_panel}) ? 'purple-darken-1' : 'grey-lighten-1'",
-                    ),
+                    color="blue-darken-1",
                     style="cursor: pointer;",
+                    click=(controller.toggle_dataarray_color, "[item.path, panel.id]"),
+                )
+                html.Div(
+                    v_if=f"!({array_is_active_in_panel})",
+                    v_html=(_SLASHED_EYE_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                     click=(controller.toggle_dataarray_color, "[item.path, panel.id]"),
                 )
 
@@ -559,11 +1020,9 @@ def _eye_slot(controller):
             classes="d-inline-flex align-center ml-1",
             title=("'Hidden in every view — click to show in the active view'",),
         ):
-            vuetify3.VIcon(
-                icon="mdi-eye-outline",
-                size="small",
-                color="grey-darken-1",
-                style="cursor: pointer;",
+            html.Div(
+                v_html=(_SLASHED_EYE_SVG,),
+                style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                 click=(controller.toggle_marker_visibility, "[item.path]"),
             )
         with html.Div(
@@ -579,21 +1038,28 @@ def _eye_slot(controller):
             ):
                 html.Span(
                     "{{ panel.title }}",
+                    # Single view: the label is pure noise — it only
+                    # earns its place once a second panel exists.
+                    v_if="(fespp_render_panels || []).length > 1",
                     classes="text-caption",
                     style=(
-                        "{ fontSize: '9px', lineHeight: 1,"
-                        f" color: ({marker_visible_in_panel}) ? '#e65100' : '#bdbdbd',"
+                        "{ fontSize: '9px', lineHeight: 1, color: '#000000',"
                         f" fontWeight: ({marker_visible_in_panel}) ? '700' : '400' }}"
                         ,
                     ),
                 )
                 vuetify3.VIcon(
-                    icon=(f"({marker_visible_in_panel}) ? 'mdi-eye' : 'mdi-eye-outline'",),
+                    "mdi-eye",
+                    v_if=(marker_visible_in_panel,),
                     size="small",
-                    color=(
-                        f"({marker_visible_in_panel}) ? 'deep-orange-darken-1' : 'grey-lighten-1'",
-                    ),
+                    color="blue-darken-1",
                     style="cursor: pointer;",
+                    click=(controller.toggle_marker_visibility, "[item.path, panel.id]"),
+                )
+                html.Div(
+                    v_if=f"!({marker_visible_in_panel})",
+                    v_html=(_SLASHED_EYE_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;cursor:pointer;",
                     click=(controller.toggle_marker_visibility, "[item.path, panel.id]"),
                 )
 
@@ -616,9 +1082,10 @@ class TreeViews:
               slot also hides the checkbox icon for them, so this
               branch is just belt-and-braces.
             - Grouping nodes (Collection / Wellbore / Feature /
-              Interpretation) cycle "empty/some → all" then "all →
-              empty": click adds grouping + every descendant when
-              not all are in, removes them all when all are in.
+              Interpretation): "empty → all", and BOTH "some" and
+              "all" → empty. Clicking an INDETERMINATE box clears the
+              subtree (a select-all here read as the wrong
+              direction).
               Matches the tri-state visual rendered by
               `_select_checkbox_icon`.
             - Leaves and reps: plain toggle. The selection-cascade
@@ -642,8 +1109,9 @@ class TreeViews:
                 descendants = self._tree.find_all_selectable_descendant_ids(node_id)
                 if descendants:
                     curr_set = set(curr)
-                    all_in = all(d in curr_set for d in descendants)
-                    if all_in:
+                    any_in = any(d in curr_set for d in descendants)
+                    if any_in:
+                        # partial OR all → clear the whole subtree.
                         to_drop = set(descendants)
                         to_drop.add(node_id)
                         new_curr = [x for x in curr if x not in to_drop]
@@ -663,6 +1131,85 @@ class TreeViews:
             else:
                 new_curr = list(curr) + [node_id]
             setattr(state, select_var, new_curr)
+
+        @controller.set("tree_select_kinds")
+        def tree_select_kinds(tab, kinds, mode="add"):
+            """Bulk select / unselect every node whose kind is in `kinds`,
+            in `tab`. `mode="add"` unions them with the current selection
+            (LOAD); `mode="remove"` drops them — and, for grouping kinds,
+            their whole subtree — from it (UNLOAD).
+
+            Walks `find_all_descendant_ids` (NOT the selectable-only variant)
+            so GROUPING folder kinds — e.g. `BlockedWellboreFolder` for the
+            "All blocked wellbores" entry — are matchable: partials carry the
+            kind `"partial"` and are never in a dropdown's `kinds`, so the
+            wider walk stays safe. Selecting a folder lets
+            `_expand_selection_with_deps` cascade to its children, so the
+            folder's tri-state cleanly loads / unloads the whole group.
+
+            Writes the FULLY dependency-expanded selection into
+            `ui_select_node_<tab>` in one shot. Pre-expanding here makes
+            the reactive `_wire_dependency_expansion` handler a no-op (it
+            already sees a fixed point), so the data load runs exactly
+            ONCE for the whole bulk instead of twice (raw set, then the
+            handler re-writing it with the rep ancestors)."""
+            if self._tree is None or not tab:
+                return
+            wanted = set(kinds or [])
+            if not wanted:
+                return
+            select_var = f"ui_select_node_{tab}"
+            roots = getattr(state, f"ui_subtree_{tab}", []) or []
+            prev = list(getattr(state, select_var, []) or [])
+            matched = []
+            matched_set = set()
+            for root in roots:
+                rid = root.get("id")
+                if rid is None:
+                    continue
+                for nid in [rid] + self._tree.find_all_descendant_ids(rid):
+                    if nid in matched_set:
+                        continue
+                    if self._tree.find_type(nid) in wanted:
+                        matched.append(nid)
+                        matched_set.add(nid)
+            if mode == "remove":
+                # A grouping's uncheck must take its subtree along, exactly
+                # like unchecking the folder by hand — the removal cascade of
+                # `_expand_selection_with_deps` keys off the DELTA, so build
+                # the removal set explicitly here.
+                to_drop = set(matched_set)
+                for nid in matched:
+                    if (self._tree.find_type(nid) or "") in _GROUPING_KINDS:
+                        to_drop.update(self._tree.find_all_descendant_ids(nid))
+                # No trajectory guard here: `_expand_selection_with_deps`
+                # below owns the veto (+ snackbar), so the bulk unselect and
+                # a unitary uncheck behave identically — and it first
+                # garbage-collects stale empty frames, which this local
+                # guard used to count as "dependents".
+                raw = [x for x in prev if x not in to_drop]
+            else:
+                raw = prev + [n for n in matched if n not in set(prev)]
+            if len(raw) == len(prev):
+                return  # nothing to change
+            expanded = _expand_selection_with_deps(raw, prev, self._tree)
+            # Pre-seed the shared `_prev_select_<tab>` tracker with the final
+            # set. BOTH reactive handlers key off it, and a bulk select adds a
+            # whole folder + all its leaves in one shot:
+            #   - `_wire_dependency_expansion` sees a fixed point (as the
+            #     docstring above relies on) — now explicitly, not by luck;
+            #   - `_wire_select_to_active` would otherwise activate
+            #     `new_ones[-1]`, an ARBITRARY node of the bulk — typically the
+            #     grouping folder (e.g. BlockedWellboreFolder). Activating a
+            #     non-property node makes the activator clear
+            #     `active_color_array_name`, which greys the threshold
+            #     union / intersect buttons even though the user never touched
+            #     the active node.
+            # With prev == curr it sees no new ids and leaves the active node
+            # alone — while still falling back correctly if that node is not in
+            # the new selection.
+            setattr(state, f"_prev_select_{tab}", list(expanded))
+            setattr(state, select_var, expanded)
 
         @controller.set("init_opened_nodes")
         def init_opened_nodes(tree_data):
@@ -685,36 +1232,13 @@ class TreeViews:
 
         self._init_grid_selections()
 
-        _wire_dependency_expansion(
-            "ui_select_node_reservoir", "_prev_select_reservoir",
-            "ui_active_node_reservoir", self._tree,
-        )
-        _wire_dependency_expansion(
-            "ui_select_node_surface", "_prev_select_surface",
-            "ui_active_node_surface", self._tree,
-        )
-        _wire_dependency_expansion(
-            "ui_select_node_well", "_prev_select_well",
-            "ui_active_node_well", self._tree,
-        )
-
-        # update_selected from Vuetify gives the FULL selected array,
-        # so writing `active = $event` would always pick array[0]
-        # (the first ever selected), not the last clicked. The Python
-        # handler below sets active to the newly-added node instead,
-        # with a sensible fallback on removal.
-        _wire_select_to_active(
-            "ui_select_node_reservoir", "ui_active_node_reservoir",
-            "_prev_select_reservoir",
-        )
-        _wire_select_to_active(
-            "ui_select_node_surface", "ui_active_node_surface",
-            "_prev_select_surface",
-        )
-        _wire_select_to_active(
-            "ui_select_node_well", "ui_active_node_well",
-            "_prev_select_well",
-        )
+        # Selection rules (dependency expansion, vetoes, select→active).
+        # Normally already wired by boot BEFORE the selection dispatch
+        # handlers — registration order matters: a veto that rewrites the
+        # selection must run FIRST so the dispatch reads the corrected
+        # list in the same flush (see wire_selection_rules). This call is
+        # the idempotent fallback for entry points that skip boot's hook.
+        wire_selection_rules(self._tree)
 
     def _init_grid_selections(self):
         """For each top-level reservoir grid, ensure a per-grid
@@ -731,15 +1255,120 @@ class TreeViews:
                 if not hasattr(self.state, state_key):
                     setattr(self.state, state_key, [])
 
+    def _select_toolbar(self, tab, actions):
+        """A 'Select / unselect ▾' dropdown above a tree tab. Each entry in
+        `actions` is a `_BULK_ACTIONS` triple `(label, select_kinds,
+        count_kinds)` and offers BOTH bulk actions on every node of the
+        select kinds: a check-all button (load) and an uncheck-all button
+        (unload), with a live "(N)" object count from `ui_bulk_counts`.
+        Drives node SELECTION (data load), independent of the per-view
+        eyes."""
+        with html.Div(classes="px-1 pb-1"):
+            with vuetify3.VMenu(location="bottom start", close_on_content_click=False):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    vuetify3.VBtn(
+                        "Select / unselect",
+                        v_bind="props",
+                        size="small",
+                        variant="tonal",
+                        density="comfortable",
+                        append_icon="mdi-menu-down",
+                    )
+                with vuetify3.VList(density="compact", min_width="260"):
+                    for label, sel_kinds, _count_kinds in actions:
+                        # SINGLE-quoted JS array: trame wraps the HTML
+                        # attribute in double quotes, so a json.dumps here
+                        # (double-quoted strings) breaks the attribute and
+                        # Vue fails to compile the WHOLE page (blank app).
+                        kinds = "[" + ",".join("'%s'" % k for k in sel_kinds) + "]"
+                        count_key = f"{tab}|{label}"
+                        with vuetify3.VListItem(
+                            title=(
+                                f"'{label} ('"
+                                f" + (((ui_bulk_counts || {{}})['{count_key}']) || 0)"
+                                " + ')'",
+                            ),
+                        ):
+                            with vuetify3.Template(v_slot_append=True):
+                                # icon=True + explicit VIcon child: Vuetify 3
+                                # drops the `icon="mdi-…"` glyph as soon as the
+                                # default slot has content (the tooltip here),
+                                # leaving an invisible hover-only circle.
+                                with vuetify3.VBtn(
+                                    icon=True,
+                                    size="x-small",
+                                    variant="text",
+                                    color="primary",
+                                    classes="ml-2",
+                                    click=(self.controller.tree_select_kinds,
+                                           f"['{tab}', {kinds}, 'add']"),
+                                ):
+                                    vuetify3.VIcon("mdi-check-all")
+                                    vuetify3.VTooltip(
+                                        "Select all", activator="parent",
+                                        location="bottom",
+                                    )
+                                with vuetify3.VBtn(
+                                    icon=True,
+                                    size="x-small",
+                                    variant="text",
+                                    color="grey-darken-1",
+                                    click=(self.controller.tree_select_kinds,
+                                           f"['{tab}', {kinds}, 'remove']"),
+                                ):
+                                    # MDI has no bare "double cross" in
+                                    # mdi-check-all's style, so this is a
+                                    # hand-drawn SVG: two red crosses on
+                                    # one baseline, the FRONT one cutting
+                                    # the back one out through an SVG
+                                    # mask (same knockout check-all's
+                                    # glyph uses) — clean separation on
+                                    # any background, hover included.
+                                    # Single quotes ONLY inside the
+                                    # template literal: trame wraps HTML
+                                    # attributes in double quotes.
+                                    html.Div(
+                                        v_html=(
+                                            "`<svg xmlns='http://www.w3.org/2000/svg'"
+                                            " viewBox='0 0 24 24' width='24' height='24'>"
+                                            "<defs><mask id='fespp-unsel-cut'>"
+                                            "<rect width='24' height='24' fill='white'/>"
+                                            "<path d='M10.6 7.4 L19.8 16.6 M10.6 16.6 L19.8 7.4'"
+                                            " stroke='black' stroke-width='5.2'"
+                                            " stroke-linecap='round' fill='none'/>"
+                                            "</mask></defs>"
+                                            "<path d='M4.2 7.4 L13.4 16.6 M4.2 16.6 L13.4 7.4'"
+                                            " stroke='#E53935' stroke-width='2.2'"
+                                            " stroke-linecap='round' fill='none'"
+                                            " mask='url(#fespp-unsel-cut)'/>"
+                                            "<path d='M10.6 7.4 L19.8 16.6 M10.6 16.6 L19.8 7.4'"
+                                            " stroke='#E53935' stroke-width='2.2'"
+                                            " stroke-linecap='round' fill='none'/>"
+                                            "</svg>`",
+                                        ),
+                                        style="width:24px; height:24px;",
+                                    )
+                                    vuetify3.VTooltip(
+                                        "Unselect all", activator="parent",
+                                        location="bottom",
+                                    )
+
     def reservoir_tree(self):
         """Render the Reservoir tab's tree (IjkGrid / UnstructuredGrid
         roots and their property descendants)."""
+        self._select_toolbar("reservoir", _BULK_ACTIONS["reservoir"])
         with vuetify3.VTreeview(
             slim=True,
             density="comfortable",
             opened=("ui_opened_reservoir", []),
             line="connected",
             item_value="id",
+            # 'props': collapsed children are NOT mounted (default 'render'
+            # mounts every item at once — measured as the client half of the
+            # "no tree for 2-3 s" import stall and the bulk of the ~6000-DOM-
+            # node reflow behind the slow tab switch). Needs Vuetify >= 3.10
+            # (trame-vuetify >= 3.2.2, pinned in setup).
+            items_registration="props",
             items=("ui_subtree_reservoir", []),
             activated=("ui_active_node_reservoir", []),
             activatable=True,
@@ -754,14 +1383,48 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon(
-                    v_if="!item.disabled",
+                    v_if="!item.disabled && !((ui_invalid_node_ids || []).includes(item.id))",
                     icon=(_select_checkbox_icon("ui_select_node_reservoir"),),
                     size="small",
                     color=(_select_checkbox_color("ui_select_node_reservoir"),),
                     style="cursor: pointer; margin-right: 4px;",
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_reservoir']"),
                 )
-                vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                # Blocked checkbox stand-in on INVALID nodes (unreadable
+                # data): not clickable, visibly interdicted.
+                vuetify3.VIcon(
+                    "mdi-cancel",
+                    v_if="!item.disabled && ((ui_invalid_node_ids || []).includes(item.id))",
+                    size="small",
+                    color="grey-lighten-1",
+                    style="margin-right: 4px; cursor: not-allowed;",
+                )
+                html.Div(
+                    v_if="item.icon === 'fespp-tetra'",
+                    v_html=(_TETRA_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;",
+                )
+                vuetify3.VIcon(
+                    "{{item.icon}}",
+                    v_if="item.icon !== 'fespp-tetra'",
+                    size="small", color="green-darken-1",
+                )
+                # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
+                with vuetify3.VTooltip(location="bottom", max_width=420):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VIcon(
+                            "mdi-alert",
+                            v_bind="props",
+                            size="small",
+                            color="orange-darken-2",
+                            v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                            classes="ml-1",
+                        )
+                    # FESAPI's own wording for THIS node's failure.
+                    html.Span(
+                        "{{ (ui_invalid_node_errors || {})[item.id]"
+                        " || 'Unreadable data' }}",
+                    )
                 # Secondary badges for synthetic nodes — TimeSeries
                 # (clock) and MultiRealization ("MR" chip) — combined
                 # for MRTS leaves to stack up to 3 icons total
@@ -787,12 +1450,19 @@ class TreeViews:
                 _eye_slot(self.controller)
 
     def surface_tree(self):
+        self._select_toolbar("surface", _BULK_ACTIONS["surface"])
         with vuetify3.VTreeview(
             slim=True,
             density="compact",
             opened=("ui_opened_surface", []),
             line="connected",
             item_value="id",
+            # 'props': collapsed children are NOT mounted (default 'render'
+            # mounts every item at once — measured as the client half of the
+            # "no tree for 2-3 s" import stall and the bulk of the ~6000-DOM-
+            # node reflow behind the slow tab switch). Needs Vuetify >= 3.10
+            # (trame-vuetify >= 3.2.2, pinned in setup).
+            items_registration="props",
             items=("ui_subtree_surface", []),
             activated=("ui_active_node_surface", []),
             activatable=True,
@@ -810,14 +1480,46 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon(
-                    v_if="!item.disabled",
+                    v_if="!item.disabled && !((ui_invalid_node_ids || []).includes(item.id))",
                     icon=(_select_checkbox_icon("ui_select_node_surface"),),
                     size="small",
                     color=(_select_checkbox_color("ui_select_node_surface"),),
                     style="cursor: pointer; margin-right: 4px;",
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_surface']"),
                 )
-                vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                vuetify3.VIcon(
+                    "mdi-cancel",
+                    v_if="!item.disabled && ((ui_invalid_node_ids || []).includes(item.id))",
+                    size="small",
+                    color="grey-lighten-1",
+                    style="margin-right: 4px; cursor: not-allowed;",
+                )
+                html.Div(
+                    v_if="item.icon === 'fespp-tetra'",
+                    v_html=(_TETRA_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;",
+                )
+                vuetify3.VIcon(
+                    "{{item.icon}}",
+                    v_if="item.icon !== 'fespp-tetra'",
+                    size="small", color="green-darken-1",
+                )
+                # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
+                with vuetify3.VTooltip(location="bottom", max_width=420):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VIcon(
+                            "mdi-alert",
+                            v_bind="props",
+                            size="small",
+                            color="orange-darken-2",
+                            v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                            classes="ml-1",
+                        )
+                    # FESAPI's own wording for THIS node's failure.
+                    html.Span(
+                        "{{ (ui_invalid_node_errors || {})[item.id]"
+                        " || 'Unreadable data' }}",
+                    )
                 vuetify3.VIcon(
                     "mdi-timeline-clock",
                     v_if="item.is_ts",
@@ -839,12 +1541,19 @@ class TreeViews:
                 _eye_slot(self.controller)
 
     def well_tree(self):
+        self._select_toolbar("well", _BULK_ACTIONS["well"])
         with vuetify3.VTreeview(
             slim=True,
             density="compact",
             opened=("ui_opened_well", []),
             line="connected",
             item_value="id",
+            # 'props': collapsed children are NOT mounted (default 'render'
+            # mounts every item at once — measured as the client half of the
+            # "no tree for 2-3 s" import stall and the bulk of the ~6000-DOM-
+            # node reflow behind the slow tab switch). Needs Vuetify >= 3.10
+            # (trame-vuetify >= 3.2.2, pinned in setup).
+            items_registration="props",
             items=("ui_subtree_well", []),
             activated=("ui_active_node_well", []),
             activatable=True,
@@ -862,14 +1571,46 @@ class TreeViews:
         ):
             with vuetify3.Template(v_slot_prepend="{ item }"):
                 vuetify3.VIcon(
-                    v_if="!item.disabled",
+                    v_if="!item.disabled && !((ui_invalid_node_ids || []).includes(item.id))",
                     icon=(_select_checkbox_icon("ui_select_node_well"),),
                     size="small",
                     color=(_select_checkbox_color("ui_select_node_well"),),
                     style="cursor: pointer; margin-right: 4px;",
                     click=(self.controller.tree_toggle_select, "[item.id, 'ui_select_node_well']"),
                 )
-                vuetify3.VIcon("{{item.icon}}", size="small", color="green-darken-1")
+                vuetify3.VIcon(
+                    "mdi-cancel",
+                    v_if="!item.disabled && ((ui_invalid_node_ids || []).includes(item.id))",
+                    size="small",
+                    color="grey-lighten-1",
+                    style="margin-right: 4px; cursor: not-allowed;",
+                )
+                html.Div(
+                    v_if="item.icon === 'fespp-tetra'",
+                    v_html=(_TETRA_SVG,),
+                    style="width:16px;height:16px;display:inline-flex;",
+                )
+                vuetify3.VIcon(
+                    "{{item.icon}}",
+                    v_if="item.icon !== 'fespp-tetra'",
+                    size="small", color="green-darken-1",
+                )
+                # Unreadable-data badge (see vtk_log._flag_invalid_nodes).
+                with vuetify3.VTooltip(location="bottom", max_width=420):
+                    with vuetify3.Template(v_slot_activator="{ props }"):
+                        vuetify3.VIcon(
+                            "mdi-alert",
+                            v_bind="props",
+                            size="small",
+                            color="orange-darken-2",
+                            v_if="(ui_invalid_node_ids || []).includes(item.id)",
+                            classes="ml-1",
+                        )
+                    # FESAPI's own wording for THIS node's failure.
+                    html.Span(
+                        "{{ (ui_invalid_node_errors || {})[item.id]"
+                        " || 'Unreadable data' }}",
+                    )
                 vuetify3.VIcon(
                     "mdi-timeline-clock",
                     v_if="item.is_ts",

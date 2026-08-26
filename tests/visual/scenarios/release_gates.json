@@ -1,0 +1,18 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 10 },
+    { "op": "set", "var": "ui_threshold_pending_action", "value": { "action": "add", "parent": null }, "settle": 5 },
+    { "op": "dump", "vars": ["ui_threshold_chain"] },
+    { "op": "uncheck", "title": "4x3x2 grid cellIndex", "settle": 5 },
+    { "op": "dump", "vars": ["thr_unselect_dialog_visible", "thr_unselect_dialog", "ui_select_node_reservoir", "ui_threshold_chain"] },
+    { "op": "call", "method": "confirm_unselect_property", "args": [], "settle": 6 },
+    { "op": "dump", "vars": ["thr_unselect_dialog_visible", "ui_select_node_reservoir", "ui_threshold_chain", "ui_active_node_reservoir"] },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "uncheck", "title": "4x3x2 grid cellIndex", "settle": 5 },
+    { "op": "dump", "vars": ["ui_active_node_reservoir", "ui_active_node_reservoir_type", "ui_active_node_reservoir_array_name"] },
+    { "op": "set", "var": "fespp_active_panel_id", "value": "bogus_stats_panel", "settle": 2 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "dump", "vars": ["ui_active_array_by_rep_by_view", "ui_hidden_rep_paths_by_view"] }
+  ]
+}

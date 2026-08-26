@@ -26,7 +26,8 @@ Functions:
     SMProxy.SetScalarColoring."""
 from paraview import simple as pvsimple
 
-from fespp_on_trame.app.utils.naming import make_valid_vtk_name
+from fespp_on_trame.app.utils.naming import make_valid_vtk_name, strip_realization_suffix
+from fespp_on_trame.app.core.sources import leaf_rep
 
 
 def _vtk_array_range_from_clientside(pv_src, name, assoc):
@@ -243,8 +244,7 @@ def sources_for_rep_path(source_registry, rep_path, view=None):
     if ijk is not None:
         tips = ijk._visible_leaf_tips()
         grid_sources = list(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            grid_sources.append(ijk._src_slicer_volume)
+        grid_sources.extend(ijk._src_volumes)
         # Include rep_data — visible in range mode at full extent; harmless
         # in the hide path when already hidden in slice mode.
         if ijk._src_extract_init is not None:
@@ -317,8 +317,7 @@ def color_sources_for_rep_path(source_registry, rep_path, view=None):
     ijk = source_registry.get_ijk_grid(rep_path)
     if ijk is not None:
         out.extend(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            out.append(ijk._src_slicer_volume)
+        out.extend(ijk._src_volumes)
         if ijk._src_extract_init is not None:
             out.append(ijk._src_extract_init)
         try:
@@ -609,15 +608,50 @@ def target_view_and_panel():
         return None, ""
 
 
-def render_and_push_target(controller):
-    """Render the drawer target's pv_view and push a fresh vtk.js
-    frame to its panel — used by edit handlers that mutate a per-
-    view proxy (LUT / PWF / display.Representation / …) and need the
-    target's browser to actually show the new state.
+# Pending debounced pushes, keyed by panel id — see render_and_push_target.
+_pending_target_push: dict = {}
 
-    Bypasses `controller.view_update()` (which only refreshes the
-    active panel) in favour of `view_update_for(panel_id)`. Falls
-    back to `view_update()` when the per-panel hook isn't wired."""
+
+def render_and_push_target(controller):
+    """Render the drawer target's pv_view and push a fresh vtk.js frame to
+    its panel — used by edit handlers that mutate a per-view proxy (LUT /
+    PWF / display.Representation / …) and need the target's browser to
+    actually show the new state.
+
+    COALESCED: one user gesture fans out to several state handlers (colors,
+    opacities, nan_color, preset …) and each used to render + push its own
+    full frame — six ~370 ms frames per property switch, measured, all
+    identical but the last. Trailing-edge debounce per panel: every call
+    re-arms a short timer and only the last one actually renders. Falls
+    back to an immediate render when no event loop is running."""
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+    except Exception:
+        _render_and_push_target_now(controller)
+        return
+    _, panel_id = target_view_and_panel()
+    key = panel_id or "_active"
+    pending = _pending_target_push.pop(key, None)
+    if pending is not None:
+        try:
+            pending.cancel()
+        except Exception:
+            pass
+
+    def _fire():
+        _pending_target_push.pop(key, None)
+        _render_and_push_target_now(controller)
+
+    _pending_target_push[key] = loop.call_later(0.05, _fire)
+
+
+def _render_and_push_target_now(controller):
+    """The actual render + push (pre-debounce body of
+    `render_and_push_target`). Bypasses `controller.view_update()` (which
+    only refreshes the active panel) in favour of `view_update_for
+    (panel_id)`. Falls back to `view_update()` when the per-panel hook
+    isn't wired."""
     pv_view, panel_id = target_view_and_panel()
     if pv_view is not None:
         try:
@@ -661,6 +695,63 @@ def scene_lut_for_view(view, array_name):
     return pvsimple.GetColorTransferFunction(array_name)
 
 
+# Corner rotation for simultaneous colour bars (multi-source V1: the grid
+# and a well log each own a LUT + bar). Every bar spawns at PV's default
+# spot, so two visible bars overlap unreadably without this. RIGHT side +
+# centers only: the LEFT corners are taken (orientation axes bottom-left,
+# in-view toolbar top-left). Bars past the 4th re-stack on the last spot —
+# ACCEPTED for V1 (delegating to PlaceInView was tried and had no visible
+# effect in this remote-render setup); a real layout manager is V2 work.
+_BAR_CORNERS = ("Lower Right Corner", "Upper Right Corner",
+                "Upper Center", "Lower Center")
+
+
+def layout_visible_scalar_bars(view=None):
+    """Spread the view's VISIBLE colour bars over distinct corners, in the
+    stable order of the view's representation list (first bar keeps the
+    default lower-right). No-op on hidden bars, never moves anything the
+    sweep is about to reap."""
+    view = view if view is not None else pvsimple.GetActiveView()
+    if view is None:
+        return
+    i = 0
+    for r in (view.Representations or []):
+        try:
+            if r.SMProxy.GetXMLName() != "ScalarBarWidgetRepresentation":
+                continue
+            if not getattr(r, "Visibility", 0):
+                continue
+            r.WindowLocation = _BAR_CORNERS[min(i, len(_BAR_CORNERS) - 1)]
+            i += 1
+        except Exception:
+            continue
+
+
+def reassert_active_scalar_bars(state, source_registry, view=None):
+    """Enforce, at the end of a load batch, the invariant "the active
+    array's colour bar is VISIBLE". Something inside the batch raw-hides
+    the freshly-shown bar (observed live: display visible and bound to the
+    scoped LUT, bar already off before data_load's teardown sweep — the
+    writer bypasses every helper here and two probe rounds could not name
+    it). Rather than chase it further, re-show the bar for every rep that
+    ends the batch with an active array; the later hide-unused sweeps then
+    PRESERVE it, since its LUT is referenced by a visible display."""
+    view = view if view is not None else pvsimple.GetActiveView()
+    if view is None:
+        return
+    for rep_path, array_path in dict(state.ui_active_array_by_rep or {}).items():
+        if not array_path:
+            continue
+        try:
+            for d in displays_for_rep_path(source_registry, rep_path, view=view):
+                if getattr(d, "Visibility", 0) and getattr(d, "LookupTable", None) is not None:
+                    if leaf_rep.scalar_bar_visibility(d.LookupTable, view, True):
+                        break
+        except Exception:
+            continue
+    layout_visible_scalar_bars(view)
+
+
 def _clear_coloring(displays, view):
     """Drop ColorBy to SolidColor and hide the stale scalar bar on
     every display. Shared by the deselect path (array_path falsy) and
@@ -671,18 +762,84 @@ def _clear_coloring(displays, view):
     for d in displays:
         try:
             if d.LookupTable is not None and view is not None:
-                d.SetScalarBarVisibility(view, False)
+                leaf_rep.scalar_bar_visibility(d.LookupTable, view, False)
         except Exception:
             pass
-        try:
-            sm = getattr(d, "SMProxy", None)
-            if sm is not None:
-                sm.SetScalarColoring("", 0)
-                sm.UpdateVTKObjects()
-            else:
-                d.ColorArrayName = ['', '']
-        except Exception:
-            pass
+        leaf_rep.uncolor(d)
+
+
+def blocked_wellbore_rep_paths_for(tree, rep_path):
+    """Paths of the BlockedWellbore reps grouped under the same GridContainer
+    as `rep_path` (a grid geometry rep). Empty for non-grid reps — a
+    Trajectory / surface has no GridContainer ancestor."""
+    if tree is None or not rep_path:
+        return []
+    try:
+        rep_id = tree.find_node_id(rep_path)
+        if rep_id is None:
+            return []
+        # Fan out ONLY from the grid GEOMETRY rep. A BlockedWellbore sits
+        # under the SAME GridContainer, so without this guard a wellbore's
+        # own apply/clear would walk every sibling wellbore — the active-map
+        # sweep then goes O(N²) (82 reps × 82 walks ≈ 6700 display
+        # resolutions ≈ 9 s, measured), and each wellbore's None-apply mass-
+        # clears the colouring of all its siblings, surviving only by
+        # iteration-order luck.
+        if (tree.find_type(rep_id) or "") not in ("IjkGrid", "UnstructuredGrid"):
+            return []
+        container = tree.find_parent_node_id_with_type(rep_id, "GridContainer")
+        if container is None:
+            return []
+        folder = tree.find_first_child_of_type(container, "BlockedWellboreFolder")
+        if folder is None:
+            return []
+        paths = []
+        for nid in tree.find_all_descendant_ids(folder):
+            if (tree.find_type(nid) or "") == "BlockedWellbore":
+                p = tree.find_path(nid)
+                if p:
+                    paths.append(p)
+        return paths
+    except Exception:
+        return []
+
+
+def _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path, assoc,
+                                       name, view):
+    """FESPP mirrors a grid's CELL arrays onto its blocked wellbores (same
+    array names, restricted to the crossed cells); mirror the ColorBy too, so
+    the wells follow the grid's ACTIVE property — including while the grid
+    itself is hidden (visibility and colouring are orthogonal). `name=None`
+    clears instead. The scoped LUT is keyed on the same array name, so grid
+    and wells share one colour scale and one bar."""
+    for bw_path in blocked_wellbore_rep_paths_for(tree, rep_path):
+        bw_displays = displays_for_rep_path(source_registry, bw_path, view=view)
+        if not bw_displays:
+            continue  # unchecked wellbore — nothing loaded, nothing to colour
+        if not name:
+            _clear_coloring(bw_displays, view)
+            continue
+        # Re-applies are frequent (every load batch, every active-map fire) and
+        # the wellbores are many: skip a display already bound to this array so
+        # the steady state costs a read per wellbore, not a proxy-write storm.
+        rebound = []
+        for d in bw_displays:
+            try:
+                ca = list(d.ColorArrayName or [])
+                if ca and ca[-1] == name and d.LookupTable is not None:
+                    continue
+            except Exception:
+                pass
+            try:
+                leaf_rep.color_by(d, assoc, name)
+                rebound.append(d)
+            except Exception:
+                continue
+        if rebound:
+            try:
+                swap_to_scene_tfs(rebound, view, name)
+            except Exception:
+                pass
 
 
 def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
@@ -706,8 +863,11 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     if not displays:
         return True
     if not array_path:
-        # Deselect path (tree eye unchecked).
+        # Deselect path (tree eye unchecked). The blocked wellbores mirrored
+        # this rep's colouring — clear them too.
         _clear_coloring(displays, view)
+        _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path,
+                                           None, None, view)
         return True
     assoc, name, range_src = resolve_array_for_path(
         source_registry, tree, rep_path, array_path,
@@ -723,10 +883,12 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         # the caller can surface a "no data to display" alert.
         if clear_on_empty:
             _clear_coloring(displays, view)
+            _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path,
+                                               None, None, view)
         return False
     for d in displays:
         try:
-            pvsimple.ColorBy(d, (assoc, name))
+            leaf_rep.color_by(d, assoc, name)
         except Exception:
             pass
     target_view = view if view is not None else pvsimple.GetActiveView()
@@ -739,11 +901,16 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
     # a STALE proxy info cache after an in-place re-extraction, leaving the
     # LUT at [0,1] so the geometry paints flat; reading the client-side array
     # avoids it. Best-effort; skipped for indexed (categorical) LUTs whose
-    # annotations a numeric rescale would disturb.
+    # annotations a numeric rescale would disturb, and for USER-PINNED
+    # ranges (COE Min/Max Apply → AutomaticRescaleRangeMode='Never'):
+    # without that skip, this line snapped the range back to the data on
+    # the very next eye click / activation and the Min/Max feature
+    # looked dead.
     try:
         rescale_lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(name)
         if (range_src is not None and rescale_lut is not None
-                and not getattr(rescale_lut, "IndexedLookup", 0)):
+                and not getattr(rescale_lut, "IndexedLookup", 0)
+                and not leaf_rep.range_is_pinned(rescale_lut)):
             rng = _vtk_array_range_from_clientside(range_src, name, assoc)
             if rng is not None:
                 rescale_lut.RescaleTransferFunction(rng[0], rng[1])
@@ -761,8 +928,8 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
         if target_view is not None:
             for d in displays:
                 try:
-                    d.SetScalarBarVisibility(target_view, True)
-                    break
+                    if leaf_rep.scalar_bar_visibility(d.LookupTable, target_view, True):
+                        break
                 except Exception:
                     continue
             # Use the scoped LUT when we have one so the scalar bar
@@ -772,16 +939,32 @@ def apply_color_array(source_registry, tree, rep_path, array_path, view=None,
             if bar_lut is not None:
                 bar = pvsimple.GetScalarBar(bar_lut, target_view)
                 if bar is not None:
-                    bar.Title = name
+                    # Realizations share one LUT (and thus one bar) per
+                    # property — title with the UNSUFFIXED name, else the
+                    # bar would keep claiming "_real_<idx>" of whichever
+                    # realization created it.
+                    bar.Title = strip_realization_suffix(name)
+                    # FESPP properties are scalars: the default
+                    # "Component" suffix is noise for a geologist.
+                    # (A vector array would lose its "Magnitude" tag —
+                    # none ships in RESQML properties today.)
+                    bar.ComponentTitle = ""
                     bar.RangeLabelFormat = '%-#6.3g'
                     bar.Resizable = 1
     except Exception:
         pass
+    # Mirror the colouring onto this grid's blocked wellbores BEFORE the
+    # orphan-bar sweep below: their displays reference the same LUT, which is
+    # what keeps the shared colour bar alive when the grid itself is hidden.
+    _mirror_color_to_blocked_wellbores(source_registry, tree, rep_path, assoc,
+                                       name, target_view)
     # Sweep orphan bars in this view so stale legends from a previous
     # property don't linger alongside the new one. The TransferFunction
     # Manager only hides bars whose LUT is unreferenced by any visible
     # display, so our freshly-shown bar (bound via ColorBy above)
-    # survives the sweep.
+    # survives the sweep. Then spread whatever remains visible over
+    # distinct corners (grid + well log = two bars, same default spot).
     if target_view is not None:
         hide_unused_scalar_bars(view=target_view)
+        layout_visible_scalar_bars(target_view)
     return True

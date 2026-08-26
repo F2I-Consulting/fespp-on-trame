@@ -288,14 +288,12 @@ class SceneRegistry:
                     legacy_ijk._slices_j_visible_list,
                     legacy_ijk._slices_k_visible_list,
                 )
-                if legacy_ijk._slices_range_i and legacy_ijk._slices_range_j and legacy_ijk._slices_range_k:
-                    ijk.apply_range(
-                        legacy_ijk._slices_range_i,
-                        legacy_ijk._slices_range_j,
-                        legacy_ijk._slices_range_k,
+                if legacy_ijk._volumes:
+                    ijk.apply_volumes(
+                        legacy_ijk._volumes,
+                        legacy_ijk._volumes_visible,
                     )
                 ijk.apply_mode(legacy_ijk._range_mode)
-                ijk.apply_volume_visible(legacy_ijk._volume_visible)
                 ijk.show()
             except Exception as exc:
                 pass

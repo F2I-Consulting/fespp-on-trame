@@ -61,7 +61,7 @@ from .base import ElementType
 from .grouping import Grouping, PartialType
 from .representation import (
     Representation, GridRep, IjkGridRep, SurfaceRep,
-    WellboreGeometryRep, SeismicFrameRep,
+    WellboreGeometryRep, SeismicFrameRep, BlockedWellboreRep,
 )
 from .frames import FrameRep, ChannelFrameRep, MarkerFrameRep
 from .leaf import (
@@ -82,7 +82,7 @@ __all__ = [
     "ElementType",
     "Grouping", "PartialType",
     "Representation", "GridRep", "IjkGridRep", "SurfaceRep",
-    "WellboreGeometryRep", "SeismicFrameRep",
+    "WellboreGeometryRep", "SeismicFrameRep", "BlockedWellboreRep",
     "FrameRep", "ChannelFrameRep", "MarkerFrameRep",
     "Leaf", "PropertyLeaf", "TimeSeriesLeaf", "MultiRealizationLeaf",
     "MultiRealizationTimeSeriesLeaf", "MarkerLeaf",

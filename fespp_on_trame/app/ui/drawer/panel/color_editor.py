@@ -7,6 +7,7 @@ from paraview import simple as pvsimple
 from ptc.color_opacity_editor import ColorOpacityEditorConvertor
 
 from fespp_on_trame.app.core.engine import source_resolver
+from fespp_on_trame.app.core.sources import leaf_rep
 
 server = get_server()
 state = server.state
@@ -28,6 +29,29 @@ def _apply_nan_color_to_lut(lut):
         pass
 
 
+def pwf_display_points(points, lo, hi):
+    """User-facing view of a scoped PWF: strip the range-alpha
+    emulation (boundary steps at the core edges + the far NaN
+    sentinels) so the COE graph and tables only show the real curve
+    over the LUT core [lo, hi]. Endpoints take the nearest interior
+    value; writing the DISPLAYED curve back through the opacity editor
+    is safe — `_apply_range_alphas` re-appends the emulation on top of
+    whatever the editor writes."""
+    try:
+        pts = list(points or [])
+        quads = [list(pts[i:i + 4]) for i in range(0, len(pts) - 3, 4)]
+        if not quads or hi <= lo:
+            return pts
+        eps = (hi - lo) * 4e-5
+        interior = [q for q in quads if lo + eps < q[0] < hi - eps]
+        first_y = interior[0][1] if interior else 1.0
+        last_y = interior[-1][1] if interior else 1.0
+        out = [[lo, first_y, 0.5, 0.0]] + interior + [[hi, last_y, 0.5, 0.0]]
+        return [c for q in out for c in q]
+    except Exception:
+        return list(points or [])
+
+
 class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
     """ptc.ColorOpacityEditor with a hexa (#RRGGBBAA) NaN color picker
     so the user can pick both the colour and the alpha of NaN cells in
@@ -36,10 +60,31 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
     def __init__(self):
         # Force hexa format BEFORE the parent applies its #RRGGBB default.
         # App convention: valid values get flat-1 opacity via the PWF;
-        # NaN cells default to alpha 00 (transparent) unless the user
-        # dials in an alpha here. The red hue means raising the alpha
-        # yields a visible "no data" marker.
-        state.setdefault("nan_color", "#FF000000")
+        # NaN cells default to a 5% alpha ghost — an all-NaN array (e.g. a
+        # time series whose values never loaded) must not render as an
+        # empty view that reads as "nothing was loaded". The red hue makes
+        # the ghost identifiable as "no data" once noticed.
+        state.setdefault("nan_color", "#FF00000D")
+        # Scalar-range + log-scale controls (continuous properties only —
+        # this editor is mounted solely for the non-categorical /
+        # non-SolidColor case). The buttons bind the INSTANCE methods
+        # directly — never a shared controller name: the diff dialog's
+        # `_DiffColorOpacityEditor` subclass runs this same __init__
+        # later, and a `controller.fespp_apply_color_range = ...` here
+        # let it OVERWRITE the drawer's handler with its own (whose
+        # guard only passes while the diff dialog is open) — Apply then
+        # silently no-oped, which is why Min/Max looked dead.
+        state.setdefault("color_range_min", 0.0)
+        state.setdefault("color_range_max", 1.0)
+        state.setdefault("color_use_log", False)
+        # Below/above-range colours: "" = VTK's default clamp (out-of-
+        # range cells keep the min / max stop colour). The *_auto_color
+        # mirrors carry the LUT's actual min / max stop colours so the
+        # collapsed swatches show the real clamp colour.
+        state.setdefault("below_range_color", "")
+        state.setdefault("above_range_color", "")
+        state.setdefault("below_range_auto_color", "")
+        state.setdefault("above_range_auto_color", "")
         super().__init__()
 
     def build_content(self) -> None:
@@ -71,6 +116,63 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                 histograms_color=("histograms_color", [0, 0, 0, 0.25]),
             )
 
+            # --- Scalar range (min/max) + log scale ---
+            # Continuous properties only: this editor is mounted solely for
+            # the non-categorical / non-SolidColor case (see
+            # solid_color_panel), so these knobs never reach a discrete,
+            # categorical or SolidColor representation.
+            # One row, in colour-bar reading order: below-range swatch,
+            # Min, Max, above-range swatch.
+            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-2", align="center"):
+                self._range_color_swatch("below")
+                # AUTO-APPLY text inputs. The state var syncs ONLY on
+                # commit (blur / Enter) — never per keystroke, which
+                # (a) leaves partial input like "0." alone while typing
+                # and (b) stops the busy spinner from flashing at every
+                # key. The server watcher `on_range_fields_changed`
+                # then applies the committed range immediately: type,
+                # click elsewhere (or Enter) → applied.
+                with vuetify3.VCol(classes="px-1"):
+                    vuetify3.VTextField(
+                        label="Min",
+                        model_value=("color_range_min", "0"),
+                        blur="color_range_min = $event.target.value",
+                        keydown_enter="color_range_min = $event.target.value",
+                        density="compact",
+                        variant="outlined",
+                        hide_details=True,
+                    )
+                with vuetify3.VCol(classes="px-1"):
+                    vuetify3.VTextField(
+                        label="Max",
+                        model_value=("color_range_max", "1"),
+                        blur="color_range_max = $event.target.value",
+                        keydown_enter="color_range_max = $event.target.value",
+                        density="compact",
+                        variant="outlined",
+                        hide_details=True,
+                    )
+                self._range_color_swatch("above")
+            # No Apply button: the fields AUTO-APPLY on blur / Enter
+            # (see on_range_fields_changed) — the button was redundant.
+            with vuetify3.VRow(no_gutters=True, classes="px-2 pt-1", align="center"):
+                vuetify3.VBtn(
+                    "Reset to data range",
+                    size="small",
+                    variant="text",
+                    classes="ml-1",
+                    click=(self.reset_color_range_to_data,),
+                )
+                vuetify3.VSpacer()
+                vuetify3.VSwitch(
+                    label="Log scale",
+                    v_model=("color_use_log", False),
+                    density="compact",
+                    hide_details=True,
+                    inset=True,
+                    classes="flex-grow-0 mt-0",
+                )
+
             with vuetify3.VMenu(close_on_content_click=False):
                 with vuetify3.Template(v_slot_activator="{ props }"):
                     with vuetify3.VBtn(
@@ -94,8 +196,10 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
                     max_width=300,
                 )
 
+            # Both transfer-function tables start COLLAPSED — they are
+            # expert views and eat most of the drawer height when open.
             with vuetify3.VExpansionPanels(
-                v_model=("opened_panels", [0, 1]),
+                v_model=("opened_panels", []),
                 multiple=True,
                 elevation=0,
             ):
@@ -224,6 +328,548 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         except Exception:
             self.state.scalar_range = [0, 1]
 
+    # ---- Scalar range (min/max) + log scale — continuous props only ----
+
+    @staticmethod
+    def _positive_floor(hi):
+        """A log axis needs a strictly-positive lower bound: pick a floor
+        four decades below the max (tiny epsilon when the max itself is
+        non-positive)."""
+        try:
+            hi = float(hi)
+        except (TypeError, ValueError):
+            return 1e-6
+        return hi * 1e-4 if hi > 0 else 1e-6
+
+    def _resolve_active_lut(self):
+        """`(base_name, lut)` for the active array on the drawer's target
+        view — the per-view scoped LUT, falling back to the global
+        singleton (same resolution as `update_scalar_range`)."""
+        raw_name = self.state.active_color_array_name or ""
+        if not raw_name:
+            return None, None
+        base_name, scene_lut = source_resolver.resolve_target_scoped_lut(raw_name)
+        if not base_name:
+            return None, None
+        lut = scene_lut if scene_lut is not None else pvsimple.GetColorTransferFunction(base_name)
+        return base_name, lut
+
+    @staticmethod
+    def _fmt3(value):
+        """'0.3', '412542912', '0.001' — max 3 decimals, no trailing
+        zeros, never scientific notation (a huge range must stay
+        retypable in the field)."""
+        return f"{float(value):.3f}".rstrip("0").rstrip(".") or "0"
+
+    def _sync_range_fields(self, lo, hi):
+        """Reflect a range into the Min/Max inputs as STRINGS formatted
+        to 3 decimals max (user-requested display precision — the
+        applied range follows the displayed value). The guard flag
+        keeps this programmatic write from re-triggering the
+        auto-apply watcher `on_range_fields_changed`."""
+        self._syncing_range_fields = True
+        try:
+            self.state.color_range_min = self._fmt3(lo)
+            self.state.color_range_max = self._fmt3(hi)
+        except (TypeError, ValueError):
+            pass
+        finally:
+            self._syncing_range_fields = False
+
+    @change("color_range_min", "color_range_max")
+    def on_range_fields_changed(self, *args, **kwargs) -> None:
+        """AUTO-APPLY: the fields sync state only on blur / Enter now,
+        so every change landing here is a USER COMMIT — apply it
+        without requiring the Apply button (kept as an explicit
+        affordance). Skips the editor's own formatted write-backs."""
+        if getattr(self, "_syncing_range_fields", False):
+            return
+        if not self._should_apply_state_change():
+            return
+        self.apply_color_range()
+
+    def _resolve_target_pwf(self, base_name):
+        """The target scene's scoped opacity function for `base_name`,
+        or None outside the per-view scene model."""
+        try:
+            srv = get_server()
+            target = (
+                getattr(srv.state, "drawer_target_view_id", "") or ""
+                or getattr(srv.state, "fespp_active_panel_id", "") or ""
+            )
+            reg = getattr(srv.context, "scene_registry", None)
+            scene = reg.get_scene(target) if (reg and target) else None
+            return scene.get_or_create_pwf(base_name) if scene is not None else None
+        except Exception:
+            return None
+
+    def _apply_scalar_range(self, lo, hi, pin=True):
+        """Rescale the active view's LUT (+ its scoped PWF, in lockstep)
+        to [lo, hi] and push the frame. Clamps the lower bound positive
+        when the LUT is in log mode.
+
+        `pin=True` marks the range as user-chosen by setting
+        `AutomaticRescaleRangeMode='Never'` ON THE LUT PROXY — the flag
+        every auto-rescale site checks through `leaf_rep.range_is_pinned`
+        (`apply_color_array`'s client-side force-rescale,
+        `rescale_to_range`). Without the pin those sites snapped the
+        range back to the data on the very next eye click / activation /
+        time step, which made this feature look dead on its first
+        iteration. `pin=False` (Reset) restores PV's default mode."""
+        base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        lo, hi = source_resolver.nondegenerate_range(lo, hi)
+        if int(getattr(lut, "UseLogScale", 0)) and lo <= 0:
+            lo = self._positive_floor(hi)
+        # Strip the range-alpha emulation FIRST, while the LUT still
+        # carries the OLD range: the rescale below remaps the PWF's
+        # full extent proportionally, and the far NaN sentinels would
+        # otherwise be squeezed into the new core, crushing the real
+        # curve into a sliver.
+        self._apply_range_alphas(lut, base, force_opaque=True)
+        try:
+            lut.RescaleTransferFunction(float(lo), float(hi))
+        except Exception:
+            return
+        try:
+            lut.AutomaticRescaleRangeMode = (
+                "Never" if pin else "Grow and update on 'Apply'"
+            )
+        except Exception:
+            pass
+        # PWF in lockstep (proportional control-point remap of the PURE
+        # curve) so the opacity features follow the colour range instead
+        # of staying anchored at stale scalar positions.
+        try:
+            pwf = self._resolve_target_pwf(base)
+            if pwf is not None:
+                pwf.RescaleTransferFunction(float(lo), float(hi))
+        except Exception:
+            pass
+        # Re-emulate the below/above alphas (+ NaN sentinels) on the
+        # NEW span.
+        self._apply_range_alphas(lut, base)
+        self.state.scalar_range = [float(lo), float(hi)]
+        self._sync_range_fields(lo, hi)
+        # Rebuild the COE widget state (gradient graph + stop tables)
+        # from the rescaled transfer functions: its colour stops carry
+        # SCALAR positions, so leaving them at the old range makes the
+        # canvas normalise out of [0,1] and the graph breaks.
+        try:
+            self.server.controller.update_color_editor(
+                self.state.active_color_array_name)
+        except Exception:
+            pass
+        source_resolver.render_and_push_target(self.server.controller)
+
+    @staticmethod
+    def _parse_field(value):
+        """`float()` with French-comma tolerance ('0,3' → 0.3)."""
+        return float(str(value).strip().replace(",", "."))
+
+    def apply_color_range(self, *args, **kwargs):
+        """Apply the user-entered Min/Max (ignores an inverted / empty
+        range where Max <= Min). Wired to the Apply button + Enter."""
+        if not self._should_apply_state_change():
+            return
+        try:
+            lo = self._parse_field(self.state.color_range_min)
+            hi = self._parse_field(self.state.color_range_max)
+        except (TypeError, ValueError):
+            return
+        if hi <= lo:
+            return
+        self._apply_scalar_range(lo, hi)
+
+    def reset_color_range_to_data(self, *args, **kwargs):
+        """Unpin the range, recompute the data range and rescale the LUT
+        back to it."""
+        if not self._should_apply_state_change():
+            return
+        _base, lut = self._resolve_active_lut()
+        if lut is not None:
+            # Unpin FIRST so the recompute + future auto-rescales resume.
+            try:
+                lut.AutomaticRescaleRangeMode = "Grow and update on 'Apply'"
+            except Exception:
+                pass
+        self.update_scalar_range()
+        rng = self.state.scalar_range or [0.0, 1.0]
+        try:
+            self._apply_scalar_range(float(rng[0]), float(rng[1]), pin=False)
+        except (TypeError, ValueError, IndexError):
+            pass
+
+    # ---- Below / above range colours ----
+
+    def _range_color_swatch(self, side):
+        """One compact swatch button + colour-picker menu for the below-
+        or above-range colour + opacity. Empty state var = VTK's clamp
+        default (out-of-range cells keep the min / max stop colour — the
+        swatch then shows that stop colour via `*_auto_color`). Picking
+        a colour flips `UseBelow/AboveRangeColor` on the LUT; the ALPHA
+        channel is emulated through the scoped PWF's boundary points
+        (see `_apply_range_alphas` — VTK's LUT has no out-of-range
+        opacity of its own); "Auto" reverts to the clamp. The picker is
+        one-way bound with the auto colour as fallback because it seeds
+        BLACK on an empty v_model — dragging alpha first then emitted
+        #000000XX and painted every out-of-range cell black."""
+        var = f"{side}_range_color"
+        auto_var = f"{side}_range_auto_color"
+        tip = ("Colour below Min (Auto = clamp to the min colour)"
+               if side == "below"
+               else "Colour above Max (Auto = clamp to the max colour)")
+        with vuetify3.VCol(cols="auto"), html.Div(
+            # Chip + a 9px caption stacked in a flex column: 24px icon
+            # + caption stays under the ~40px Min/Max field height, so
+            # the label costs no extra row.
+            classes="d-flex flex-column align-center",
+        ):
+            with vuetify3.VMenu(close_on_content_click=False):
+                with vuetify3.Template(v_slot_activator="{ props }"):
+                    with vuetify3.VTooltip(location="bottom"):
+                        with vuetify3.Template(v_slot_activator="{ props: tt }"):
+                            with vuetify3.VBtn(
+                                icon=True,
+                                v_bind="{ ...props, ...tt }",
+                                variant="text",
+                                size="small",
+                            ):
+                                # Full 8-digit colour (CSS renders the
+                                # alpha) over a grey outline ring, so
+                                # the chip shows the opacity AND stays
+                                # visible / clickable at alpha 0.
+                                with html.Div(
+                                    style="position:relative; width:24px; height:24px;",
+                                ):
+                                    vuetify3.VIcon(
+                                        "mdi-circle-outline",
+                                        color="grey",
+                                        style="position:absolute; inset:0;",
+                                    )
+                                    vuetify3.VIcon(
+                                        "mdi-circle",
+                                        color=(
+                                            f"{var} ? {var}"
+                                            f" : ({auto_var} || '#9E9E9E')",
+                                        ),
+                                        style="position:absolute; inset:0;",
+                                    )
+                        html.Span(tip)
+                with vuetify3.VCard():
+                    vuetify3.VColorPicker(
+                        model_value=(
+                            f"{var} || ({auto_var} ? {auto_var} + 'FF'"
+                            " : '#808080FF')",
+                        ),
+                        # Plain JS string, NEVER a 1-tuple: trame treats a
+                        # tuple event as (callable, args) and silently
+                        # drops a lone string — the picker then writes
+                        # nothing and the alpha slider snaps back to 1.
+                        update_modelValue=f"{var} = $event",
+                        modes=("['hexa']",),
+                        classes="w-100",
+                        divided=True,
+                        landscape=True,
+                        max_width=300,
+                    )
+                    vuetify3.VBtn(
+                        "Auto (clamp)",
+                        size="small",
+                        variant="text",
+                        block=True,
+                        click=f"{var} = ''",
+                    )
+            html.Span(
+                "Below" if side == "below" else "Above",
+                classes="text-medium-emphasis",
+                style=("font-size: 9px; line-height: 1;"
+                       " margin-top: -3px; user-select: none;"),
+            )
+
+    @staticmethod
+    def _range_color_hex(lut, which):
+        """The LUT's below/above-range colour as '#RRGGBB', or '' when
+        the clamp default is active (Use*RangeColor off)."""
+        use_prop = "UseBelowRangeColor" if which == "below" else "UseAboveRangeColor"
+        col_prop = "BelowRangeColor" if which == "below" else "AboveRangeColor"
+        try:
+            if not int(getattr(lut, use_prop, 0)):
+                return ""
+            r, g, b = list(getattr(lut, col_prop))[:3]
+            return "#%02X%02X%02X" % (
+                round(r * 255), round(g * 255), round(b * 255))
+        except Exception:
+            return ""
+
+    # Width of the PWF boundary step, as a fraction of the scalar span.
+    _RANGE_ALPHA_EPS = 1e-5
+    # Far-plateau multipliers (× span, beyond hi) for the NaN-decoupling
+    # sentinel points — see `_apply_range_alphas`.
+    _SENTINEL_NEAR = 1e3
+    _SENTINEL_FAR = 2e3
+
+    @staticmethod
+    def _lut_core_range(lut):
+        """The LUT's real scalar range read off its control points —
+        the PWF extent can NOT be used once sentinels exist."""
+        try:
+            pts = list(lut.RGBPoints or [])
+            if len(pts) >= 4:
+                return float(pts[0]), float(pts[-4])
+        except Exception:
+            pass
+        return None, None
+
+    @staticmethod
+    def _alpha_from_hex(hex_color):
+        """The alpha byte of '#RRGGBBAA' as [0,1]; 1.0 when absent."""
+        hex_val = (hex_color or "").lstrip("#")
+        if len(hex_val) >= 8:
+            try:
+                return int(hex_val[6:8], 16) / 255.0
+            except ValueError:
+                pass
+        return 1.0
+
+    def _apply_range_alphas(self, lut, base, force_opaque=False):
+        """Emulate below/above-range OPACITY through the scoped PWF.
+
+        VTK's LUT has no out-of-range opacity — but the PWF CLAMPS: a
+        value below the range takes the FIRST opacity point's value. So
+        a boundary point at exactly `lo` (resp. `hi`) carrying the
+        wanted alpha, followed (preceded) an epsilon inside by the
+        curve's real value, gives out-of-range cells their own opacity
+        while the in-range curve stays intact (the step spans 1e-5 of
+        the range).
+
+        NaN decoupling (measured, PARAVIEW.md): under
+        `EnableOpacityMapping=1` a NaN cell's opacity is the PWF's
+        very LAST point (`NanOpacity` is IGNORED) — an above-alpha on
+        the last point dragged every NaN cell with it. So when any
+        range alpha is active, two far sentinels are appended: a
+        plateau at `hi + 1e3·span` holding the edge value (what
+        above-range cells interpolate to), then the TRUE last point at
+        `hi + 2e3·span` carrying the NaN-picker's alpha — which is what
+        NaN cells actually read. `force_opaque=True` rebuilds the PURE
+        user curve instead (no steps, no sentinels) — required before
+        any range rescale, else the proportional remap would squeeze
+        the sentinels into the new core and crush the real curve."""
+        if force_opaque:
+            a_below = a_above = 1.0
+        else:
+            a_below = self._alpha_from_hex(self.state.below_range_color)
+            a_above = self._alpha_from_hex(self.state.above_range_color)
+        pwf = self._resolve_target_pwf(base)
+        if pwf is None:
+            return
+        lo, hi = self._lut_core_range(lut)
+        if lo is None or hi is None or hi <= lo:
+            return
+        try:
+            span = hi - lo
+            eps = span * self._RANGE_ALPHA_EPS
+            obj = pwf.GetClientSideObject()
+
+            def val(x):
+                try:
+                    return float(obj.GetValue(x))
+                except Exception:
+                    return 1.0
+
+            pts = list(pwf.Points or [])
+            quads = [pts[i:i + 4] for i in range(0, len(pts) - 3, 4)]
+            # The user's curve = everything strictly inside the two
+            # boundary strips (drops previous steps AND far sentinels).
+            interior = [q for q in quads if lo + 2 * eps < q[0] < hi - 2 * eps]
+            inner_lo = val(lo + 2.5 * eps)
+            inner_hi = val(hi - 2.5 * eps)
+            new = []
+            if a_below < 0.999:
+                new.append([lo, a_below, 0.5, 0.0])
+                new.append([lo + eps, inner_lo, 0.5, 0.0])
+            else:
+                new.append([lo, inner_lo, 0.5, 0.0])
+            new.extend(interior)
+            if a_above < 0.999:
+                new.append([hi - eps, inner_hi, 0.5, 0.0])
+                new.append([hi, a_above, 0.5, 0.0])
+            else:
+                new.append([hi, inner_hi, 0.5, 0.0])
+            if not force_opaque and (a_below < 0.999 or a_above < 0.999):
+                nan_alpha = self._alpha_from_hex(self.state.nan_color)
+                edge = new[-1][1]
+                new.append([hi + span * self._SENTINEL_NEAR, edge, 0.5, 0.0])
+                new.append([hi + span * self._SENTINEL_FAR, nan_alpha, 0.5, 0.0])
+                lut.EnableOpacityMapping = 1
+            pwf.Points = [c for q in new for c in q]
+        except Exception:
+            pass
+
+    def _apply_range_color(self, which, hex_color):
+        """Apply ('#RRGGBB[AA]') or clear ('') a below/above-range
+        colour + opacity on the active LUT. RGB drives the LUT's
+        `Use{Below,Above}RangeColor`; the ALPHA byte drives the PWF
+        boundary emulation (`_apply_range_alphas`). No-ops when both
+        already match, so the programmatic reflect in
+        `on_scalar_range_changed` can't trigger a redundant render."""
+        base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        hex_val = (hex_color or "").lstrip("#")
+        requested = "#" + hex_val[:6].upper() if len(hex_val) >= 6 else ""
+        requested_alpha = self._alpha_from_hex(hex_color)
+        current_alpha = self._pwf_edge_alpha(lut, base, which)
+        if (self._range_color_hex(lut, which).upper() == requested
+                and abs(current_alpha - requested_alpha) < 1 / 255):
+            return
+        use_prop = "UseBelowRangeColor" if which == "below" else "UseAboveRangeColor"
+        col_prop = "BelowRangeColor" if which == "below" else "AboveRangeColor"
+        try:
+            if not requested:
+                setattr(lut, use_prop, 0)
+            else:
+                rgb = ColorOpacityEditorConvertor.convert_hex_to_rgb(hex_val)
+                setattr(lut, col_prop,
+                        [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255])
+                setattr(lut, use_prop, 1)
+        except Exception:
+            return
+        self._apply_range_alphas(lut, base)
+        source_resolver.render_and_push_target(self.server.controller)
+
+    def _pwf_edge_alpha(self, lut, base, which):
+        """The opacity a cell OUTSIDE the range currently renders with
+        on `which` side. Bounds come from the LUT's core range (the
+        PWF extent is polluted by the NaN sentinels); the above-side
+        sample lands INSIDE the sentinel plateau, which is precisely
+        what above-range cells interpolate to. 1.0 default."""
+        pwf = self._resolve_target_pwf(base)
+        if pwf is None:
+            return 1.0
+        lo, hi = self._lut_core_range(lut)
+        if lo is None or hi is None or hi <= lo:
+            return 1.0
+        try:
+            span = hi - lo
+            obj = pwf.GetClientSideObject()
+            x = lo - span * 0.01 if which == "below" else hi + span * 0.01
+            return float(obj.GetValue(x))
+        except Exception:
+            return 1.0
+
+    @change("below_range_color")
+    def on_below_range_color_changed(self, *args, **kwargs) -> None:
+        if not self._should_apply_state_change():
+            return
+        self._apply_range_color("below", self.state.below_range_color)
+
+    @change("above_range_color")
+    def on_above_range_color_changed(self, *args, **kwargs) -> None:
+        if not self._should_apply_state_change():
+            return
+        self._apply_range_color("above", self.state.above_range_color)
+
+    @change("scalar_range")
+    def on_scalar_range_changed(self, *args, **kwargs) -> None:
+        """Mirror the recomputed data range into the Min/Max inputs and
+        reflect the LUT's current log state in the switch. Fires whenever
+        `update_scalar_range` recomputes the range (property activation /
+        target-view or realization switch). On a PINNED LUT the inputs
+        mirror the pinned range read off the LUT's actual control points
+        — not the recomputed data range, which the LUT deliberately no
+        longer follows."""
+        rng = self.state.scalar_range or [0.0, 1.0]
+        lo = rng[0] if rng else 0.0
+        hi = rng[1] if len(rng) > 1 else 1.0
+        _base, lut = self._resolve_active_lut()
+        if lut is not None and leaf_rep.range_is_pinned(lut):
+            try:
+                pts = list(lut.RGBPoints or [])
+                if len(pts) >= 4:
+                    lo, hi = float(pts[0]), float(pts[-4])
+            except Exception:
+                pass
+        self._sync_range_fields(lo, hi)
+        if lut is not None:
+            self.state.color_use_log = bool(int(getattr(lut, "UseLogScale", 0)))
+            # Mirror the preset's actual first / last stop colours FIRST
+            # so the collapsed swatches (and the alpha reflect below)
+            # show the real clamp colour by default.
+            try:
+                pts = list(lut.RGBPoints or [])
+                if len(pts) >= 8:
+                    self.state.below_range_auto_color = "#%02X%02X%02X" % tuple(
+                        min(255, max(0, round(float(c) * 255)))
+                        for c in pts[1:4]
+                    )
+                    self.state.above_range_auto_color = "#%02X%02X%02X" % tuple(
+                        min(255, max(0, round(float(c) * 255)))
+                        for c in pts[-3:]
+                    )
+            except Exception:
+                pass
+            # Reflect the LUT's below/above-range colour AND the PWF's
+            # edge opacity ('' = full clamp default). `_apply_range_color`
+            # no-ops on an identical value, so this reflect can't
+            # trigger a redundant render.
+            for _side, _var, _auto_var in (
+                ("below", "below_range_color", "below_range_auto_color"),
+                ("above", "above_range_color", "above_range_auto_color"),
+            ):
+                rgb_hex = self._range_color_hex(lut, _side)
+                a = self._pwf_edge_alpha(lut, _base, _side)
+                if a < 0.999:
+                    rgb_part = (rgb_hex
+                                or getattr(self.state, _auto_var, "")
+                                or "#808080")
+                    rgb_hex = rgb_part + "%02X" % max(
+                        0, min(255, round(a * 255)))
+                setattr(self.state, _var, rgb_hex)
+
+    @change("color_use_log")
+    def on_color_use_log_changed(self, *args, **kwargs) -> None:
+        """Toggle logarithmic colour mapping on the active LUT. No-ops when
+        the LUT already matches the request, so the programmatic reflect
+        from `on_scalar_range_changed` doesn't re-remap the control points.
+        Enabling log clamps the lower bound strictly positive."""
+        if not self._should_apply_state_change():
+            return
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        desired = 1 if self.state.color_use_log else 0
+        if int(getattr(lut, "UseLogScale", 0)) == desired:
+            return
+        if desired:
+            try:
+                lo = self._parse_field(self.state.color_range_min)
+                hi = self._parse_field(self.state.color_range_max)
+            except (TypeError, ValueError):
+                rng = self.state.scalar_range or [0.0, 1.0]
+                lo, hi = float(rng[0]), float(rng[1])
+            if lo <= 0:
+                lo = self._positive_floor(hi)
+                try:
+                    lut.RescaleTransferFunction(lo, hi)
+                except Exception:
+                    pass
+                self.state.scalar_range = [lo, hi]
+                self._sync_range_fields(lo, hi)
+            lut.UseLogScale = 1
+            try:
+                lut.MapControlPointsToLogSpace()
+            except Exception:
+                pass
+        else:
+            try:
+                lut.MapControlPointsToLinearSpace()
+            except Exception:
+                pass
+            lut.UseLogScale = 0
+        source_resolver.render_and_push_target(self.server.controller)
+
     @change("colors")
     def on_colors_changed(self, *args, **kwargs) -> None:
         if not self._should_apply_state_change():
@@ -237,17 +883,56 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     @change("preset_name")
     def on_preset_name_changed(self, *args, **kwargs) -> None:
-        """Wrap the parent's preset handler so the NaN alpha survives.
-        The parent rewrites nan_color in #RRGGBB and would silently
-        drop the alpha component."""
+        """Apply the chosen preset to the SCOPED LUT. ptc's parent
+        targets the global `GetColorTransferFunction(name)` singleton
+        and rescales through the active source's representation — both
+        of which the per-view model no longer renders, so a preset
+        change looked like a total no-op. The current scalar range
+        (pinned or data) is captured first and re-applied after
+        `ApplyPreset` (which would otherwise snap to the preset's own
+        stored range), the NaN ALPHA byte survives (a preset may carry
+        its own RGB NanColor; our alpha lives in state only), and the
+        COE widget state is rebuilt from the updated proxies."""
         if not self._should_apply_state_change():
             return
+        if not self.state.preset_name:
+            return
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
+            return
+        try:
+            pts = list(lut.RGBPoints or [])
+            lo, hi = ((float(pts[0]), float(pts[-4]))
+                      if len(pts) >= 4 else (None, None))
+        except Exception:
+            lo, hi = None, None
+        try:
+            lut.ApplyPreset(self.state.preset_name, True)
+        except Exception:
+            return
+        if lo is not None and hi is not None and hi > lo:
+            try:
+                lut.RescaleTransferFunction(lo, hi)
+            except Exception:
+                pass
         hex_val = (self.state.nan_color or "").lstrip("#")
         saved_alpha = hex_val[6:8] if len(hex_val) >= 8 else "33"
-        super().on_preset_name_changed(*args, **kwargs)
-        current = (self.state.nan_color or "#FF0000").lstrip("#")[:6]
-        self.state.nan_color = f"#{current}{saved_alpha}"
-        # Parent mutates RGBPoints but never Renders. Push to target.
+        try:
+            nc = list(getattr(lut, "NanColor", None) or [])
+            if len(nc) >= 3:
+                self.state.nan_color = "#%02X%02X%02X%s" % (
+                    min(255, max(0, round(float(nc[0]) * 255))),
+                    min(255, max(0, round(float(nc[1]) * 255))),
+                    min(255, max(0, round(float(nc[2]) * 255))),
+                    saved_alpha,
+                )
+        except Exception:
+            pass
+        try:
+            self.server.controller.update_color_editor(
+                self.state.active_color_array_name)
+        except Exception:
+            pass
         source_resolver.render_and_push_target(self.server.controller)
 
     @change("opacities")
@@ -259,14 +944,26 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
         all-opaque case so NaN opacity stays effective."""
         if not self._should_apply_state_change():
             return
-        [_, array_name] = self.get_representation_color_array_name()
-        if array_name:
-            lut = pvsimple.GetColorTransferFunction(array_name)
-            if lut:
-                opacities = self.state.opacities or []
-                has_transparency = any(op[1] < 0.999 for op in opacities)
-                lut.EnableOpacityMapping = 1 if has_transparency else 0
+        # SCOPED LUT — the global singleton isn't the one rendered.
+        _base, lut = self._resolve_active_lut()
+        if lut is not None:
+            opacities = self.state.opacities or []
+            has_transparency = any(op[1] < 0.999 for op in opacities)
+            # Never force EOM back OFF if the below/above range alphas
+            # need it (their emulation lives in the PWF boundary pts).
+            range_alpha = (
+                self._alpha_from_hex(self.state.below_range_color) < 0.999
+                or self._alpha_from_hex(self.state.above_range_color) < 0.999
+            )
+            lut.EnableOpacityMapping = (
+                1 if (has_transparency or range_alpha) else 0
+            )
         super().on_opacities_changed(*args, **kwargs)
+        # The parent rebuilt the PWF from state.opacities — the pure
+        # user curve. Re-append the below/above boundary steps + NaN
+        # sentinels on top of it.
+        if lut is not None and _base:
+            self._apply_range_alphas(lut, _base)
         # Parent's `update_opacity_transfer_function` Renders the FOCUSED
         # panel (active view in pvsimple). Re-Render + push on the drawer
         # target so pinned mode refreshes the right panel.
@@ -274,19 +971,23 @@ class _FesppColorOpacityEditor(ptc.ColorOpacityEditor):
 
     @change("nan_color")
     def on_nan_color_changed(self, *args, **kwargs) -> None:
-        """Apply NanColor + NanOpacity on the active LUT."""
+        """Apply NanColor + NanOpacity on the active LUT — the SCOPED
+        one: displays render with the per-(view, array) LUT, so writing
+        the global singleton (the old behaviour) silently did nothing
+        once a scoped LUT existed — i.e. always, under the per-view
+        model. Same resolution as every other knob of this editor."""
         if not self._should_apply_state_change():
             return
         nan_color = self.state.nan_color
         if not nan_color or len(nan_color) < 7:
             return
-        [_, array_name] = self.get_representation_color_array_name()
-        if not array_name:
-            return
-        lut = pvsimple.GetColorTransferFunction(array_name)
-        if not lut:
+        _base, lut = self._resolve_active_lut()
+        if lut is None:
             return
         _apply_nan_color_to_lut(lut)
+        # Under EnableOpacityMapping the NaN opacity is carried by the
+        # PWF's far sentinel, not by NanOpacity — refresh it.
+        self._apply_range_alphas(lut, _base)
         source_resolver.render_and_push_target(self.server.controller)
 
 

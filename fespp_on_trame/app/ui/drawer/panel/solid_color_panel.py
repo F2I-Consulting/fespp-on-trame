@@ -16,7 +16,9 @@ from trame.app import get_server
 from trame.widgets import vuetify3, html
 from paraview import simple as pvsimple
 
-from .color_editor import _FesppColorOpacityEditor, _apply_nan_color_to_lut
+from .color_editor import (
+    _FesppColorOpacityEditor, _apply_nan_color_to_lut, pwf_display_points,
+)
 from .categorical_color_editor import CategoricalColorEditor
 
 from fespp_on_trame.app.core.engine import source_resolver
@@ -222,8 +224,16 @@ class SolidColorPanel(html.Div):
                     with vuetify3.VExpansionPanelTitle(classes="pa-2"):
                         html.Span("Colors & Opacity", classes="text-body-2 font-weight-medium")
                         vuetify3.VSpacer()
+                        # Chip speaks the user's language, not ParaView's:
+                        # the active PRESET name for a continuous property
+                        # ("Fast", "Viridis", …), "Categories" for a
+                        # discrete/categorical one, "Solid" otherwise.
                         vuetify3.VChip(
-                            f"{{{{ ({_is_array_active}) ? 'LUT/PWF' : 'Solid' }}}}",
+                            f"{{{{ ({_is_array_active})"
+                            " ? ((active_property_kind === 'DiscreteProperty'"
+                            " || active_property_kind === 'CategoricalProperty')"
+                            " ? 'Categories' : (preset_name || 'Colormap'))"
+                            " : 'Solid' }}",
                             size="x-small",
                             variant="tonal",
                             color=(f"({_is_array_active}) ? 'purple' : 'blue'",),
@@ -260,47 +270,12 @@ class SolidColorPanel(html.Div):
                         ):
                             CategoricalColorEditor()
 
-                # Marker display options (orientation + size). Shown only in
-                # a marker context. GLOBAL — clearly flagged so the user
-                # knows it applies to EVERY marker in EVERY view.
-                with vuetify3.VExpansionPanel(
-                    elevation=0, value=1, v_if="sc_active_is_marker",
-                ):
-                    with vuetify3.VExpansionPanelTitle(classes="pa-2"):
-                        html.Span("Marker display", classes="text-body-2 font-weight-medium")
-                        vuetify3.VSpacer()
-                        vuetify3.VChip(
-                            "global",
-                            size="x-small",
-                            variant="tonal",
-                            color="deep-orange",
-                            classes="font-italic mr-2",
-                        )
-                    with vuetify3.VExpansionPanelText(classes="pa-2"):
-                        html.Div(
-                            "Applies to ALL markers (in every view).",
-                            classes="text-caption text-medium-emphasis mb-3",
-                        )
-                        vuetify3.VSwitch(
-                            v_model=("marker_orientation",),
-                            label="Orientation (disc oriented by dip/azimuth, otherwise sphere)",
-                            density="compact",
-                            hide_details=True,
-                            color="deep-orange",
-                            classes="mb-3",
-                        )
-                        vuetify3.VSlider(
-                            v_model=("marker_size",),
-                            label="Size",
-                            min=1, max=200, step=1,
-                            thumb_label=True,
-                            density="compact",
-                            hide_details=True,
-                            color="deep-orange",
-                            # Apply on RELEASE only (rebuilding markers re-runs
-                            # the collector over the whole selection).
-                            end=(controller.apply_marker_options,),
-                        )
+                # Marker display options (orientation + size) are GLOBAL —
+                # they apply to every marker in every view, which
+                # contradicted this panel's per-element contract even with
+                # the explicit "global" chip (user feedback). They now live
+                # in the view ⚙ dialog with the other global settings — see
+                # `ViewSettingsDialog._render_marker_display`.
 
         # --- Override array-name lookup to use state instead of active source ---
         # The state-driven name carries the property TITLE for MR
@@ -585,6 +560,13 @@ class SolidColorPanel(html.Div):
                         smin, 1.0, 0.5, 0.0,
                         smax, 1.0, 0.5, 0.0,
                     ]
+                else:
+                    # Strip the range-alpha emulation (boundary steps +
+                    # far NaN sentinels) from what the COE displays —
+                    # the sentinels sit 1000× the span beyond the core
+                    # and would crush the graph's x-axis.
+                    opacity_points = pwf_display_points(
+                        opacity_points, smin, smax)
                 coe.update_colors(lut.RGBPoints)
                 coe.update_opacities(opacity_points)
 
@@ -660,11 +642,40 @@ class SolidColorPanel(html.Div):
                 state.solid_color_by_marker = by_marker
                 _apply_solid(path, solid_color)   # fans onto every visible marker
                 return
-            # Non-marker rep.
+            # Non-marker rep. FAMILY invariant: a grid geometry and its
+            # BlockedWellbores share ONE solid colour — editing any member
+            # recolours them all (grid → fan out to the BWs; BW → resolve
+            # the family geometry and fan out from there).
+            family = [path]
+            try:
+                from fespp_on_trame.app.core import engine as _eng
+                from fespp_on_trame.app.core.engine import source_resolver
+                _tree = getattr(_eng, "_tree", None)
+                if _tree is not None:
+                    anchor = path
+                    n_id = _tree.find_node_id(path)
+                    if (_tree.find_type(n_id) or "") == "BlockedWellbore":
+                        cont = _tree.find_parent_node_id_with_type(
+                            n_id, "GridContainer")
+                        g_id = (_tree.find_representation_node(cont)
+                                if cont is not None else None)
+                        g_path = _tree.find_path(g_id) if g_id is not None else None
+                        if g_path:
+                            anchor = g_path
+                    bws = source_resolver.blocked_wellbore_rep_paths_for(
+                        _tree, anchor)
+                    if bws or anchor != path:
+                        family = [anchor] + [b for b in bws if b != anchor]
+                        if path not in family:
+                            family.append(path)
+            except Exception:
+                family = [path]
             colors = dict(state.solid_color_by_rep or {})
-            colors[path] = solid_color
+            for p in family:
+                colors[p] = solid_color
             state.solid_color_by_rep = colors
-            _apply_solid(path, solid_color)
+            for p in family:
+                _apply_solid(p, solid_color)
 
         @state.change("solid_color_by_rep", "ui_active_array_by_rep", "solid_color_by_marker")
         def _refresh_tree_chip_colors(solid_color_by_rep, ui_active_array_by_rep, **_):

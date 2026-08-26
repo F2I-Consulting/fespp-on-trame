@@ -8,7 +8,6 @@ import ptc
 
 from ..widget.time_control import FesppTimeControl
 from ..widget.realization_picker import PerViewRealizationPicker
-from ..widget.view_link_menu import ViewLinkMenu
 from ..widget.per_view_camera_toolbar import PerViewCameraToolbar
 
 
@@ -46,6 +45,19 @@ class FesppMultiView(ptc.MultiView):
         # before creating another one.
         self._stats_panel_id = None
         super().__init__(**kwargs)
+        # ptc's stock right-header component is an "add view" (+) VBtn
+        # (a flat white disc over the dark tab row). V1 ships WITHOUT
+        # user-driven view creation — multi-view isn't stable enough to
+        # expose — so re-register the template ptc points its
+        # rightHeaderActionsComponent at as EMPTY (the last layout
+        # registered under a name wins). The analytics panels (stats /
+        # distribution / compare) still create their tabs
+        # programmatically through add_view(); only the clickable
+        # RenderView entry point is gone. ptc's watermark keeps its
+        # "Create RenderView" button as sole recovery if the last
+        # panel is ever closed.
+        with DivLayout(self.server, "ptc-multiview-add") as add_actions:
+            add_actions.root.style = "height: 100%;"
         # Public state — tree views iterate this to render one eye per
         # render panel on each rep / data-array node. Diff panels are
         # excluded because their content is driven by the diff dialog,
@@ -315,9 +327,15 @@ class FesppMultiView(ptc.MultiView):
             # Active panel indicator — a 3px inset blue border around
             # the viewport, plus an "ACTIVE" pill in the top-right
             # (top-center is taken by the TimeControl; top-left by the
-            # camera chrome). Reactive on `fespp_active_panel_id`.
+            # camera chrome). Reactive on `fespp_active_panel_id`, and
+            # only shown when 2+ render panels exist — on the lone v1
+            # view a permanent ACTIVE badge is multi-view noise.
+            _is_active_multi = (
+                f"fespp_active_panel_id === '{panel_id}'"
+                " && (fespp_render_panels || []).length > 1"
+            )
             html.Div(
-                v_show=(f"fespp_active_panel_id === '{panel_id}'",),
+                v_show=(_is_active_multi,),
                 style=(
                     "position:absolute; inset:0;"
                     " box-shadow: inset 0 0 0 3px #1976d2;"
@@ -327,7 +345,7 @@ class FesppMultiView(ptc.MultiView):
             )
             html.Div(
                 "ACTIVE",
-                v_show=(f"fespp_active_panel_id === '{panel_id}'",),
+                v_show=(_is_active_multi,),
                 style=(
                     "position:absolute; top: 4px; right: 4px;"
                     " padding: 2px 8px;"
@@ -343,8 +361,22 @@ class FesppMultiView(ptc.MultiView):
             if kind == "diff":
                 self._render_diff_chrome(panel_id)
             else:
-                self._render_panel_time_control(panel_id, pv_view)
-                self._render_panel_realization_picker(panel_id)
+                # TimeControl + RealizationPicker SIDE BY SIDE in one
+                # top-centered flex row — each slot keeps its own v_if
+                # and collapses independently, so a TS-only or MR-only
+                # panel centers the remaining widget alone.
+                with html.Div(
+                    style=(
+                        "position:absolute; left:50%;"
+                        " transform:translateX(-50%); top: 4px;"
+                        " z-index: 2; display:flex;"
+                        " align-items:flex-start; gap: 8px;"
+                        " max-width: 95%;"
+                        " pointer-events: none;"
+                    ),
+                ):
+                    self._render_panel_time_control(panel_id, pv_view)
+                    self._render_panel_realization_picker(panel_id)
                 # Camera chrome (magnet + reset/orient/2D-3D) on the
                 # top-left of the 3D area. Render panels only — diff
                 # panels have their own action buttons.
@@ -1233,31 +1265,19 @@ class FesppMultiView(ptc.MultiView):
         The widget binds to `ui_panel_active_mr_specs_by_id[panel_id]`,
         recomputed server-side on every relevant state change.
 
-        Vertical position is reactive: when the TC widget is visible
-        (TS active AND user toggle on), MR sits at top:52px just below
-        it. Otherwise MR climbs to top:4px so the panel never wastes
-        the top slot. The condition mirrors the TC's own v_if in
-        `_render_panel_time_control`."""
+        Sits BESIDE the TimeControl in the shared top-center flex row
+        (see add_view) — when the TC's slot collapses, flex centers
+        the picker alone, so the old reactive top-offset logic is
+        gone."""
         mr_visible_var = f"show_panel_mr_{panel_id}"
-        tc_visible_var = f"show_panel_tc_{panel_id}"
         self.server.state.setdefault(mr_visible_var, True)
         per_panel_show = (
             f"!!(panel_has_mr_by_id && panel_has_mr_by_id['{panel_id}'])"
             f" && {mr_visible_var}"
         )
-        tc_actually_shown = (
-            f"!!(panel_has_ts_by_id && panel_has_ts_by_id['{panel_id}'])"
-            f" && {tc_visible_var}"
-        )
         with html.Div(
             v_if=(per_panel_show, False),
-            style=(
-                f"`position: absolute; left: 50%;"
-                f" transform: translateX(-50%);"
-                f" top: ${{({tc_actually_shown}) ? 52 : 4}}px;"
-                f" z-index: 2;"
-                f" pointer-events: none;`"
-            ,),
+            style="pointer-events: none;",
         ):
             PerViewRealizationPicker(panel_id).render()
 
@@ -1296,10 +1316,10 @@ class FesppMultiView(ptc.MultiView):
         )
         with html.Div(
             v_if=(per_panel_show, False),
+            # Flex child of the shared top-center row (see add_view) —
+            # no positioning of its own.
             style=(
-                "position:absolute; left:50%; transform:translateX(-50%);"
-                " top: 4px; z-index: 2;"
-                " min-width: 360px; max-width: 90%;"
+                "min-width: 360px; max-width: 60vw;"
                 " pointer-events: auto;"
             ),
         ):
@@ -1313,10 +1333,11 @@ class FesppMultiView(ptc.MultiView):
             )
 
     def _render_panel_camera_chrome(self, panel_id):
-        """Top-left vertical chrome on a render panel: magnet (link
-        cameras to other views) above the per-view camera toolbar
-        (reset / +X / +Y / +Z / 2D-3D). Actions iterate over the
-        panel + its `state.view_links` set."""
+        """Top-left vertical chrome on a render panel: the per-view
+        camera toolbar (reset / +X / +Y / +Z / 2D-3D). The camera-link
+        magnet (`ViewLinkMenu`) is NOT mounted — multi-view isn't
+        shipped in v1, and a "link cameras to other views" button on
+        the only view read as unfinished UI."""
         with html.Div(
             classes="d-flex flex-column align-center",
             style=(
@@ -1327,7 +1348,6 @@ class FesppMultiView(ptc.MultiView):
                 " padding: 2px;"
             ),
         ):
-            ViewLinkMenu(panel_id).render()
             PerViewCameraToolbar(panel_id).render()
 
     def _render_panel_actions(self, panel_id):
@@ -1344,6 +1364,10 @@ class FesppMultiView(ptc.MultiView):
         # standard CSS var). `right` is reactive: when the top toolbar
         # is hidden, the floating show-toolbar chevron lives at the
         # viewport top-right, so the chrome slides left to avoid overlap.
+        # The far right of the tab row is dockview's right-header-actions
+        # slot; ptc's "+" add-view button lived there and covered this
+        # chrome at right:8px, until __init__ re-registered that
+        # template empty (no user-driven view creation in V1).
         with html.Div(
             classes="d-flex align-center",
             style=(

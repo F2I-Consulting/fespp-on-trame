@@ -158,28 +158,65 @@ def resolve_chain_kind(tree, rep_path, array_name, source_proxy, assoc):
     return (kind, uniques, labels)
 
 
-def _kind_from_tree(tree, rep_path, array_name):
-    """Walk the rep's subtree for a property node whose title (or
-    propTitle for MR) matches `array_name`, return its `propKind`.
+# RESQML integer properties cannot carry NaN, so writers (Petrel at
+# least) declare `<NullValue>` = INT32_MAX (or the int64 / MIN variants)
+# for inactive cells and FESPP delivers those cells verbatim in the VTK
+# array — `GetRange()` on FIPBLOCK reads (1, 2147483647). Only the
+# double-array path gets the C++ integer-null → NaN conversion.
+INT_NULL_SENTINELS = frozenset({
+    float(2 ** 31 - 1), float(-(2 ** 31)),
+    float(2 ** 63 - 1), float(-(2 ** 63)),
+})
 
-    Mirrors `threshold_dispatch._find_property_path_by_title` but
-    inlined here to keep the dependency graph tidy (extract_block
-    shouldn't import from engine.threshold_dispatch)."""
-    if tree is None or not rep_path or not array_name:
-        return "Continuous"
+
+def is_null_sentinel(value):
+    """True when `value` is a RESQML integer NullValue sentinel (an
+    inactive cell, never a real category)."""
     try:
-        rep_id = tree.find_node_id(rep_path)
-    except Exception:
-        return "Continuous"
-    if rep_id is None:
-        return "Continuous"
-    # Strip the MR realization suffix `_real_<idx>` (if any) so we
-    # match the MR property node by its propTitle. Non-MR arrays
-    # don't have the suffix so this is a no-op for them.
-    bare = re.sub(r"_real_\d+$", "", array_name)
-    sanitized = make_valid_vtk_name(bare)
+        return float(value) in INT_NULL_SENTINELS
+    except (TypeError, ValueError):
+        return False
+
+
+def chain_domain(kind, unique_values, labels, fallback_range):
+    """Slider domain + cleaned uniques/labels for a fresh chain entry.
+
+    The NullValue sentinel (see `INT_NULL_SENTINELS`) lands in the raw
+    array range, stretching a categorical threshold slider over ±2^31:
+    the real categories collapse into the first pixels of the track and
+    their tick labels pile up unreadably. Discrete / Categorical: drop
+    the sentinels from the unique scan and the label map; a Categorical
+    entry with LUT labels additionally spans ALL annotated keys, so
+    every lookup category gets a tick whether present in the data or
+    not. Continuous passes through untouched (float nulls are NaN and
+    never reach `GetRange()`).
+
+    Returns `(range, unique_values, labels)`."""
+    if kind == "Continuous":
+        return fallback_range, list(unique_values or []), dict(labels or {})
+    cleaned = [v for v in (unique_values or []) if not is_null_sentinel(v)]
+    kept_labels = {
+        k: v for k, v in (labels or {}).items() if not is_null_sentinel(k)
+    }
+    domain_values = set(cleaned)
+    if kind == "Categorical" and kept_labels:
+        domain_values |= set(kept_labels)
+    if not domain_values:
+        return fallback_range, cleaned, kept_labels
+    lo = float(min(domain_values))
+    hi = float(max(domain_values))
+    if hi <= lo:
+        # Degenerate single-category domain — VRangeSlider needs a
+        # non-zero span to place its thumbs.
+        hi = lo + 1.0
+    return (lo, hi), cleaned, kept_labels
+
+
+def _kind_in_subtree(tree, root_id, sanitized):
+    """`propKind` of the property whose sanitized title is `sanitized`
+    anywhere under `root_id`, or None when there is no match."""
     from fespp_on_trame.app.core import element_type
-    for nid in tree.find_all_descendant_ids(rep_id):
+    for nid in tree.find_all_descendant_ids(root_id):
         try:
             kind = tree.find_type(nid) or ""
         except Exception:
@@ -198,6 +235,50 @@ def _kind_from_tree(tree, rep_path, array_name):
             pk = tree.find_attribute_value(nid, "propKind") or ""
             return _normalise_kind(pk)
         return _normalise_kind(kind)
+    return None
+
+
+def _kind_from_tree(tree, rep_path, array_name):
+    """Walk the rep's subtree for a property node whose title (or
+    propTitle for MR) matches `array_name`, return its `propKind`.
+
+    SolidColor variant: a grid's properties are SIBLINGS of the geometry
+    rep — both sit under the GridContainer's PropertiesFolder — so the
+    rep's own subtree is EMPTY and the walk finds nothing. When that
+    happens, retry from the enclosing GridContainer. A non-grid rep has
+    no GridContainer ancestor, so its behaviour is unchanged; and the
+    widening only fires when the rep's own subtree already missed, so no
+    currently-resolving lookup can change. Without this the silent
+    "Continuous" fallback below made every grid Discrete/Categorical
+    property render a continuous threshold slider.
+
+    Mirrors `threshold_dispatch._find_property_path_by_title` but
+    inlined here to keep the dependency graph tidy (extract_block
+    shouldn't import from engine.threshold_dispatch)."""
+    if tree is None or not rep_path or not array_name:
+        return "Continuous"
+    try:
+        rep_id = tree.find_node_id(rep_path)
+    except Exception:
+        return "Continuous"
+    if rep_id is None:
+        return "Continuous"
+    # Strip the MR realization suffix `_real_<idx>` (if any) so we
+    # match the MR property node by its propTitle. Non-MR arrays
+    # don't have the suffix so this is a no-op for them.
+    bare = re.sub(r"_real_\d+$", "", array_name)
+    sanitized = make_valid_vtk_name(bare)
+    kind = _kind_in_subtree(tree, rep_id, sanitized)
+    if kind is not None:
+        return kind
+    try:
+        container = tree.find_parent_node_id_with_type(rep_id, "GridContainer")
+    except Exception:
+        container = None
+    if container is not None:
+        kind = _kind_in_subtree(tree, container, sanitized)
+        if kind is not None:
+            return kind
     return "Continuous"
 
 
@@ -395,7 +476,8 @@ class ExtractBlockRepresentation:
         if view is not None:
             rep = pvsimple.GetRepresentation(proxy=src, view=view)
             if rep is not None:
-                rep.Representation = state.representation_active or "Surface"
+                from fespp_on_trame.app.core.sources.representation import rep_type_for
+                rep.Representation = rep_type_for(state, self._rep_path)
                 zs = self._current_z_scale()
                 rep.Scale = [1.0, 1.0, zs]
                 _apply_default_tint(rep, (state.solid_color_by_rep or {}).get(self._rep_path))

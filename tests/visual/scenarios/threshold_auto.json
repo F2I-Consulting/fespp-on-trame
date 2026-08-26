@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 10 },
+    { "op": "dump", "vars": ["ui_active_node_reservoir_array_name", "ui_active_node_reservoir"] },
+    { "op": "check", "title": "100x10 grid 2d for continuous color map", "settle": 8 },
+    { "op": "dump", "vars": ["ui_active_node_reservoir_array_name", "active_color_array_name", "ui_active_node_reservoir", "ui_active_node_surface"] },
+    { "op": "set", "var": "ui_threshold_pending_action", "value": { "action": "add", "parent": null }, "settle": 5 },
+    { "op": "dump", "vars": ["ui_threshold_chain"] },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "dump", "vars": ["ui_active_node_reservoir_array_name", "ui_active_node_reservoir", "ui_active_node_well"] },
+    { "op": "set", "var": "ui_threshold_pending_action", "value": { "action": "add", "parent": null }, "settle": 5 },
+    { "op": "dump", "vars": ["ui_threshold_chain"] }
+  ]
+}

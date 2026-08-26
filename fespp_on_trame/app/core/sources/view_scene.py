@@ -11,6 +11,8 @@ Every render panel gets its own `ViewScene` that owns:
 """
 from typing import Optional
 
+from fespp_on_trame.app.utils.naming import strip_realization_suffix
+
 
 class ViewScene:
     """Per-render-view scene root — tracks which reps are loaded in this view
@@ -188,7 +190,17 @@ class ViewScene:
         creation so the new view starts with PV's auto-assigned
         gradient (RGBPoints, NaN colour, opacity mapping flag, …)
         instead of an empty LUT. Subsequent edits stay scoped to
-        this scene."""
+        this scene.
+
+        ONE colormap per property, shared by its realizations: the MR
+        `_real_<idx>` suffix is stripped from the KEY, so
+        'SOIL_real_23' and 'SOIL_real_24' resolve to the same scene
+        LUT (and PWF below). Only the key is normalised — displays
+        keep their suffixed `ColorArrayName`; a LUT proxy is bound
+        per display and carries no array-name linkage of its own, and
+        the unpinned range still rescales to each realization's data
+        on apply."""
+        base_array_name = strip_realization_suffix(base_array_name)
         if not base_array_name:
             return None
         cached = self._luts.get(base_array_name)
@@ -223,7 +235,9 @@ class ViewScene:
 
     def get_or_create_pwf(self, base_array_name: str):
         """Per-scene opacity transfer function. Mirrors
-        `get_or_create_lut` for the opacity side."""
+        `get_or_create_lut` for the opacity side (same realization-
+        suffix key normalisation)."""
+        base_array_name = strip_realization_suffix(base_array_name)
         if not base_array_name:
             return None
         cached = self._pwfs.get(base_array_name)
@@ -328,10 +342,13 @@ class ViewScene:
 
     def get_lut(self, base_array_name: str):
         """Cached LUT for this (scene, array). None when none exists
-        yet — does NOT create one."""
+        yet — does NOT create one. Same realization-suffix key
+        normalisation as `get_or_create_lut`."""
+        base_array_name = strip_realization_suffix(base_array_name)
         return self._luts.get(base_array_name) if base_array_name else None
 
     def get_pwf(self, base_array_name: str):
+        base_array_name = strip_realization_suffix(base_array_name)
         return self._pwfs.get(base_array_name) if base_array_name else None
 
     # ------------------------------------------------------------------

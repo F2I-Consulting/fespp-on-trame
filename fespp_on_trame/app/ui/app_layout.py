@@ -28,6 +28,10 @@ from fespp_on_trame.app.ui.shared.styles import inject_global_styles
 from fespp_on_trame.app.ui.shared.scripts import inject_client_scripts
 from fespp_on_trame.app.ui.shared.widget.hierarchy_snackbar import HierarchySnackbar
 from fespp_on_trame.app.ui.shared.widget.empty_color_snackbar import EmptyColorSnackbar
+from fespp_on_trame.app.ui.shared.widget.threshold_unselect_dialog import (
+    ThresholdUnselectDialog,
+)
+from fespp_on_trame.app.ui.shared.widget.load_error_snackbar import LoadErrorSnackbar
 
 
 server = get_server()
@@ -108,8 +112,12 @@ def ui(server: Server, **kwargs) -> None:
                     icon="mdi-chevron-double-down",
                     v_bind="props",
                     v_if="!toolbar_visible",
-                    variant="tonal",
-                    color="blue-grey-darken-2",
+                    # ELEVATED (solid surface): since the content-area
+                    # ToolsBand was removed, a collapsed AppBar puts
+                    # this button over the DARK dockview tab row, where
+                    # a translucent `tonal` variant blends in.
+                    variant="elevated",
+                    color="white",
                     size="small",
                     style=(
                         "position: fixed; top: 8px; right: 8px;"
@@ -127,5 +135,7 @@ def ui(server: Server, **kwargs) -> None:
         inject_client_scripts()
         HierarchySnackbar().render()
         EmptyColorSnackbar().render()
+        LoadErrorSnackbar().render()
+        ThresholdUnselectDialog().render()
 
         return layout

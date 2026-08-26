@@ -250,10 +250,11 @@ class Drawer:
                 classes="pa-2",
                 style="flex: 1 1 0; min-height: 0; overflow-y: auto;",
             ):
-                # Target view picker — sits at the top of the card
-                # body so it has full drawer width to render its
-                # label / VSelect cleanly.
-                self._render_target_view_strip()
+                # Target-view strip NOT mounted: multi-view isn't
+                # shipped in v1, and a "Target view:" picker over the
+                # only view read as unfinished UI. Re-mount
+                # `_render_target_view_strip()` here when multi-view
+                # returns (V2).
                 # Reservoir attributes — slicers + representation +
                 # solid color. v_if check: any active node.
                 with html.Div(v_show="tab === 'reservoir'"):

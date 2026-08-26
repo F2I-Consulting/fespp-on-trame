@@ -33,6 +33,22 @@ def init_state_defaults(state):
     # than the global active_representation_path, which any tab (surface /
     # well) or an eye-click channel activation can overwrite.
     state.setdefault("ui_active_node_reservoir_rep_path", "")
+    state.setdefault("ui_active_node_reservoir_array_name", "")
+    # Threshold-guard confirm dialog.
+    state.setdefault("thr_unselect_dialog", None)
+    state.setdefault("thr_unselect_dialog_visible", False)
+    # Per-tab scoped active-property sets: the shared
+    # active_color_array_name / active_property_kind /
+    # active_representation_path / active_color_array_path /
+    # active_representation_has_properties are PROJECTED from the visible
+    # tab's set by activator.project_shared_from_tab().
+    for _tab in ("reservoir", "surface", "well"):
+        state.setdefault(f"ui_active_node_{_tab}_array_name", "")
+        state.setdefault(f"ui_active_node_{_tab}_rep_path", "")
+        state.setdefault(f"ui_active_node_{_tab}_property_kind", "")
+        state.setdefault(f"ui_active_node_{_tab}_array_path", "")
+        state.setdefault(f"ui_active_node_{_tab}_rep_has_props", False)
+    state.setdefault("ui_active_node_reservoir_pending", False)
     # Underlying property kind of the active node — drives the editor switch
     # in solid_color_panel (continuous LUT vs categorical list).
     state.setdefault("active_property_kind", "")
@@ -52,6 +68,16 @@ def init_state_defaults(state):
     # is the source of truth, driven by tree eye clicks that carry an
     # explicit panel_id.
     state.setdefault("ui_hidden_rep_paths_by_view", {})
+    # Per-rep display type ("Surface" / "Wireframe" / …) — the
+    # Attributes panel toggle writes the ACTIVE rep's entry only
+    # (keyed by MARKER path when a single marker is active).
+    state.setdefault("ui_rep_type_by_rep", {})
+    # Nodes whose rendering failed (unreadable dataset) — ⚠ badge in
+    # the tree; filled by `vtk_log._flag_invalid_nodes`. The errors map
+    # keeps FESAPI's own message per node (str(node_id) keys) for the
+    # badge tooltip + snackbar.
+    state.setdefault("ui_invalid_node_ids", [])
+    state.setdefault("ui_invalid_node_errors", {})
 
     # --- Coloring tracking -----------------------------------------
     # ui_loaded_array_paths: data-array tree nodes whose data is
@@ -171,6 +197,7 @@ def init_state_defaults(state):
 
     # --- Upload progress -------------------------------------------
     state.setdefault("upload_uploading", False)
+    state.setdefault("upload_parsing", False)
     state.setdefault("upload_progress", 0)
     state.setdefault("upload_file_count", 0)
     state.setdefault("upload_file_names", [])
@@ -227,14 +254,15 @@ def init_state_defaults(state):
     state.setdefault("ui_slices_k_active", False)
     state.setdefault("ui_slices_k_list", [0])
     state.setdefault("ui_slices_range_active", False)
-    state.setdefault("ui_slices_range_i", [0, 0])
-    state.setdefault("ui_slices_range_j", [0, 0])
-    state.setdefault("ui_slices_range_k", [0, 0])
-    state.setdefault("ui_slices_range_mode", "range")
+    state.setdefault("ui_slices_range_mode", "full")
     state.setdefault("ui_slices_i_visible_list", [True])
     state.setdefault("ui_slices_j_visible_list", [True])
     state.setdefault("ui_slices_k_visible_list", [True])
-    state.setdefault("ui_slices_volume_visible", True)
+    # Range-mode volume crops: per-volume [[i0,i1],[j0,j1],[k0,k1]]
+    # ranges + per-volume eye. The active grid seeds one full-extent
+    # volume; the UI's "+" grows the lists.
+    state.setdefault("ui_volumes_list", [])
+    state.setdefault("ui_volumes_visible_list", [])
     state.setdefault("ui_threshold_chain", [])
     state.setdefault("ui_threshold_arrays_available", [])
     state.setdefault("ui_threshold_pending_action", None)

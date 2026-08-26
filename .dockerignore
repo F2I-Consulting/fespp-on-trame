@@ -25,3 +25,22 @@
 **/values.dev.yaml
 LICENSE
 README.md
+# Private / sensitive datasets must NOT ship in the published image.
+# Dockerfile does `COPY ./data /deploy/data`; this keeps data/empty.epc and
+# drops everything under data/private/ (drogon, blockWellbore test EPCs, ...).
+data/private
+data/private/**
+# Huge dev-only trees — never part of the build context (keeps the context
+# small so `docker build` / `podman build` don't upload gigabytes).
+_local
+_local/**
+doc
+doc/**
+**/*.tar
+# V2 is confidential WIP — it must NEVER ship in the V1 image. Untracked
+# fespp_on_trame/v2 leftovers on a dev checkout must not enter the context.
+fespp_on_trame/v2
+fespp_on_trame/v2/**
+# Local deploy kit (image tar + scripts) — not part of the image.
+deploy
+deploy/**

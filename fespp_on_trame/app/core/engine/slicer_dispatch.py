@@ -8,15 +8,15 @@ Handlers covered:
   - `set_slider_value` — write the first slice position for an axis
     into the corresponding `ui_slices_{i,j,k}_list`.
   - `update_slice_positions` — slicer position lists per axis.
-  - `update_slice_range` — slicer range bounds per axis.
+  - `update_volumes` — range-mode volume crops (count + per-volume
+    IJK ranges + per-volume eye).
   - `update_slice_mode` — slice vs range mode toggle.
-  - `update_volume_visible` — show/hide the volume crop.
   - `update_slice_visibility` — per-axis per-slicer visibility.
   - `apply_z_scale` — fan out the global Z exaggeration to every
     rep + IjkGrid slicer / volume.
-  - `propagate_representation` — push the active representation
-    type (Surface / Wireframe / Points / …) onto every proxy in
-    the scene."""
+  - `apply_representation_type` — push a representation
+    type (Surface / Wireframe / Points / …) onto ONE rep's
+    displays in the drawer-target view (strictly per-rep)."""
 from paraview import simple as pvsimple
 
 from fespp_on_trame.app.core.engine import view_routing
@@ -173,12 +173,22 @@ def update_slice_positions(state, controller, source_registry, view,
     _render_and_push(state, controller, view)
 
 
-def update_slice_range(state, controller, source_registry, view,
-                      range_i, range_j, range_k):
+def update_volumes(state, controller, source_registry, view,
+                   volumes, visible_list):
+    """Range-mode volume crops: sync count + ranges + eyes on the
+    active grid. A newly-added volume crop would inherit the IjkGrid's
+    stale `_title` — re-fire the active-array ColorBy on add so it
+    paints the current property (same rationale as new slicers)."""
     active = _active_ijk_grid(state, source_registry)
+    added = False
     if active is not None:
-        active.apply_range(range_i, range_j, range_k)
+        before = len(active._src_volumes)
+        active.apply_volumes(volumes or [], visible_list or [])
+        added = len(active._src_volumes) > before
         active.show()
+    if added:
+        _recolor_active_grid(state, source_registry, view)
+    _reassert_scalar_bars(state, source_registry, view)
     _render_and_push(state, controller, view)
 
 
@@ -189,17 +199,39 @@ def update_slice_mode(state, controller, source_registry, view, mode):
     slice)."""
     active = _active_ijk_grid(state, source_registry)
     if active is not None:
-        active.apply_mode(mode or 'slice')
+        active.apply_mode(mode or 'full')
         active.show()
+        # The flip swaps which sources render (rep_data / slicers /
+        # volume). Re-fire the active-array ColorBy on the NEW set —
+        # a freshly-shown source may never have been coloured (grid
+        # loaded in full mode, property activated there, then flipped
+        # to slice) — and re-assert the colour bar that the orphan
+        # sweep reaps when every bound display is hidden mid-flip.
+        _recolor_active_grid(state, source_registry, view)
+        try:
+            from fespp_on_trame.app.core.engine import source_resolver
+            source_resolver.reassert_active_scalar_bars(
+                state, source_registry,
+                view=_target_pv_view(state, view),
+            )
+        except Exception:
+            pass
     _render_and_push(state, controller, view)
 
 
-def update_volume_visible(state, controller, source_registry, view, visible):
-    active = _active_ijk_grid(state, source_registry)
-    if active is not None:
-        active.apply_volume_visible(visible)
-        active.show()
-    _render_and_push(state, controller, view)
+def _reassert_scalar_bars(state, source_registry, fallback_view):
+    """Bring the active array's colour bar back after an eye cycle: the
+    orphan sweep reaps the bar while every bound display is hidden
+    (all volume / slicer eyes closed), and nothing re-shows it when an
+    eye reopens ([visual-test ijk_modes] diagnosis: range_crop had the
+    bar, range_back after the eye off/on cycle did not)."""
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver
+        source_resolver.reassert_active_scalar_bars(
+            state, source_registry, view=_target_pv_view(state, fallback_view),
+        )
+    except Exception:
+        pass
 
 
 def update_slice_visibility(state, controller, source_registry, view,
@@ -212,6 +244,7 @@ def update_slice_visibility(state, controller, source_registry, view,
             vis_k or [],
         )
         active.show()
+    _reassert_scalar_bars(state, source_registry, view)
     _render_and_push(state, controller, view)
 
 
@@ -308,8 +341,7 @@ def apply_z_scale(state, controller, source_registry, view, zscale):
     ijk_srcs = []
     for ijk in source_registry.ijk_grids():
         ijk_srcs.extend(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            ijk_srcs.append(ijk._src_slicer_volume)
+        ijk_srcs.extend(ijk._src_volumes)
     for src in ijk_srcs:
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
         if rep is not None:
@@ -351,8 +383,7 @@ def _collect_scene_proxies(scene):
                 out.append(ijk.source)
             if getattr(ijk, "_src_extract_init", None) is not None:
                 out.append(ijk._src_extract_init)
-            if getattr(ijk, "_src_slicer_volume", None) is not None:
-                out.append(ijk._src_slicer_volume)
+            out.extend(getattr(ijk, "_src_volumes", []) or [])
             try:
                 out.extend(ijk._all_slice_sources())
             except Exception:
@@ -381,8 +412,7 @@ def _collect_legacy_proxies(source_registry):
         for ijk in source_registry.ijk_grids():
             if ijk._src_extract_init is not None:
                 out.append(ijk._src_extract_init)
-            if ijk._src_slicer_volume is not None:
-                out.append(ijk._src_slicer_volume)
+            out.extend(ijk._src_volumes)
             out.extend(ijk._all_slice_sources())
             out.extend(ijk.all_threshold_sources())
     except Exception:
@@ -390,55 +420,52 @@ def _collect_legacy_proxies(source_registry):
     return out
 
 
-def propagate_representation(source_registry, scene_registry, controller, representation_active):
-    """Push the active representation type onto every visible proxy.
+def apply_representation_type(state, controller, source_registry, rep_path, rep_type,
+                              marker_path=None):
+    """Apply a display type to ONE rep — its extractor, chain, slice /
+    clip and per-view IjkGrid displays — in the drawer-target view.
 
-    ptc.RepresentBy only sets `Representation` on a single display
-    (active source × active view), but with per-(rep, view) pipelines
-    the visible displays live on the scene's per-view extractor /
-    chain / slice / clip / per-view IjkGrid proxies, not on the shared
-    sources — so the ptc write would land on hidden displays. Fan the
-    new value out across every scene's visible proxies in that scene's
-    `pv_view`, plus the shared fallbacks.
+    The Attributes panel is strictly per-rep: the previous
+    implementation broadcast `Representation` across every proxy of
+    every scene, so toggling Wireframe on one grid restyled the whole
+    scene. `displays_for_rep_path` resolves exactly the displays the
+    rep renders through (visible or not), same targeting as ColorBy.
 
-    `controller` re-pushes a fresh vtk.js frame to every panel AFTER
-    the per-view writes + Render: ptc.RepresentBy's own
-    `on_data_change` fires *before* this handler, so the client would
-    otherwise keep the old representation. Re-pushing avoids a camera
-    reset."""
-    if not representation_active:
+    `controller` re-pushes a fresh vtk.js frame AFTER the writes +
+    Render: ptc.RepresentBy's own `on_data_change` fires *before*
+    this handler, so the client would otherwise keep the old
+    representation. Re-pushing avoids a camera reset."""
+    if not rep_path or not rep_type:
         return
-    if scene_registry is None or not hasattr(scene_registry, "all_scenes"):
+    from fespp_on_trame.app.core.engine import source_resolver
+    view, _panel = source_resolver.target_view_and_panel()
+    if marker_path:
+        # Single-marker scope: touch ONLY that marker's glyph extractor
+        # (a marker frame shares one rep — writing the rep's displays
+        # would restyle every sibling marker).
+        try:
+            ris = source_resolver._scene_rep_for_view(rep_path, view)
+            ext = (getattr(ris, "_marker_extractors", {}) or {}).get(marker_path)
+            if ext is not None:
+                d = pvsimple.GetDisplayProperties(ext, view=view)
+                if d is not None:
+                    d.Representation = rep_type
+        except Exception:
+            pass
+    else:
+        for disp in source_resolver.displays_for_rep_path(
+                source_registry, rep_path, view=view):
+            try:
+                disp.Representation = rep_type
+            except Exception:
+                pass
+    if view is None:
         view = pvsimple.GetActiveView()
-        if view is None:
-            return
-        for p in _collect_legacy_proxies(source_registry):
-            try:
-                disp = pvsimple.GetRepresentation(proxy=p, view=view)
-                if disp is not None:
-                    disp.Representation = representation_active
-            except Exception:
-                pass
-        pvsimple.Render(view=view)
-        _push_all_panels(controller)
-        return
-    # Per-scene fan-out: each scene gets its per-view proxies + the
-    # shared ones. The shared proxies stay hidden in non-fallback
-    # scenes, but a hidden display still accepts the property write at
-    # zero render cost.
-    legacy = _collect_legacy_proxies(source_registry)
-    for scene in scene_registry.all_scenes():
-        view = scene.pv_view
-        if view is None:
-            continue
-        for p in _collect_scene_proxies(scene) + legacy:
-            try:
-                disp = pvsimple.GetRepresentation(proxy=p, view=view)
-                if disp is not None:
-                    disp.Representation = representation_active
-            except Exception:
-                pass
-        pvsimple.Render(view=view)
+    if view is not None:
+        try:
+            pvsimple.Render(view=view)
+        except Exception:
+            pass
     _push_all_panels(controller)
 
 

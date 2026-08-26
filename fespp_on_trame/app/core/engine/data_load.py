@@ -33,6 +33,7 @@ from paraview import simple as pvsimple
 
 from fespp_on_trame.app.utils.color_palette import color_for_index
 from fespp_on_trame.app.core import element_type
+from fespp_on_trame.app.core.engine import view_routing
 
 
 def run(state, controller, server, view, tree, collector, etp_connector,
@@ -86,8 +87,34 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             r_path = cached
         if not r_path or r_path in colors:
             continue
-        colors[r_path] = color_for_index(next_idx)
-        next_idx += 1
+        # FAMILY colour: a grid geometry and every BlockedWellbore of the
+        # same GridContainer share ONE solid colour, anchored on the
+        # GEOMETRY's rep_path — whichever member loads first fixes it
+        # (a BW loading first also writes the anchor, so the geometry
+        # arriving later reuses the family colour instead of drawing a
+        # fresh one).
+        family_anchor = None
+        try:
+            n_id2 = tree.find_node_id(r_path)
+            kind2 = tree.find_type(n_id2) or ""
+            if kind2 == "BlockedWellbore":
+                cont = tree.find_parent_node_id_with_type(n_id2, "GridContainer")
+                g_id = tree.find_representation_node(cont) if cont is not None else None
+                family_anchor = tree.find_path(g_id) if g_id is not None else None
+            elif kind2 in ("IjkGrid", "UnstructuredGrid"):
+                family_anchor = r_path
+        except Exception:
+            family_anchor = None
+        if family_anchor:
+            fam_color = colors.get(family_anchor)
+            if fam_color is None:
+                fam_color = color_for_index(next_idx)
+                next_idx += 1
+                colors[family_anchor] = fam_color
+            colors[r_path] = fam_color
+        else:
+            colors[r_path] = color_for_index(next_idx)
+            next_idx += 1
     state._selector_rep_cache = sel_cache
     state.solid_color_by_rep = colors
     state.solid_color_next_idx = next_idx
@@ -152,8 +179,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             except Exception:
                 pass
             slicer_sources = list(ijk._all_slice_sources())
-            if ijk._src_slicer_volume is not None:
-                slicer_sources.append(ijk._src_slicer_volume)
+            slicer_sources.extend(ijk._src_volumes)
             for slc in slicer_sources:
                 try:
                     slc.GetClientSideObject().Modified()
@@ -166,26 +192,67 @@ def run(state, controller, server, view, tree, collector, etp_connector,
 
     present_paths = set(p for p, _ in source_registry.items())
 
+    # Every load batch invalidates the active-map sweep's no-array memo: a
+    # freshly-(re)loaded rep has NEW displays and must get one full sweep
+    # pass even when its (rep -> array) binding is unchanged.
+    try:
+        from fespp_on_trame.app.core.engine import active_array as _active_array
+        _active_array.reset_sweep_memo()
+    except Exception:
+        pass
+
+    # Captured BEFORE the tracking update mutates ui_loaded_rep_paths — used
+    # below to spot blocked wellbores that appeared in THIS run.
+    prev_rep_paths = set(state.ui_loaded_rep_paths or [])
+
     _update_visibility_tracking(state, present_paths)
     last_array_for_rep, prev_loaded_set = _update_data_array_tracking(
         state, tree, present_paths,
     )
-    newly_markers = _update_marker_tracking(state, tree, present_paths)
+    newly_markers, removed_markers = _update_marker_tracking(state, tree, present_paths)
     _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set)
 
-    # A rep that just gained a freshly-loaded array must be VISIBLE — a
-    # property's coloring can't show on a hidden rep, and the contract is
-    # "select a property = load + eye". Re-open the rep eye (drop it from the
-    # hidden sets) so loading a property overrides a stale manual hide from
-    # before the property was selected. Done BEFORE the synchronous
-    # sync_loaded_reps below, whose eager setup reads the per-view hidden
-    # bucket to decide Show/Hide.
-    newly_arrayed = {
-        r for r, a in last_array_for_rep.items()
-        if a is not None and a not in prev_loaded_set
-    }
-    if newly_arrayed:
-        _unhide_reps(state, newly_arrayed)
+    # Born hidden: a grid GEOMETRY that loaded in THIS run while one of
+    # its blocked wellbores was already present gets its eye closed in
+    # every view: with a BW selected,
+    # checking a property must colour the wellbore through the mirror,
+    # not raise the full grid over it. Same toggle machinery as the eye
+    # click, so both pipelines' displays actually hide.
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver as _sres
+        from fespp_on_trame.app.core.engine import visibility as _vis
+        for r in sorted(present_paths - prev_rep_paths):
+            n_id = tree.find_node_id(r)
+            if (tree.find_type(n_id) or "") not in (
+                    "IjkGrid", "UnstructuredGrid"):
+                continue
+            bws = _sres.blocked_wellbore_rep_paths_for(tree, r)
+            if not any(b in present_paths for b in bws):
+                continue
+            for p in (state.fespp_render_panels or []):
+                pid = p.get("id") if isinstance(p, dict) else None
+                if not pid:
+                    continue
+                bucket = (state.ui_hidden_rep_paths_by_view
+                          or {}).get(pid, []) or []
+                if r in bucket:
+                    continue
+                try:
+                    _vis.toggle_rep_visibility(
+                        state, controller, server, source_registry, r,
+                        panel_id=pid, tree=tree,
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Visibility and colouring are ORTHOGONAL: loading a property colours the
+    # rep (array eye) but never re-opens its geometry eye. This used to force
+    # freshly-arrayed reps visible ("select a property = load + eye"), which
+    # made checking a NEW property resurrect a grid the user had just hidden —
+    # the exact state "grid hidden, wells coloured by its property" relies on.
+    # Colouring a hidden rep is legal: it shows when the geometry eye reopens.
 
     # --- SYNCHRONOUS teardown of DESELECTED reps' per-view pipelines ---
     # A just-deselected rep's per-view RepInScene (UG: `_extractor`,
@@ -236,7 +303,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     try:
         scene_reg = getattr(server.context, "scene_registry", None)
         if newly_arrayed and scene_reg is not None:
-            active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+            active_pid = view_routing.resolve_active_render_panel(state)
             scene = scene_reg.get_scene(active_pid) if active_pid else None
             if scene is not None:
                 for r in newly_arrayed:
@@ -256,17 +323,20 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # instead of needing a manual eye click.
     try:
         scene_reg = getattr(server.context, "scene_registry", None)
-        active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+        active_pid = view_routing.resolve_active_render_panel(state)
         scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
-        if scene is not None and newly_markers:
-            for marker_path in newly_markers:
+        if scene is not None and (newly_markers or removed_markers):
+            for marker_path, m_visible in (
+                [(m, True) for m in newly_markers]
+                + [(m, False) for m in removed_markers]
+            ):
                 n_id = tree.find_node_id(marker_path)
                 r_id = tree.find_representation_node(n_id) if n_id is not None else None
                 r_path = tree.find_path(r_id) if r_id is not None else None
                 rep = scene.get_rep(r_path) if r_path else None
                 if rep is not None:
                     try:
-                        rep.set_marker_visible(marker_path, True)
+                        rep.set_marker_visible(marker_path, m_visible)
                     except Exception:
                         pass
     except Exception:
@@ -281,17 +351,149 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     server.controller.on_active_proxy_change()
 
     if (not state.has_data_loaded_once) and (len(state.fespp_data_selectors) > 0):
-        state.view_reset_camera = True
-        state.has_data_loaded_once = True
+        # Re-centre on the first load that actually MATERIALISES
+        # geometry — "0 cells → ≥1 cell". A selection whose data can't
+        # load (EPC imported without its H5: tree fine, geometry empty
+        # + error message) must NOT consume the one-shot flag, else the
+        # retry after the H5 upload renders off-centre with no reset.
+        n_cells = 0
+        try:
+            info = active_source.get_source().GetDataInformation()
+            n_cells = int(info.GetNumberOfCells() or 0)
+        except Exception:
+            n_cells = 0
+        if n_cells > 0:
+            # Reset the camera SYNCHRONOUSLY (pure server-side) so the
+            # final render+push at the end of this run already carries
+            # the framed camera. The sentinel path below resolves in a
+            # LATER state flush — after this run's frame push — through
+            # an async html-widget reset, so the client would keep the
+            # empty-scene default camera (pos z≈6.7 at origin) until
+            # the next manual interaction.
+            # The sentinel is still set: on_view_reset_camera also
+            # refreshes per-block visibility and re-syncs the client.
+            try:
+                pvsimple.ResetCamera(view)
+                view.CenterOfRotation = list(view.CameraFocalPoint)
+            except Exception:
+                pass
+            state.view_reset_camera = True
+            state.has_data_loaded_once = True
 
     if activator is not None:
         activator.refresh_active()
+
+    # A blocked wellbore checked while its grid ALREADY colours by a property
+    # arrives uncoloured: the active-array map did not change, so nothing
+    # re-applies ColorBy. Re-run the grid's colouring — its mirror hook then
+    # paints the fresh wellbores (FESPP pushed them the arrays on load).
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver
+        new_bw = [
+            p for p in (present_paths - prev_rep_paths)
+            if (tree.find_type(tree.find_node_id(p)) or "") == "BlockedWellbore"
+        ]
+        if new_bw:
+            active_map = dict(state.ui_active_array_by_rep or {})
+            # The active panel's realization picks: an MR property only exists
+            # as suffixed arrays ("<title>_real_<idx>"), so a resolve without
+            # the index finds nothing and the fresh wellbores would stay
+            # SolidColor — exactly, and only, when the active property is MR.
+            panel_id = view_routing.resolve_active_render_panel(state)
+            panel_realizations = dict(
+                (state.ui_active_realization_by_array_by_view or {})
+                .get(panel_id, {}) or {}
+            )
+            grids_done = set()
+            chain_snap_by_grid = {}
+            # Self-sufficient scene resolution: the earlier bindings of
+            # `scene` are conditional (marker / re-show blocks), so this
+            # block must not rely on them.
+            scene_reg = getattr(server.context, "scene_registry", None)
+            active_pid = view_routing.resolve_active_render_panel(state)
+            scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
+            for bw_path in new_bw:
+                bw_id = tree.find_node_id(bw_path)
+                container = tree.find_parent_node_id_with_type(bw_id, "GridContainer")
+                if container is None:
+                    continue
+                geom_id = tree.find_representation_node(container)
+                geom_path = tree.find_path(geom_id) if geom_id is not None else None
+                if not geom_path:
+                    continue
+                if geom_path not in grids_done:
+                    grids_done.add(geom_path)
+                    array_path = active_map.get(geom_path)
+                    if array_path:
+                        source_resolver.apply_color_array(
+                            source_registry, tree, geom_path, array_path, view=view,
+                            realization_idx=panel_realizations.get(array_path),
+                        )
+                    grid_rep = scene.get_rep(geom_path) if scene is not None else None
+                    if grid_rep is not None and hasattr(grid_rep, "snapshot_threshold_chain"):
+                        try:
+                            chain_snap_by_grid[geom_path] = grid_rep.snapshot_threshold_chain()
+                        except Exception:
+                            pass
+                    # A NEW blocked wellbore defaults its grid's GEOMETRY
+                    # eye to CLOSED in every view: the wells render INSIDE
+                    # the grid, so a visible geometry buries them. The
+                    # user re-opens the
+                    # eye deliberately to see the geometry over the wells
+                    # — and later re-opens survive (only a NEW wellbore
+                    # of the grid re-closes it).
+                    if geom_path in present_paths:
+                        from fespp_on_trame.app.core.engine import (
+                            visibility as _vis,
+                        )
+                        for p in (state.fespp_render_panels or []):
+                            pid = p.get("id") if isinstance(p, dict) else None
+                            if not pid:
+                                continue
+                            bucket = (state.ui_hidden_rep_paths_by_view
+                                      or {}).get(pid, []) or []
+                            if geom_path in bucket:
+                                continue
+                            try:
+                                _vis.toggle_rep_visibility(
+                                    state, controller, server,
+                                    source_registry, geom_path,
+                                    panel_id=pid, tree=tree,
+                                )
+                            except Exception:
+                                pass
+                # A fresh wellbore inherits its grid's THRESHOLD chain too:
+                # the dispatch mirror (`sync_blocked_wellbore_chains`) only
+                # fires on threshold OPS, so a wellbore checked after the
+                # filter was set would render unfiltered without this.
+                snap = chain_snap_by_grid.get(geom_path)
+                if snap and snap.get("entries"):
+                    bw_rep = scene.get_rep(bw_path) if scene is not None else None
+                    if bw_rep is not None:
+                        try:
+                            bw_rep.apply_threshold_chain(snap)
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
     try:
         refresh_threshold_ui()
     except Exception:
         pass
     try:
         push_active_ijk_state()
+    except Exception:
+        pass
+
+    # A load batch must END with the active array's colour bar visible —
+    # something mid-batch raw-hides the freshly shown bar (observed live on a
+    # categorical property; the writer bypasses every scalar-bar helper).
+    # Re-asserting here is safe: later hide-unused sweeps preserve a bar
+    # whose LUT is referenced by a visible display.
+    try:
+        from fespp_on_trame.app.core.engine import source_resolver
+        source_resolver.reassert_active_scalar_bars(state, source_registry, view=view)
     except Exception:
         pass
 
@@ -312,26 +514,6 @@ def run(state, controller, server, view, tree, collector, etp_connector,
         pass
 
 
-def _unhide_reps(state, reps):
-    """Re-open the rep eye for `reps` — drop them from the global
-    `ui_hidden_rep_paths` and the active panel's `ui_hidden_rep_paths_by_view`
-    bucket. Called when a rep gains a freshly-loaded array so selecting a
-    property always makes the (possibly previously-hidden) rep visible."""
-    reps = set(reps)
-    cur = list(state.ui_hidden_rep_paths or [])
-    kept = [p for p in cur if p not in reps]
-    if kept != cur:
-        state.ui_hidden_rep_paths = kept
-    active = getattr(state, "fespp_active_panel_id", "") or ""
-    by_view = dict(state.ui_hidden_rep_paths_by_view or {})
-    if active and active in by_view:
-        bucket = list(by_view.get(active) or [])
-        keep = [p for p in bucket if p not in reps]
-        if keep != bucket:
-            by_view[active] = keep
-            state.ui_hidden_rep_paths_by_view = by_view
-
-
 def _update_visibility_tracking(state, present_paths):
     """Maintain `ui_loaded_rep_paths`, `ui_hidden_rep_paths`, and the
     per-view `ui_hidden_rep_paths_by_view` map.
@@ -339,13 +521,19 @@ def _update_visibility_tracking(state, present_paths):
     Visibility tracking: newly-loaded reps default to visible (eye
     open); reps that were hidden but stayed loaded keep their hidden
     state; reps no longer present are dropped from the hidden set so
-    they don't ghost-hide on a future re-load."""
+    they don't ghost-hide on a future re-load.
+
+    (A grid GEOMETRY loading while one of its blocked wellbores is
+    already present is hidden right after this tracking pass — see the
+    born-hidden block in run().)"""
     # Capture the previous loaded set *before* mutating the state
     # var so we can detect which reps are brand-new in this run.
     prev_loaded = set(state.ui_loaded_rep_paths or [])
     loaded_sorted = sorted(present_paths)
     if list(state.ui_loaded_rep_paths or []) != loaded_sorted:
         state.ui_loaded_rep_paths = loaded_sorted
+    new_reps = [p for p in present_paths if p not in prev_loaded]
+
     prev_hidden = list(state.ui_hidden_rep_paths or [])
     kept_hidden = [p for p in prev_hidden if p in present_paths]
     if kept_hidden != prev_hidden:
@@ -357,21 +545,25 @@ def _update_visibility_tracking(state, present_paths):
     # to the active view — other panels haven't had Show() called
     # on the new source so the chips for those panels should appear
     # closed (rep present but not yet shown there).
-    new_reps = [p for p in present_paths if p not in prev_loaded]
     by_view = state.ui_hidden_rep_paths_by_view or {}
     if not by_view:
         return
     updated = {}
     changed = False
     present = set(present_paths)
-    active_panel_id = state.fespp_active_panel_id or ""
+    # The "visible by default" panel must be a RENDER panel: with a
+    # stats / distribution tab focused, fespp_active_panel_id points at
+    # a non-render panel, no bucket matches it, and a bulk load would
+    # arrive hidden in EVERY view.
+    active_panel_id = view_routing.resolve_active_render_panel(state)
     for pid, paths in by_view.items():
         old = list(paths or [])
         # 1. Drop unloaded reps.
         new = [p for p in old if p in present]
         # 2. For non-active panels, append newly-loaded reps that
         #    aren't already in the bucket. The active panel keeps
-        #    the new rep as "visible" (chip open).
+        #    the new rep as "visible" (chip open) — EXCEPT born-hidden
+        #    geometries, hidden in the active panel too.
         if pid != active_panel_id and new_reps:
             bucket_set = set(new)
             for r in new_reps:
@@ -452,7 +644,7 @@ def _update_marker_tracking(state, tree, present_paths):
     # auto-show markers freshly loaded this run in the ACTIVE panel: selecting
     # a marker / checking a MarkerFrame must display them without an extra eye
     # click (markers default to visible on load, like a property auto-colors).
-    active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+    active_pid = view_routing.resolve_active_render_panel(state)
     by_view = dict(state.ui_visible_marker_paths_by_view or {})
     updated = {}
     changed = False
@@ -470,7 +662,12 @@ def _update_marker_tracking(state, tree, present_paths):
         changed = True
     if changed:
         state.ui_visible_marker_paths_by_view = updated
-    return newly_loaded
+    # Also report the markers that LEFT the loaded set this run: the
+    # caller must set_marker_visible(False) on their extractors — the
+    # state prune above never touched the proxies, so a deselected
+    # marker's glyph ghost-rendered until its whole frame unloaded.
+    removed = [m for m in prev_loaded if m not in loaded_set]
+    return newly_loaded, removed
 
 
 def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, prev_loaded_set):
@@ -500,7 +697,7 @@ def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, pr
     the rep stays in SolidColor on first load."""
     from fespp_on_trame.app.core.engine import realization_dispatch
 
-    active_panel_id = getattr(state, "fespp_active_panel_id", "") or None
+    active_panel_id = view_routing.resolve_active_render_panel(state) or None
     loaded_arrays_set = set(state.ui_loaded_array_paths or [])
     prev_active = dict(state.ui_active_array_by_rep or {})
     new_active = {}

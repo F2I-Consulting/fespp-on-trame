@@ -25,6 +25,19 @@ from fespp_on_trame.app.core.engine import (
 from fespp_on_trame.app.core import element_type
 
 
+# (rep_path, view_key) pairs the active-map sweep last applied with NO array —
+# skipped on the next sweep until something invalidates them. See
+# `on_active_array_change` / `reset_sweep_memo`.
+_sweep_none_memo: set = set()
+
+
+def reset_sweep_memo():
+    """Forget the sweep's no-array memo. Called by `data_load.run()` on every
+    load batch: a freshly-(re)loaded rep must get one full sweep pass even if
+    its binding is unchanged (its displays are new)."""
+    _sweep_none_memo.clear()
+
+
 def _is_channel_rep(element_type_obj) -> bool:
     """A wellbore-frame CHANNEL container = a rep whose visibility policy
     is ONE_AT_A_TIME (only ChannelFrameRep)."""
@@ -72,6 +85,12 @@ def on_active_array_change(state, controller, source_registry, tree,
     loaded = list(state.ui_loaded_rep_paths or [])
     active_map = ui_active_array_by_rep or {}
     hidden_set = set(state.ui_hidden_rep_paths or [])
+    # Sweep memo: a rep that had NO active array on the previous sweep of
+    # this same view and still has none is a strict no-op — yet its body
+    # costs a display resolution + a scene walk, and with 82 blocked
+    # wellbores those no-ops dominated the sweep (~1 s measured). The memo
+    # is reset by data_load.run() so freshly-(re)loaded reps always get one
+    # real pass (phantom-outline enforcement, stale-colour clear).
 
     active_panel_id = None
     panel_realizations: dict = {}
@@ -80,9 +99,16 @@ def on_active_array_change(state, controller, source_registry, tree,
         if active_panel_id is not None:
             by_view = state.ui_active_realization_by_array_by_view or {}
             panel_realizations = by_view.get(active_panel_id) or {}
+    view_key = active_panel_id or (str(id(view)) if view is not None else "_")
 
     for rep_path in loaded:
         array_path = active_map.get(rep_path)
+        if array_path is None:
+            if (rep_path, view_key) in _sweep_none_memo:
+                continue
+            _sweep_none_memo.add((rep_path, view_key))
+        else:
+            _sweep_none_memo.discard((rep_path, view_key))
         realization_idx = panel_realizations.get(array_path) if array_path else None
         # Wellbore-frame channel: SHOW it (exclusive) in the active view
         # BEFORE coloring — on a plain channel SELECTION (data_load
@@ -332,40 +358,19 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
             mirror[r_path] = new_value
         state.ui_active_array_by_rep = mirror
 
-    # When activating a property in a view where the rep is currently
-    # hidden (e.g. clicking the property eye on an empty render
-    # panel), implicitly show the rep — the user expects
-    # "show + color", not "color a hidden rep". Drop the rep from the
-    # hidden bucket and replay the IjkGrid / ExtractBlock show in the
-    # target view.
-    if new_value is not None:
-        hidden_by_view = dict(state.ui_hidden_rep_paths_by_view or {})
-        hidden_bucket = list(hidden_by_view.get(bucket_key, []) or [])
-        if r_path in hidden_bucket:
-            hidden_bucket.remove(r_path)
-            hidden_by_view[bucket_key] = hidden_bucket
-            state.ui_hidden_rep_paths_by_view = hidden_by_view
-            if active and active == bucket_key:
-                state.ui_hidden_rep_paths = list(hidden_bucket)
-            # Wellbore channel: do NOT show the legacy frame source — it
-            # would surface the frame's FIRST channel (frame-pathed
-            # ExtractBlock). The per-view extractor Show below
-            # (set_extract_channel) is the only thing that should render
-            # for a frame.
-            if not is_channel:
-                ijk = source_registry.get_ijk_grid(r_path)
-                if ijk is not None:
-                    try:
-                        ijk.show(view=view)
-                    except Exception:
-                        pass
-                else:
-                    eb = source_registry.get_extract_block(r_path)
-                    if eb is not None and eb.source is not None and view is not None:
-                        try:
-                            pvsimple.Show(eb.source, view=view)
-                        except Exception:
-                            pass
+    # This eye picks the COLOUR ARRAY and never touches visibility — showing
+    # or hiding a rep is the geometry eye's job alone (see
+    # `visibility.toggle_rep_visibility`). Colouring a hidden rep is a legal,
+    # useful state: it is what lets a user hide the grid and keep its blocked
+    # wellbores / channels coloured, and swap the array without the grid
+    # popping back each time.
+    #
+    # This used to implicitly un-hide + Show ("the user expects show + color,
+    # not color a hidden rep"), which broke that outright — and worse, it
+    # replayed the show on the LEGACY `eb.source` while
+    # `toggle_rep_visibility` hides whatever `sources_for_rep_path` returns.
+    # The two disagreed, so a rep re-shown from here escaped the next hide and
+    # lingered on screen in SolidColor.
 
     # Apply ColorBy on the target view's displays explicitly here
     # (rather than relying on @state.change of the global map) because
@@ -399,26 +404,40 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     # channel's OWN extractor via
     # `channel_extractor_for(active_color_array_path)`).
     if is_channel:
+        from fespp_on_trame.app.core.activator import project_shared_from_tab
         if new_value is not None:
             ch_title = tree.find_title(node_id) or ""
             ch_kind = tree.find_type(node_id) or ""
-            state.active_representation_path = r_path
-            state.active_color_array_name = ch_title
-            state.active_color_array_path = array_path
-            state.active_property_kind = (
-                ch_kind if ch_kind in (
-                    "ContinuousProperty", "DiscreteProperty", "CategoricalProperty"
-                ) else ""
-            )
-            try:
-                controller.update_color_editor(ch_title)
-            except Exception:
-                pass
+            # WELL-scoped set only: the shared vars are a
+            # projection of the visible tab — an eye click on a channel
+            # must not clobber what the reservoir/surface panels show.
+            state.update({
+                "ui_active_node_well_rep_path": r_path,
+                "ui_active_node_well_array_name": ch_title,
+                "ui_active_node_well_array_path": array_path,
+                "ui_active_node_well_property_kind": (
+                    ch_kind if ch_kind in (
+                        "ContinuousProperty", "DiscreteProperty", "CategoricalProperty"
+                    ) else ""
+                ),
+            })
+            project_shared_from_tab()
+            # Refresh the COE only when the WELL tab is the visible one —
+            # update_color_editor writes the shared name and would undo
+            # the projection while another tab is displayed.
+            if (getattr(state, "tab", "") or "") == "well":
+                try:
+                    controller.update_color_editor(ch_title)
+                except Exception:
+                    pass
         else:
             # Channel hidden — leave colour-map mode (back to Solid).
-            state.active_color_array_name = ""
-            state.active_property_kind = ""
-            state.active_color_array_path = ""
+            state.update({
+                "ui_active_node_well_array_name": "",
+                "ui_active_node_well_property_kind": "",
+                "ui_active_node_well_array_path": "",
+            })
+            project_shared_from_tab()
     # The user switched the eye to a property that resolves to NO
     # renderable array (a partial stub, a missing array, or — for a
     # wellbore frame — a log on a partition the extractor discards).

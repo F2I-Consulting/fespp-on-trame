@@ -225,9 +225,13 @@ class DescriptiveStatsPanel:
         tree's property row exactly (see `tree_views`) so users
         can map a card to its source node at a glance."""
         with html.Div(
-            classes="d-flex align-center pa-3",
+            # flex-wrap: with the column-title-length pin-all labels, a
+            # narrow card used to push "Unpin all" (and the row chip)
+            # past the right edge, clipped invisible. Wrapping flows
+            # the overflow onto a second header line instead.
+            classes="d-flex align-center flex-wrap pa-3",
             style=(
-                "background: #fafafa;"
+                "background: #fafafa; row-gap: 4px;"
                 " border-bottom: 1px solid rgba(0,0,0,0.08);"
             ),
         ):
@@ -278,6 +282,34 @@ class DescriptiveStatsPanel:
                 color="purple",
                 classes="ml-1",
             )
+            # Value-type chip ("Continuous property", …) — speaks the
+            # geologist's language where the old "SolidColor" rep
+            # prefix spoke ParaView's.
+            vuetify3.VChip(
+                "{{ ui_stats_tables[array_path].prop_type_label }}",
+                v_if=(
+                    "ui_stats_tables && ui_stats_tables[array_path]"
+                    " && ui_stats_tables[array_path].prop_type_label",
+                ),
+                size="x-small",
+                variant="outlined",
+                color="teal-darken-1",
+                classes="ml-2",
+            )
+            # PWLS property kind (volume, depth, …) — needs a FESPP
+            # build carrying the `propertyKind` assembly attribute;
+            # silently absent otherwise.
+            vuetify3.VChip(
+                "{{ ui_stats_tables[array_path].property_kind_title }}",
+                v_if=(
+                    "ui_stats_tables && ui_stats_tables[array_path]"
+                    " && ui_stats_tables[array_path].property_kind_title",
+                ),
+                size="x-small",
+                variant="outlined",
+                color="indigo",
+                classes="ml-1",
+            )
             _can_cmp = (
                 "ui_stats_tables && ui_stats_tables[array_path]"
                 " && (ui_stats_tables[array_path].is_mr"
@@ -304,6 +336,63 @@ class DescriptiveStatsPanel:
                 v_if=(_can_cmp + " && " + _cmp_count + " > 0",),
                 size="x-small", variant="tonal", color="primary",
                 classes="ml-2",
+            )
+            # Bulk pinning: one row per realization (at the current
+            # time step) / per time step (at the current realization),
+            # and a one-click sweep of every pinned row. Idempotent —
+            # already-pinned combos are skipped server-side.
+            _is_mr_card = (
+                "ui_stats_tables && ui_stats_tables[array_path]"
+                " && ui_stats_tables[array_path].is_mr"
+            )
+            _is_ts_card = (
+                "ui_stats_tables && ui_stats_tables[array_path]"
+                " && ui_stats_tables[array_path].is_ts"
+            )
+            _has_custom = (
+                "((ui_stats_tables && ui_stats_tables[array_path]"
+                " && ui_stats_tables[array_path].rows) || [])"
+                ".some(function(r){ return r.kind === 'original'"
+                " && r.id !== 'default'; })"
+            )
+            # Labels mirror the table's column titles ("Realization
+            # Index" / "Time Step") so the buttons read as acting on
+            # those columns.
+            vuetify3.VBtn(
+                "Pin all Realization Index",
+                v_if=(_is_mr_card,),
+                variant="text", density="compact", size="small",
+                color="primary",
+                prepend_icon="mdi-pin-outline",
+                classes="ml-3",
+                title=("'One pinned row per loaded realization,"
+                       " at the current time step'",),
+                click="trigger('stats_pin_all', [array_path, 'real'])",
+            )
+            vuetify3.VBtn(
+                "Pin all Time Steps",
+                v_if=(_is_ts_card,),
+                variant="text", density="compact", size="small",
+                color="primary",
+                prepend_icon="mdi-pin-outline",
+                classes="ml-1",
+                title=("'One pinned row per time step,"
+                       " at the current realization'",),
+                click="trigger('stats_pin_all', [array_path, 'ts'])",
+            )
+            # Always VISIBLE on pinnable cards (disabled while nothing
+            # is pinned): a button that only materialises after the
+            # first pin read as "missing" to users.
+            vuetify3.VBtn(
+                "Unpin all",
+                v_if=(f"({_is_mr_card}) || ({_is_ts_card})",),
+                disabled=(f"!({_has_custom})",),
+                variant="text", density="compact", size="small",
+                color="grey-darken-1",
+                prepend_icon="mdi-pin-off-outline",
+                classes="ml-1",
+                title=("'Remove every pinned row of this card'",),
+                click="trigger('stats_unpin_all', [array_path])",
             )
             vuetify3.VSpacer()
             vuetify3.VChip(
@@ -579,8 +668,11 @@ class DescriptiveStatsPanel:
                 density="compact",
                 hide_details=True,
                 variant="outlined",
-                style="min-width: 130px; max-width: 170px;",
-                menu_props=("{ maxWidth: 360 }",),
+                # Wide enough for a full AAAA-MM-JJ label, with a
+                # slightly smaller font as extra headroom.
+                style=("min-width: 175px; max-width: 240px;"
+                       " font-size: 0.78rem;"),
+                menu_props=("{ maxWidth: 420 }",),
                 update_modelValue=(
                     "trigger('stats_set_original_ts_idx', "
                     "[array_path, row.id, $event])"

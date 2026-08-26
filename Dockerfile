@@ -28,13 +28,14 @@ RUN bash /root/build-fetpapi-dependencies.sh
 RUN bash /root/build-fetpapi.sh
 
 # Build mode: local (copy from host) or github (git clone).
-# FESPP ref for the GITHUB mode — pinned like PVSB_GIT_TAG so this
-# release branch always rebuilds against the FESPP state it was
-# validated with (fot-* anchor tags on F2I-Consulting/fespp).
+# FESPP ref for the GITHUB mode — pinned like PVSB_GIT_TAG so every
+# branch/tag of this repo rebuilds against the FESPP state it was
+# validated with (`fot-*` anchor tags on F2I-Consulting/fespp); a
+# floating `master` broke older branches whenever FESPP moved.
 # Placed HERE (not at the top): an ENV line invalidates the cache of
 # every later layer — above build.bash it would retrigger the full
 # ParaView superbuild.
-ENV FESPP_GIT_TAG="fot-v1.1.0"
+ENV FESPP_GIT_TAG="fot-v1.2.0"
 COPY fespp-src-local* ${FESPP_BUILD_ROOT_DIR}/fespp/
 
 RUN bash /root/build-fespp.sh

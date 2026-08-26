@@ -17,6 +17,14 @@ state.setdefault("ui_subtree_well", [])
 _NATURAL_SPLIT_RE = re.compile(r"(\d+)")
 _PARTIAL_PREFIX = "!!!PARTIAL!!!"
 
+# SolidColor variant (grid tree): the grid geometry rep kinds, and the
+# organizational per-grid folders that are never individually selected
+# (excluded from a grouping's tri-state universe, but recursed into).
+_GRID_GEOMETRY_KINDS = ("IjkGrid", "UnstructuredGrid")
+_GRID_SUBFOLDER_KINDS = (
+    "PropertiesFolder", "BlockedWellboreFolder", "SubRepresentationFolder",
+)
+
 
 def _sibling_sort_key(node):
     """Case-insensitive, natural (numeric-aware) sort key for a treeview
@@ -38,10 +46,60 @@ def _sibling_sort_key(node):
         c for c in unicodedata.normalize("NFKD", title.strip())
         if not unicodedata.combining(c)
     ).casefold()
-    return [
+    natural = [
         int(part) if part.isdigit() else part
         for part in _NATURAL_SPLIT_RE.split(title)
     ]
+    # Markers carry an `md` field (FESPP's "md" node attribute): they
+    # sort by DEPTH among their siblings — the geologist's reading
+    # order — falling back to the title on equal MDs. Non-marker nodes
+    # get +inf there, so mixed levels keep pure alphabetical order.
+    try:
+        md_key = float(node.get("md")) if node.get("md") is not None else float("inf")
+    except (TypeError, ValueError):
+        md_key = float("inf")
+    # A node flagged `_sort_first` (the hoisted grid geometry) sorts before
+    # every sibling at its level; others keep natural alphabetical order.
+    return [0 if node.get("_sort_first") else 1, md_key, *natural]
+
+
+def _hoist_grid_geometry(node_type, children):
+    """SolidColor variant DISPLAY re-map: lift a grid's geometry rep (kind
+    IjkGrid/UnstructuredGrid, titled 'SolidColor') OUT of its PropertiesFolder
+    so it shows as a top-level node under the GridContainer, leaving the
+    PropertiesFolder to hold only the real properties.
+
+    DISPLAY-ONLY: the live vtkDataAssembly still holds the rep under the
+    PropertiesFolder (its mapper key / find_node_id path), so every
+    id/path/uuid lookup is untouched — only the emitted treeview dicts move.
+    `children` (the GridContainer's child-dict list) is mutated in place."""
+    if node_type != "GridContainer":
+        return
+    props_folder = next(
+        (c for c in children if c.get("type") == "PropertiesFolder"), None)
+    if props_folder is None:
+        return
+    folder_children = props_folder.get("children") or []
+    geom = next(
+        (c for c in folder_children if c.get("type") in _GRID_GEOMETRY_KINDS),
+        None,
+    )
+    if geom is None:
+        return
+    folder_children.remove(geom)
+    # Frontend-only display label: FESPP names this rep "SolidColor" (grid drawn
+    # with no property = solid colour). Show it as "geometry" to match the
+    # user's mental model. Identity (id / path / uuid) is untouched.
+    geom["title"] = "geometry"
+    # Pin geometry above the properties/ · block wellbore/ · SubRep/ folders
+    # (see _sibling_sort_key) instead of letting it sort alphabetically.
+    geom["_sort_first"] = True
+    if not folder_children:
+        # Geometry-only grid (no real properties): the props folder is now empty
+        # — drop it so the tree shows just the hoisted geometry, with no empty
+        # 'properties/' folder.
+        children.remove(props_folder)
+    children.append(geom)
 
 
 def _eye_field(element_type):
@@ -75,7 +133,7 @@ class Tree():
         # It stays a grouping (expand/collapse + bulk-select); only its
         # child Trajectory/Frame/Marker/Completion reps carry an eye +
         # colour.
-        self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'partial']
+        self._representation_type_in = ['IjkGrid', 'Sub', 'UnstructuredGrid', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame', 'Grid2d', 'PointSet', 'Polyline', 'PolylineSet', 'TriangulatedSet', 'BlockedWellbore', 'partial']
 
     def add_subtreeview_data(self, parent_id: int, child_index: int, treeview_type, disabled=False) -> None:
         """Recursive walker that builds the nested treeview dict for a
@@ -102,7 +160,7 @@ class Tree():
             node_title = '!!!PARTIAL!!! ' + (node_title or node_label or '')
 
         if treeview_type == "unknown":
-            if node_type in ['IjkGrid', 'UnstructuredGrid']:
+            if node_type in ['IjkGrid', 'UnstructuredGrid', 'GridContainer']:
                 treeview_type = "reservoir"
             elif node_type in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                 treeview_type = "well"
@@ -151,6 +209,11 @@ class Tree():
         data["treeview"]["rep_path"] = rep_path_attr
         data["treeview"]["type"] = node_type
         data["treeview"]["icon"] = get_primary_icon(node_type, node_prop_kind)
+        # Marker depth — drives the depth-first sibling sort (see
+        # `_sibling_sort_key`); absent on every other node kind.
+        node_md = self._data_assembly.GetAttributeOrDefault(node_id, "md", None)
+        if node_md:
+            data["treeview"]["md"] = node_md
         # is_ts / is_mr drive the secondary badges in tree_views.py
         # (clock + "MR" chip). Only synthetic node types have them.
         data["treeview"]["is_ts"] = _et.for_kind(node_type).is_time_series()
@@ -177,6 +240,9 @@ class Tree():
                 subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                 data["treeview"]["children"].append(subTreeview["treeview"])
                 data["treeview_type"] = subTreeview["treeview_type"]
+            # SolidColor variant: lift the grid geometry rep out of its
+            # properties folder to a top-level GridContainer child (display).
+            _hoist_grid_geometry(node_type, data["treeview"]["children"])
             # Alphabetical sibling order at this level (hierarchy kept).
             data["treeview"]["children"].sort(key=_sibling_sort_key)
         return data
@@ -240,7 +306,7 @@ class Tree():
 
                 treeview = {}
                 treeview_type = "unknown"
-                if dispatch_kind in ['IjkGrid', 'UnstructuredGrid']:
+                if dispatch_kind in ['IjkGrid', 'UnstructuredGrid', 'GridContainer']:
                     treeview_type = "reservoir"
                 elif dispatch_kind in ['Wellbore', 'Trajectory', 'Completion', 'Perfo', 'Frame', 'MarkerFrame', 'WellboreMarker', 'SeismicWellboreFrame']:
                     treeview_type = "well"
@@ -267,14 +333,23 @@ class Tree():
                 treeview["rep_path"] = top_rep_path
                 treeview["type"] = node_type
                 treeview["icon"] = get_primary_icon(node_type, node_prop_kind)
+                node_md = self._data_assembly.GetAttributeOrDefault(node_id, "md", None)
+                if node_md:
+                    treeview["md"] = node_md
                 treeview["is_ts"] = _et.for_kind(node_type).is_time_series()
                 treeview["is_mr"] = _et.for_kind(node_type).is_multi_realization()
                 # eye token (rep / array / marker / None) — drives which eye
                 # block the tree view renders. Keyed on the node's own kind
-                # (NOT dispatch_kind, which is only for tab routing). A
-                # top-level rep (e.g. a Flat-mode IjkGrid) must still get its
-                # eye even though set_tree omits is_grouping here.
-                treeview["eye"] = _eye_field(_et.for_kind(node_type))
+                # (NOT dispatch_kind, which is only for tab routing).
+                top_et = _et.for_kind(node_type)
+                treeview["eye"] = _eye_field(top_et)
+                # Same tri-state fields as add_subtreeview_data — set_tree
+                # used to omit them, so every TOP-LEVEL envelope (a Wellbore
+                # folder, the GridContainer) rendered a plain binary checkbox
+                # while its nested folders showed the tri-state.
+                treeview["is_grouping"] = top_et.is_grouping()
+                if top_et.is_grouping():
+                    treeview["descendant_ids"] = self.find_all_selectable_descendant_ids(node_id)
                 treeview["parent_id"] = 0
                 if disabled or node_is_partial:
                     treeview["disabled"] = True
@@ -286,6 +361,9 @@ class Tree():
                         subTreeview = self.add_subtreeview_data(node_id, i, treeview_type, disabled)
                         treeview["children"].append(subTreeview["treeview"])
                         treeview_type = subTreeview["treeview_type"]
+                    # SolidColor variant: hoist grid geometry to a top-level
+                    # GridContainer child (display only).
+                    _hoist_grid_geometry(node_type, treeview["children"])
                     # Alphabetical sibling order under this top-level node.
                     treeview["children"].sort(key=_sibling_sort_key)
                 if treeview_type == "reservoir":
@@ -382,6 +460,14 @@ class Tree():
         'all selected'."""
         if node_id is None or self._data_assembly is None:
             return []
+        # SolidColor variant: when the walk STARTS at a grid's PropertiesFolder,
+        # exclude the geometry rep (displayed + toggled as a top-level sibling,
+        # so bulk-toggling 'properties/' leaves it in place — geometry persists).
+        # At a GridContainer the geometry IS included so a bulk-toggle moves it.
+        exclude_geometry = (
+            self._data_assembly.GetAttributeOrDefault(node_id, "kind", None)
+            == "PropertiesFolder"
+        )
         out = []
 
         def _walk(nid):
@@ -394,7 +480,13 @@ class Tree():
                 kind = self._data_assembly.GetAttributeOrDefault(c, "kind", None)
                 if not _et.for_kind(kind).is_selectable():
                     continue
-                out.append(c)
+                # Organizational grid sub-folders are never individually
+                # selected — exclude them (else a GridContainer tri-state can
+                # never reach 'all selected') but still recurse INTO them.
+                if kind not in _GRID_SUBFOLDER_KINDS and not (
+                    exclude_geometry and kind in _GRID_GEOMETRY_KINDS
+                ):
+                    out.append(c)
                 _walk(c)
 
         _walk(node_id)
@@ -455,8 +547,31 @@ class Tree():
         if node_type:
             if node_type in self._representation_type_in:
                 return node_id
-            else:
-                return self.find_representation_node(self._data_assembly.GetParent(node_id))
+            # SolidColor variant: a grid sub-folder groups MULTIPLE sub-objects
+            # (SubReps / BlockedWellbores) with no single enclosing rep — do NOT
+            # climb to the GridContainer and resolve to the grid geometry.
+            # Mirrors the C++ resolveGridGeometryRepId early-return.
+            if node_type in ("SubRepresentationFolder", "BlockedWellboreFolder"):
+                return
+            # SolidColor variant: a grid's geometry rep is a SIBLING under its
+            # PropertiesFolder, not an ancestor of its props. When the up-walk
+            # reaches the props folder / grid container, descend to the
+            # GridContainer's geometry rep child instead of climbing past it
+            # (which would return None and break a property's colour eye / stats).
+            if node_type in ("PropertiesFolder", "GridContainer"):
+                container = node_id if node_type == "GridContainer" \
+                    else self.find_parent_node_id_with_type(node_id, "GridContainer")
+                if container is not None:
+                    for kind in ("IjkGrid", "UnstructuredGrid"):
+                        rep = self.find_first_child_of_type(container, kind)
+                        if rep is None:
+                            props = self.find_first_child_of_type(container, "PropertiesFolder")
+                            if props is not None:
+                                rep = self.find_first_child_of_type(props, kind)
+                        if rep is not None:
+                            return rep
+                return
+            return self.find_representation_node(self._data_assembly.GetParent(node_id))
         return
 
     def find_representation_type(self, node_id) -> None:
@@ -493,6 +608,14 @@ class Tree():
             return self._data_assembly.GetAttributeOrDefault(node_id, attribute_name, None)
         return
 
+    def find_node_id_by_uuid(self, uuid):
+        """Resolve a tree node id from a RESQML uuid. Node names are the
+        uuid prefixed with '_'. Returns None if no such node exists."""
+        if not uuid or self._data_assembly is None:
+            return None
+        node_id = self._data_assembly.FindFirstNodeWithName("_" + uuid)
+        return node_id if node_id and node_id > 0 else None
+
     def find_parent_attribute_value(self, node_id, attribute_name) -> None:
         """Walk up from `node_id` and return the value of the nearest
         ancestor's attribute, or None."""
@@ -505,3 +628,14 @@ class Tree():
             return attribute_value
 
         return self.find_parent_attribute_value(self._data_assembly.GetParent(node_id), attribute_name)
+
+    def find_ancestor_title_of_kind(self, node_id, kind):
+        """Walk up from `node_id` (inclusive) and return the title of the
+        nearest ancestor whose kind == `kind`, else None. Used to get the
+        WellboreFeature name (kind 'Wellbore') from a Trajectory node."""
+        if node_id is None or node_id == 0 or self._data_assembly is None:
+            return None
+        if self.find_type(node_id) == kind:
+            return self.find_title(node_id)
+        return self.find_ancestor_title_of_kind(
+            self._data_assembly.GetParent(node_id), kind)

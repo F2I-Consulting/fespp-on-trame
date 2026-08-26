@@ -138,7 +138,8 @@ class Representation(ElementType):
             if target_view is not None:
                 disp = pvsimple.GetRepresentation(proxy=ext, view=target_view)
                 if disp is not None:
-                    disp.Representation = state.representation_active or "Surface"
+                    from fespp_on_trame.app.core.sources.representation import rep_type_for
+                    disp.Representation = rep_type_for(state, ris.rep_path)
                     disp.Scale = [1.0, 1.0, ris._current_z_scale()]
                     grid_color = (state.solid_color_by_rep or {}).get(ris.rep_path)
                     _apply_default_tint(disp, grid_color)
@@ -238,8 +239,7 @@ class IjkGridRep(GridRep):
         except Exception:
             return
         srcs = list(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            srcs.append(ijk._src_slicer_volume)
+        srcs.extend(ijk._src_volumes)
         if ijk._src_extract_init is not None:
             srcs.append(ijk._src_extract_init)
         try:
@@ -343,8 +343,7 @@ class IjkGridRep(GridRep):
             return None
         tips = ijk._visible_leaf_tips()
         grid_sources = list(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            grid_sources.append(ijk._src_slicer_volume)
+        grid_sources.extend(ijk._src_volumes)
         if ijk._src_extract_init is not None:
             grid_sources.append(ijk._src_extract_init)
         out = []
@@ -357,16 +356,15 @@ class IjkGridRep(GridRep):
         return out
 
     def color_sources(self, ris):
-        """The colorable IJK proxies = slicers + volume + rep_data +
+        """The colorable IJK proxies = slicers + volumes + rep_data +
         threshold leaves. rep_data is the proxy rendered for the COMPLETE
-        grid (range full-extent, and the slice-mode no-visible-slicer
-        fallback), so the active array must ColorBy it too. None → legacy."""
+        grid (full mode, and a full-extent volume in range mode), so the
+        active array must ColorBy it too. None → legacy."""
         ijk = ris._ensure_per_view_ijk()
         if ijk is None or ijk.source is None:
             return None
         out = list(ijk._all_slice_sources())
-        if ijk._src_slicer_volume is not None:
-            out.append(ijk._src_slicer_volume)
+        out.extend(ijk._src_volumes)
         if ijk._src_extract_init is not None:
             out.append(ijk._src_extract_init)
         try:
@@ -399,3 +397,13 @@ class SeismicFrameRep(Representation):
     like the log/marker frames). Currently on standard rep defaults."""
 
     KINDS = ("SeismicWellboreFrame",)
+
+
+class BlockedWellboreRep(Representation):
+    """BlockedWellbore — a real eye-bearing rep with its OWN geometry (the
+    subset of its supporting grid's cells the wellbore is blocked in, produced
+    by the FESPP BlockedWellbore mapper). It sits UNDER the grid in the tree but
+    is NOT a property of it: selecting it shows only the blocked cells, not the
+    full grid. Standard rep defaults."""
+
+    KINDS = ("BlockedWellbore",)

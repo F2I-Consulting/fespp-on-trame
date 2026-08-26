@@ -26,6 +26,13 @@ class TimeSeries:
             timeSeriesPropertyLUT = pvsimple.GetColorTransferFunction(title)
             timeSeriesPropertyLUT.RescaleTransferFunction(float(min_value), float(max_value))
 
+        self.refresh_label()
+
+    def refresh_label(self):
+        """Republish `ui_time_label` from the current TimeKeeper value —
+        also used to restore the label after ANOTHER tab's companion was
+        deleted (the label must survive as long as one tab
+        still has a checked TimeSeries)."""
         index = state.time_index
         if index is not None:
             label = self._tree.find_attribute_value(0, f"time{pvsimple.GetTimeKeeper().TimestepValues[index]:.6f}")

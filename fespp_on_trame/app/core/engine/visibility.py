@@ -30,48 +30,6 @@ from fespp_on_trame.app.core.engine import panel_resolver, source_resolver
 from fespp_on_trame.app.core.sources.representation import _apply_default_tint
 
 
-def _clear_active_array(state, controller, server, source_registry, tree,
-                        rep_path, panel_id, view, html_view):
-    """Drop the active array binding for `rep_path` in `panel_id` and
-    push SolidColor onto every display of that rep in `view`. Mirrors
-    the legacy global map iff this is the active panel."""
-    bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
-
-    by_view = dict(state.ui_active_array_by_rep_by_view or {})
-    panel_map = dict(by_view.get(bucket_key, {}) or {})
-    panel_map.pop(rep_path, None)
-    by_view[bucket_key] = panel_map
-    state.ui_active_array_by_rep_by_view = by_view
-
-    active = panel_resolver.active_panel_id(server)
-    if active and active == bucket_key:
-        mirror = dict(state.ui_active_array_by_rep or {})
-        mirror.pop(rep_path, None)
-        state.ui_active_array_by_rep = mirror
-
-    source_resolver.apply_color_array(
-        source_registry, tree, rep_path, None, view=view,
-    )
-    # The scalar bar for the cleared array is now orphaned in `view`
-    # (no visible display references its LUT here). Sweep stale bars.
-    source_resolver.hide_unused_scalar_bars(view=view)
-    if view is not None:
-        try:
-            pvsimple.Render(view=view)
-        except Exception:
-            pass
-    if html_view is not None:
-        try:
-            html_view.update()
-        except Exception:
-            pass
-    else:
-        try:
-            controller.view_update()
-        except Exception:
-            pass
-
-
 def toggle_marker_visibility(state, controller, server, source_registry, tree,
                              marker_path, panel_id=None):
     """Tree eye on a WellboreMarker leaf.
@@ -132,6 +90,20 @@ def toggle_marker_visibility(state, controller, server, source_registry, tree,
             pass
 
 
+def _per_view_ijk_for(rep_path, view):
+    """The per-view IjkGrid instance rendering `rep_path` in `view`,
+    or None (non-grid rep / scene not built / per-view IjkGrid not
+    materialised yet)."""
+    try:
+        from fespp_on_trame.app.core.engine.source_resolver import (
+            _scene_rep_for_view,
+        )
+        ris = _scene_rep_for_view(rep_path, view)
+        return getattr(ris, "_per_view_ijk", None)
+    except Exception:
+        return None
+
+
 def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                           panel_id=None, tree=None):
     if not rep_path:
@@ -139,41 +111,16 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
     view, html_view = panel_resolver.resolve_view_and_html_view(server, panel_id)
     bucket_key = panel_id or panel_resolver.active_panel_id(server) or "_active"
 
-    # A wellbore frame has no own geometry — its only renderable content
-    # is the single selected channel tube. The 3-state "clear coloring,
-    # keep geometry" intermediate makes no sense there (it would leave
-    # the log painted in SolidColor instead of hiding it). Treat the
-    # frame's eye as a plain show/hide: skip the clear-coloring branch so
-    # the click goes straight to flipping the per-view extractor's
-    # visibility.
-    is_frame = False
-    if tree is not None:
-        try:
-            from fespp_on_trame.app.core import element_type
-            _nid = tree.find_node_id(rep_path)
-            is_frame = (
-                _nid is not None
-                and element_type.for_kind(tree.find_type(_nid) or "").is_channel_frame()
-            )
-        except Exception:
-            is_frame = False
-
-    # State (3) — array active on this rep in this panel → click means
-    # "give up the coloring", not "hide the rep". Drop the array and
-    # leave the geometry visible in SolidColor.
-    active_array_path = (state.ui_active_array_by_rep_by_view or {}) \
-        .get(bucket_key, {}).get(rep_path)
-    is_hidden_now = rep_path in (
-        (state.ui_hidden_rep_paths_by_view or {}).get(bucket_key, []) or []
-    )
-    if active_array_path and not is_hidden_now and not is_frame:
-        _clear_active_array(
-            state, controller, server, source_registry, tree,
-            rep_path, panel_id, view, html_view,
-        )
-        return
-
-    # State (1)↔(2) — flip visibility for this rep in this panel.
+    # Visibility and colouring are ORTHOGONAL: this eye means show/hide the
+    # rep, nothing else. It used to first "give up the colouring" (SolidColor)
+    # and only hide on a second click — which made hiding a rep necessarily
+    # DESTROY its active array, so "hide the grid, keep the wells coloured by
+    # PORO" was unexpressible, and any consumer of the grid's active property
+    # lost it the moment the grid went away. Dropping a colour array is the
+    # PROPERTY eye's job (`active_array.toggle_dataarray_color`), which already
+    # allows one active array per rep and falls back to SolidColor when the
+    # last one closes. That also retires the wellbore-frame special case: the
+    # frame's eye was only ever exempted to escape this same intermediate.
     by_view = dict(state.ui_hidden_rep_paths_by_view or {})
     bucket = list(by_view.get(bucket_key, []) or [])
     if rep_path in bucket:
@@ -198,23 +145,36 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
 
     if show:
         # For IjkGrid the per-mode Show/Hide pattern is intricate
-        # (slice vs range, volume eye, deepest threshold leaf) — let
+        # (slice vs range, volume eyes, deepest threshold leaf) — let
         # IjkGrid.show() decide which sources to actually render in
-        # the target view. For non-IjkGrid reps, plain Show on the
-        # source proxy is the right behaviour.
+        # the target view. Re-show ONLY the pipeline that renders in
+        # this view: the per-view IjkGrid when the scene has one, else
+        # the legacy shared instance. Re-showing BOTH painted the
+        # legacy full-grid rep_data — whose mode and coloring never
+        # track the per-view state — on top of the per-view crops /
+        # slices (legacy extractor visible over
+        # the per-view crop after a geometry-eye re-show). The HIDE
+        # side still sweeps both instances — belt and braces.
         ijk = source_registry.get_ijk_grid(rep_path)
-        if ijk is not None:
+        per_view_ijk = _per_view_ijk_for(rep_path, view)
+        for ijk_inst in ([per_view_ijk] if per_view_ijk is not None else [ijk]):
+            if ijk_inst is None:
+                continue
             try:
-                ijk.show(view=view)
+                ijk_inst.show(view=view)
             except Exception as _e:
                 pass
+        # Non-IjkGrid reps take the generic Show path below.
+        if ijk is not None:
+            pass
         else:
             # ExtractBlock side — the rep's `add_source` set
             # Representation + tint on the active view's display only.
             # For other panels the display we're about to flip Vis=1 on
             # has PV's defaults, so re-assert Representation and tint to
             # match the user's pick.
-            rep_type = state.representation_active or "Surface"
+            from fespp_on_trame.app.core.sources.representation import rep_type_for
+            rep_type = rep_type_for(state, rep_path)
             grid_color = (state.solid_color_by_rep or {}).get(rep_path)
             for src in srcs:
                 try:
@@ -238,7 +198,33 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
     else:
         # Hide: flip Visibility on every source of the rep (slicers,
         # volume crop, rep_data extractor) so the panel goes dark
-        # regardless of which one was rendering.
+        # regardless of which one was rendering. Cover BOTH IjkGrid
+        # pipelines explicitly: the show path re-shows the LEGACY
+        # shared instance while `sources_for_rep_path` prefers the
+        # per-view set once a RepInScene exists — hiding only the
+        # latter left the legacy slicers rendering on the second eye
+        # close (per-axis slicer proxies survive a bare rep_data hide).
+        all_srcs = list(srcs)
+        try:
+            _ijk_legacy = source_registry.get_ijk_grid(rep_path)
+        except Exception:
+            _ijk_legacy = None
+        for _ijk_inst in (_ijk_legacy, _per_view_ijk_for(rep_path, view)):
+            if _ijk_inst is None:
+                continue
+            _p = getattr(_ijk_inst, "_src_extract_init", None)
+            if _p is not None:
+                all_srcs.append(_p)
+            all_srcs.extend(getattr(_ijk_inst, "_src_volumes", []) or [])
+            try:
+                all_srcs.extend(_ijk_inst._all_slice_sources())
+            except Exception:
+                pass
+            try:
+                all_srcs.extend(_ijk_inst.all_threshold_sources())
+            except Exception:
+                pass
+        srcs = all_srcs
         for src in srcs:
             try:
                 pvsimple.Hide(src, view=view)
@@ -253,6 +239,19 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
                         sm.UpdateVTKObjects()
             except Exception as _e:
                 pass
+    # Colour-bar invariant on eye flips: re-showing a rep must bring its
+    # active array's bar back (a hide-side sweep dropped it, and nothing
+    # outside a load batch re-shows bars), and hiding must sweep the
+    # now-orphan bar instead of leaving a stale legend.
+    try:
+        if show:
+            source_resolver.reassert_active_scalar_bars(
+                state, source_registry, view=view)
+        else:
+            source_resolver.hide_unused_scalar_bars(view=view)
+            source_resolver.layout_visible_scalar_bars(view)
+    except Exception:
+        pass
     if view is not None:
         try:
             view.SMProxy.UpdateVTKObjects()

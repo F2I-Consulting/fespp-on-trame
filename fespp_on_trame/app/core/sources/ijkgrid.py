@@ -6,8 +6,10 @@ from fespp_on_trame.app.core.sources.collector import Collector
 from fespp_on_trame.app.core.tree import Tree
 from fespp_on_trame.app.core.sources.representation import (
     _apply_default_tint, _find_registered_proxy, _sanitize, inherit_display,
-    arrays_from_source, array_range_from_source, resolve_assoc,
+    arrays_from_source, array_range_from_source, rep_type_for, resolve_assoc,
+    suppress_selection_labels,
 )
+from fespp_on_trame.app.core.sources import leaf_rep
 
 
 server = get_server()
@@ -68,11 +70,11 @@ class IjkGrid:
     """Slicer / volume rendering for one IJK grid.
 
     Multi-instance: the engine maintains one IjkGrid per loaded IJK
-    grid; each owns its own rep_data filter, per-axis crops, volume
-    crop, threshold chain, and slicer/range UI state. The "active"
-    grid (driven by `state.active_representation_path`) is the one
-    whose state is mirrored into the trame `ui_slices_*` /
-    `ui_range_*` / `ui_slices_range_*` vars and whose properties are
+    grid; each owns its own rep_data filter, per-axis crops, range-mode
+    volume crops, threshold chain, and slicer/range UI state. The
+    "active" grid (driven by `state.active_representation_path`) is the
+    one whose state is mirrored into the trame `ui_slices_*` /
+    `ui_range_*` / `ui_volumes_*` vars and whose properties are
     edited by the slicer/threshold panels. Non-active grids continue
     rendering independently with their stored state.
 
@@ -120,7 +122,7 @@ class IjkGrid:
         self._src_slicers_i = []
         self._src_slicers_j = []
         self._src_slicers_k = []
-        self._src_slicer_volume = None
+        self._src_volumes = []
 
         # Threshold chain (ordered, parent-child by name).
         self._chain = []  # list[_IjkChainEntry]
@@ -140,16 +142,18 @@ class IjkGrid:
         self._slices_i_visible_list = []
         self._slices_j_visible_list = []
         self._slices_k_visible_list = []
-        self._slices_range_i = None
-        self._slices_range_j = None
-        self._slices_range_k = None
+        # Range-mode volumes: parallel lists of per-volume crop ranges
+        # ([[i0,i1],[j0,j1],[k0,k1]] each) and per-volume eye state.
+        self._volumes = []
+        self._volumes_visible = []
         self._range_i = None
         self._range_j = None
         self._range_k = None
-        # Range/full-extent by default so a freshly-loaded grid renders the
-        # complete grid (rep_data) rather than the three mid-plane slices.
-        self._range_mode = "range"
-        self._volume_visible = True
+        # Full-grid mode by default (user preference): the grid shows
+        # whole until the user opts into slicing (Slice is then the
+        # preferred slicer mode) or cropping (Range).
+
+        self._range_mode = "full"
 
     # ------------------------------------------------------------------
     # Symmetry with ExtractBlockRepresentation: both classes expose a
@@ -283,13 +287,13 @@ class IjkGrid:
         self._src_slicers_i = []
         self._src_slicers_j = []
         self._src_slicers_k = []
-        if self._src_slicer_volume is not None:
+        for src in self._src_volumes:
             try:
-                pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
-                pvsimple.Delete(self._src_slicer_volume)
+                pvsimple.Hide(proxy=src, view=view)
+                pvsimple.Delete(src)
             except Exception:
                 pass
-            self._src_slicer_volume = None
+        self._src_volumes = []
         if self._src_extract_init is not None:
             try:
                 pvsimple.Delete(self._src_extract_init)
@@ -312,7 +316,8 @@ class IjkGrid:
         src.UpdatePipelineInformation()
         view = self._target_view()
         rep = pvsimple.GetRepresentation(proxy=src, view=view)
-        rep.Representation = state.representation_active or 'Surface'
+        suppress_selection_labels(rep)
+        rep.Representation = rep_type_for(state, self.rep_path)
         rep.Scale = [1.0, 1.0, self._current_z_scale()]
         if self._title and self._current_array_type:
             self.update_colors(src, self._current_array_type, self._title,
@@ -354,8 +359,13 @@ class IjkGrid:
             self._node_id = None
             return
 
-        ijkgrid_node_id = self._tree.find_parent_node_id_with_type(node_id, 'IjkGrid')
-        if ijkgrid_node_id is None:
+        # SolidColor variant: a grid property is now a SIBLING of its geometry
+        # rep under a PropertiesFolder, so the geometry is no longer an ancestor
+        # of the property. find_representation_node descends the grid folder to
+        # the geometry rep for a property (and returns the rep itself when
+        # node_id already is it); keep only IjkGrid — this source is IjkGrid-only.
+        ijkgrid_node_id = self._tree.find_representation_node(node_id)
+        if ijkgrid_node_id is None or self._tree.find_type(ijkgrid_node_id) != 'IjkGrid':
             return
 
         if self._node_id != ijkgrid_node_id:
@@ -436,10 +446,12 @@ class IjkGrid:
                 )
                 getattr(self, f'_src_slicers_{axis}').append(src)
 
-            self._src_slicer_volume = pvsimple.ExplicitStructuredGridCrop(
-                registrationName=f'slicervolume__{self._rep_token}',
+            # One default range-mode volume; the UI's "+" grows the list
+            # via apply_volumes.
+            self._src_volumes = [pvsimple.ExplicitStructuredGridCrop(
+                registrationName=f'slicervolume0__{self._rep_token}',
                 Input=self._src_extract_init,
-            )
+            )]
 
             self._src_extract_init.UpdatePipelineInformation()
             # Full data pass on rep_data BEFORE its display is created/Shown.
@@ -452,13 +464,13 @@ class IjkGrid:
                 self._src_extract_init.UpdatePipeline()
             except Exception:
                 pass
-            for src in self._all_slice_sources() + [self._src_slicer_volume]:
+            for src in self._all_slice_sources() + self._src_volumes:
                 src.UpdatePipelineInformation()
 
-            rep_type = state.representation_active or 'Surface'
+            rep_type = rep_type_for(state, ijkgrid_rep_path)
             grid_color = (state.solid_color_by_rep or {}).get(ijkgrid_rep_path)
             zs = self._current_z_scale()
-            for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
+            for src in self._all_slice_sources() + self._src_volumes + [self._src_extract_init]:
                 disp = pvsimple.GetRepresentation(proxy=src, view=view)
                 disp.Representation = rep_type
                 disp.Scale = [1.0, 1.0, zs]
@@ -487,13 +499,16 @@ class IjkGrid:
             self._slices_i_visible_list = [True]
             self._slices_j_visible_list = [True]
             self._slices_k_visible_list = [True]
-            self._slices_range_i = [extent[0], extent[1]]
-            self._slices_range_j = [extent[2], extent[3]]
-            self._slices_range_k = [extent[4], extent[5]]
+            self._volumes = [[
+                [extent[0], extent[1]],
+                [extent[2], extent[3]],
+                [extent[4], extent[5]],
+            ]]
+            self._volumes_visible = [True]
 
-            for src in self._all_slice_sources() + [self._src_slicer_volume]:
+            for src in self._all_slice_sources() + self._src_volumes:
                 src.OutputWholeExtent = extent
-            for src in self._all_slice_sources() + [self._src_slicer_volume]:
+            for src in self._all_slice_sources() + self._src_volumes:
                 try:
                     src.UpdatePipeline()
                 except Exception:
@@ -506,40 +521,32 @@ class IjkGrid:
             if array_type is not None:
                 self._current_array_type = array_type
                 self._current_property_type = property_type
-                for src in self._all_slice_sources() + [self._src_slicer_volume, self._src_extract_init]:
+                for src in self._all_slice_sources() + self._src_volumes + [self._src_extract_init]:
                     self.update_colors(src, array_type, property_title, property_type)
 
             self._title = property_title
 
-            for src in self._all_slice_sources() + [self._src_slicer_volume]:
+            for src in self._all_slice_sources() + self._src_volumes:
                 src.UpdatePipelineInformation()
 
             pvsimple.Hide(proxy=self._src_extract_init, view=self._target_view())
             self.show()
 
-    def _is_range_full_extent(self):
-        """True when the range slider equals the grid's full extent. PV6's
-        ExplicitStructuredGridCrop produces a degenerate 1-cell output at
-        full extent, so we fall back to rep_data in that case (the
-        non-cropped equivalent) and only switch to slicervolume once the
-        user actually cropped something."""
-        if not self._current_extent:
+    def _is_volume_full_extent(self, vol):
+        """True when `vol` ([[i0,i1],[j0,j1],[k0,k1]]) spans the grid's
+        full extent. PV6's ExplicitStructuredGridCrop produces a
+        degenerate 1-cell output at full extent, so a full-extent volume
+        renders through rep_data (the non-cropped equivalent) instead of
+        its crop."""
+        if not self._current_extent or not vol:
             return True
         full = self._current_extent
-        ri = self._slices_range_i or [full[0], full[1]]
-        rj = self._slices_range_j or [full[2], full[3]]
-        rk = self._slices_range_k or [full[4], full[5]]
+        ri, rj, rk = vol
         return (
             int(ri[0]) <= full[0] and int(ri[1]) >= full[1]
             and int(rj[0]) <= full[2] and int(rj[1]) >= full[3]
             and int(rk[0]) <= full[4] and int(rk[1]) >= full[5]
         )
-
-    def _primary_range_source(self):
-        """The source that's actually rendered in range mode."""
-        if self._is_range_full_extent() or self._src_slicer_volume is None:
-            return self._src_extract_init
-        return self._src_slicer_volume
 
     def _active_upstreams(self):
         """The upstream sources currently rendered (and thus the ones
@@ -549,9 +556,9 @@ class IjkGrid:
         out = [self._src_extract_init]
         if self._range_mode == 'slice':
             out.extend(self._all_slice_sources())
-        else:
-            if self._src_slicer_volume is not None:
-                out.append(self._src_slicer_volume)
+        elif self._range_mode == 'range':
+            out.extend(self._src_volumes)
+        # 'full': rep_data only — nothing else renders.
         return out
 
     # ------------------------------------------------------------------
@@ -560,13 +567,14 @@ class IjkGrid:
     def show(self, view=None):
         """Show / hide the right combination of sources for the current
         slicer mode. Slice mode displays the per-axis crops; range mode
-        displays slicervolume when the slider is on a subset of the grid,
-        and rep_data when it spans the full extent (slicervolume's output
-        is degenerate at full extent on PV6 — see _is_range_full_extent).
+        displays each visible volume's crop — a visible FULL-EXTENT
+        volume renders through rep_data instead (its crop output is
+        degenerate at full extent on PV6 — see _is_volume_full_extent).
 
-        Fallback: when the user hides every visible slicer (slice mode)
-        or the volume eye (range mode), we show rep_data — the parent
-        un-cropped grid — instead of leaving an empty view.
+        No parent fallback: every eye closed (all slicers in slice mode,
+        all volumes in range mode) renders NOTHING — an all-hidden set
+        must read as empty, not as the full grid sneaking back (which
+        also used to leave rep_data lingering after re-opening an eye).
 
         When the chain has any visible entry, each "would-be visible"
         source is replaced by the Threshold proxies of every visible
@@ -593,7 +601,7 @@ class IjkGrid:
         if slice_active or clip_active:
             for src in (
                 list(self._all_slice_sources())
-                + ([self._src_slicer_volume] if self._src_slicer_volume is not None else [])
+                + list(self._src_volumes)
                 + ([self._src_extract_init] if self._src_extract_init is not None else [])
             ):
                 try:
@@ -609,12 +617,12 @@ class IjkGrid:
         # toggle) the display is created later with PV's default
         # Representation='Outline' and grey colour, so re-assert
         # Representation + tint on every managed source's display in `view`.
-        rep_type = state.representation_active or 'Surface'
+        rep_type = rep_type_for(state, self.rep_path)
         grid_color = (state.solid_color_by_rep or {}).get(self.rep_path)
         zs = self._current_z_scale()
         for src in (
             list(self._all_slice_sources())
-            + ([self._src_slicer_volume] if self._src_slicer_volume is not None else [])
+            + list(self._src_volumes)
             + ([self._src_extract_init] if self._src_extract_init is not None else [])
         ):
             try:
@@ -628,15 +636,25 @@ class IjkGrid:
 
         tips = self._visible_leaf_tips()
 
-        if self._range_mode == 'slice':
-            if self._src_slicer_volume is not None:
-                pvsimple.Hide(proxy=self._src_slicer_volume, view=view)
-                self._hide_chain_for(self._src_slicer_volume, view)
+        if self._range_mode == 'full':
+            # Full grid: rep_data only — every slicer and volume crop
+            # hidden. The default mode: a grid shows whole until the
+            # user opts into slicing/cropping.
+            for src in self._all_slice_sources() + self._src_volumes:
+                pvsimple.Hide(proxy=src, view=view)
+                self._hide_chain_for(src, view)
+            if self._src_extract_init is not None:
+                self._show_source_or_chain(
+                    self._src_extract_init, view, True, tips,
+                )
+        elif self._range_mode == 'slice':
+            for src in self._src_volumes:
+                pvsimple.Hide(proxy=src, view=view)
+                self._hide_chain_for(src, view)
 
             vis_i = list(self._slices_i_visible_list or [])
             vis_j = list(self._slices_j_visible_list or [])
             vis_k = list(self._slices_k_visible_list or [])
-            any_visible = False
             for axis_srcs, vis_list in (
                 (self._src_slicers_i, vis_i),
                 (self._src_slicers_j, vis_j),
@@ -645,31 +663,37 @@ class IjkGrid:
                 for idx, src in enumerate(axis_srcs):
                     visible = vis_list[idx] if idx < len(vis_list) else True
                     self._show_source_or_chain(src, view, visible, tips)
-                    if visible:
-                        any_visible = True
 
             if self._src_extract_init is not None:
-                # Parent fallback: show rep_data when no slicer is visible.
+                # No parent fallback: all slicer eyes closed = nothing
+                # renders.
                 self._show_source_or_chain(
-                    self._src_extract_init, view, not any_visible, tips,
+                    self._src_extract_init, view, False, tips,
                 )
         else:
             for src in self._all_slice_sources():
                 pvsimple.Hide(proxy=src, view=view)
                 self._hide_chain_for(src, view)
 
-            primary = self._primary_range_source()
-            volume_visible = bool(self._volume_visible)
-            if not volume_visible:
-                primary = self._src_extract_init
-                volume_visible = True
-
-            for s in (self._src_extract_init, self._src_slicer_volume):
-                if s is not None and s is not primary:
-                    pvsimple.Hide(proxy=s, view=view)
-                    self._hide_chain_for(s, view)
-            if primary is not None:
-                self._show_source_or_chain(primary, view, volume_visible, tips)
+            # Each visible volume renders its own crop; a visible
+            # FULL-EXTENT volume renders through rep_data instead
+            # (degenerate crop output at full extent on PV6). Every
+            # volume eye closed = nothing renders.
+            vis = self._volumes_visible or []
+            any_full_visible = False
+            for idx, src in enumerate(self._src_volumes):
+                visible = bool(vis[idx]) if idx < len(vis) else True
+                vol = self._volumes[idx] if idx < len(self._volumes) else None
+                is_full = self._is_volume_full_extent(vol)
+                if visible and is_full:
+                    any_full_visible = True
+                self._show_source_or_chain(
+                    src, view, visible and not is_full, tips,
+                )
+            if self._src_extract_init is not None:
+                self._show_source_or_chain(
+                    self._src_extract_init, view, any_full_visible, tips,
+                )
 
     def _show_source_or_chain(self, src, view, visible, tips):
         """Show src OR — when a threshold chain is active for this
@@ -800,10 +824,18 @@ class IjkGrid:
         # rep_data extractor — that's the unfiltered VTK array store,
         # so scanning uniques there reflects the data's true value
         # set, not what's left after slicers / chain filtering.
-        from fespp_on_trame.app.core.sources.extract_block import resolve_chain_kind
+        from fespp_on_trame.app.core.sources.extract_block import (
+            chain_domain, resolve_chain_kind,
+        )
         kind, unique_values, labels = resolve_chain_kind(
             self._tree, rep_path, array,
             self._src_extract_init, assoc,
+        )
+        # Discrete / Categorical: shrink the slider domain to the real
+        # categories — the raw range includes the NullValue sentinel
+        # (INT32_MAX) of inactive cells and spans billions.
+        rng, unique_values, labels = chain_domain(
+            kind, unique_values, labels, rng,
         )
 
         entry = _IjkChainEntry(
@@ -886,15 +918,14 @@ class IjkGrid:
 
     def all_render_sources(self):
         """Every PV source proxy created by this grid: rep_data, the
-        per-axis slicers, the volume crop, and every chain proxy.
+        per-axis slicers, the volume crops, and every chain proxy.
         Lets callers (Activator, engine fan-out) enumerate this grid's
         own sources without having to glob registration names."""
         out = []
         if self._src_extract_init is not None:
             out.append(self._src_extract_init)
         out.extend(self._all_slice_sources())
-        if self._src_slicer_volume is not None:
-            out.append(self._src_slicer_volume)
+        out.extend(self._src_volumes)
         out.extend(self.all_threshold_sources())
         return out
 
@@ -1101,11 +1132,12 @@ class IjkGrid:
         bar of the previously selected array."""
         view = self._target_view()
         representation = pvsimple.GetRepresentation(proxy=src, view=view)
+        suppress_selection_labels(representation)
         representation.ColorArrayName = [array_type, property_title]
         lut = pvsimple.GetColorTransferFunction(property_title)
         lut.NanOpacity = self._nan_opacity_from_state()
         representation.LookupTable = lut
-        representation.RescaleTransferFunctionToDataRange(True)
+        leaf_rep.rescale_to_range(representation)
         bar = pvsimple.GetScalarBar(ctf=lut, view=view)
         bar.Visibility = True
         bar.RangeLabelFormat = '%-#6.3g'
@@ -1172,17 +1204,61 @@ class IjkGrid:
         self._slices_j_visible_list = list(vis_j or [])
         self._slices_k_visible_list = list(vis_k or [])
 
-    def apply_range(self, range_i, range_j, range_k):
-        self._slices_range_i = list(range_i)
-        self._slices_range_j = list(range_j)
-        self._slices_range_k = list(range_k)
-        if self._node_id is None or self._src_slicer_volume is None:
+    def _create_volume_source(self, idx: int):
+        """Create a new range-mode volume crop chained on rep_data,
+        styled and coloured like a slicer source."""
+        src = pvsimple.ExplicitStructuredGridCrop(
+            registrationName=f'slicervolume{idx}__{self._rep_token}',
+            Input=self._src_extract_init,
+        )
+        if self._current_extent:
+            src.OutputWholeExtent = list(self._current_extent)
+        src.UpdatePipelineInformation()
+        view = self._target_view()
+        rep = pvsimple.GetRepresentation(proxy=src, view=view)
+        suppress_selection_labels(rep)
+        rep.Representation = rep_type_for(state, self.rep_path)
+        rep.Scale = [1.0, 1.0, self._current_z_scale()]
+        if self._title and self._current_array_type:
+            self.update_colors(src, self._current_array_type, self._title,
+                               self._current_property_type)
+        return src
+
+    def _sync_volume_sources(self, count: int):
+        """Ensure exactly `count` volume crop sources exist."""
+        if self._src_extract_init is None:
             return
-        self._src_slicer_volume.OutputWholeExtent = [
-            range_i[0], range_i[1],
-            range_j[0], range_j[1],
-            range_k[0], range_k[1],
-        ]
+        while len(self._src_volumes) < count:
+            src = self._create_volume_source(len(self._src_volumes))
+            self._src_volumes.append(src)
+            # New volume joins the active upstream set — reattach the
+            # chain to it.
+            self._refresh_chain_pipeline()
+        view = self._target_view()
+        while len(self._src_volumes) > count:
+            src = self._src_volumes.pop()
+            self._delete_chain_proxies_for_upstream(src)
+            try:
+                pvsimple.Hide(proxy=src, view=view)
+                pvsimple.Delete(src)
+            except Exception:
+                pass
+
+    def apply_volumes(self, volumes, visible_list):
+        """Sync the range-mode volume crops with the per-volume range
+        list ([[i0,i1],[j0,j1],[k0,k1]] each) and visibility flags,
+        creating / deleting crop sources as needed. Mirrors both lists
+        into the instance's stored state."""
+        self._volumes = [list(map(list, v)) for v in (volumes or [])]
+        self._volumes_visible = list(visible_list or [])
+        if self._node_id is None:
+            return
+        self._sync_volume_sources(len(self._volumes))
+        for src, vol in zip(self._src_volumes, self._volumes):
+            ri, rj, rk = vol
+            src.OutputWholeExtent = [
+                ri[0], ri[1], rj[0], rj[1], rk[0], rk[1],
+            ]
 
     def apply_mode(self, mode):
         if not mode or self._range_mode == mode:
@@ -1204,9 +1280,6 @@ class IjkGrid:
             except Exception:
                 pass
 
-    def apply_volume_visible(self, visible):
-        self._volume_visible = bool(visible)
-
     def to_ui_state(self):
         """Snapshot of this grid's slicer/range state, suitable for
         `state.update()`. Returns None when the grid hasn't been
@@ -1223,9 +1296,7 @@ class IjkGrid:
             "ui_slices_i_visible_list": list(self._slices_i_visible_list),
             "ui_slices_j_visible_list": list(self._slices_j_visible_list),
             "ui_slices_k_visible_list": list(self._slices_k_visible_list),
-            "ui_slices_range_i": list(self._slices_range_i or []),
-            "ui_slices_range_j": list(self._slices_range_j or []),
-            "ui_slices_range_k": list(self._slices_range_k or []),
+            "ui_volumes_list": [list(map(list, v)) for v in (self._volumes or [])],
+            "ui_volumes_visible_list": list(self._volumes_visible or []),
             "ui_slices_range_mode": self._range_mode,
-            "ui_slices_volume_visible": self._volume_visible,
         }

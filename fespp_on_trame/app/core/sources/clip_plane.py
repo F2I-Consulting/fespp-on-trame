@@ -20,7 +20,7 @@ import math
 
 from paraview import simple as pvsimple
 
-from fespp_on_trame.app.core.sources.representation import _sanitize
+from fespp_on_trame.app.core.sources.representation import _sanitize, suppress_selection_labels
 from fespp_on_trame.app.core.sources.plane_widget import PlaneWidget
 
 
@@ -242,6 +242,7 @@ class ClipPlane:
             try:
                 src_disp = pvsimple.GetDisplayProperties(self._upstream, view=view)
                 clip_disp = pvsimple.GetRepresentation(proxy=self._proxy, view=view)
+                suppress_selection_labels(clip_disp)
                 if src_disp is not None and clip_disp is not None:
                     for attr in (
                         "Representation", "Scale", "ColorArrayName",

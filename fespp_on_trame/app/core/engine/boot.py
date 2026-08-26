@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from paraview import simple as pvsimple
@@ -61,14 +62,18 @@ def _resolve_esg_plugin(fallback):
     except Exception:
         pass
     for root in roots:
-        try:
-            for hit in sorted(root.glob(
-                "lib/paraview-*/plugins/ExplicitStructuredGrid/"
-                "ExplicitStructuredGrid.*")):
-                if hit.suffix in (".so", ".dll", ".dylib"):
-                    return str(hit)
-        except Exception:
-            pass
+        # Linux/container layout is lib/paraview-*; the Windows binary release
+        # puts plugins under bin/paraview-* — try both so boot is OS-portable.
+        for pattern in (
+            "lib/paraview-*/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.*",
+            "bin/paraview-*/plugins/ExplicitStructuredGrid/ExplicitStructuredGrid.*",
+        ):
+            try:
+                for hit in sorted(root.glob(pattern)):
+                    if hit.suffix in (".so", ".dll", ".dylib"):
+                        return str(hit)
+            except Exception:
+                pass
     return fallback
 
 
@@ -97,6 +102,13 @@ def initialize_fespp_engine(
     pvsimple.LoadPlugin(_resolve_esg_plugin(
         '/opt/paraview/lib/paraview-6.0/plugins/ExplicitStructuredGrid/'
         'ExplicitStructuredGrid.so'))
+
+    # Swap ParaView's heavy composite representation for a lightweight leaf one
+    # on every Show/GetRepresentation (see leaf_rep.py) — kills the per-rep
+    # 100-vtkTextMapper allocation that OOMs mass loads. Must run before the
+    # first Show (data load / wellhead), i.e. right after the plugins load.
+    from fespp_on_trame.app.core.sources import leaf_rep
+    leaf_rep.install()
 
     _view = pvsimple.GetActiveViewOrCreate("RenderView")
     _view.Visible = 1
@@ -222,6 +234,18 @@ def initialize_fespp_engine(
     def _set_upload_session_id(**kwargs):
         resolve_upload_session_id(server)
 
+    # Headless visual-test hook — inert unless FESPP_SCENARIO is set
+    # (see core/engine/scenario.py and tests/visual/).
+    _scenario_path = os.environ.get("FESPP_SCENARIO")
+    if _scenario_path:
+        from fespp_on_trame.app.core.engine import scenario as _scenario
+
+        @controller.add("on_server_ready")
+        def _launch_scenario(**kwargs):
+            _scenario.schedule(
+                server, state, controller, _tree, _view, _scenario_path,
+            )
+
     state.flush()
 
     # Register the /upload HTTP route. First try eagerly; if the aiohttp
@@ -307,6 +331,11 @@ def initialize_fespp_engine(
     @state.change("ui_scale_z")
     def ui_scale_z_update(ui_scale_z, **kwargs):
         slicer_dispatch.apply_z_scale(state, controller, _source_registry, _view, ui_scale_z)
+        # Wellheads can't ride the fan-out: they are Text reps with no
+        # `Scale` and absolute anchors, so they need an explicit re-anchor.
+        # This single hook covers BOTH z-scale entry points — the
+        # TransformationEditor persists its value here before applying.
+        _selector.apply_z_scale(ui_scale_z)
 
     # Global wellbore-marker display options (orientation = oriented disk
     # vs sphere; size = radius). Apply to every marker in every view via
@@ -447,23 +476,17 @@ def initialize_fespp_engine(
             ui_slices_i_list, ui_slices_j_list, ui_slices_k_list,
         )
 
-    @state.change("ui_slices_range_i", "ui_slices_range_j", "ui_slices_range_k")
-    def update_range_slicer(ui_slices_range_i, ui_slices_range_j, ui_slices_range_k, **kwargs):
-        slicer_dispatch.update_slice_range(
+    @state.change("ui_volumes_list", "ui_volumes_visible_list")
+    def update_volumes(ui_volumes_list=None, ui_volumes_visible_list=None, **kwargs):
+        slicer_dispatch.update_volumes(
             state, controller, _source_registry, _view,
-            ui_slices_range_i, ui_slices_range_j, ui_slices_range_k,
+            ui_volumes_list, ui_volumes_visible_list,
         )
 
     @state.change("ui_slices_range_mode")
     def update_mode_slicer(ui_slices_range_mode=None, **kwargs):
         slicer_dispatch.update_slice_mode(
             state, controller, _source_registry, _view, ui_slices_range_mode,
-        )
-
-    @state.change("ui_slices_volume_visible")
-    def update_volume_visible(ui_slices_volume_visible=None, **kwargs):
-        slicer_dispatch.update_volume_visible(
-            state, controller, _source_registry, _view, ui_slices_volume_visible,
         )
 
     # slicer_dispatch writes slicer state directly onto the active view's
@@ -588,6 +611,14 @@ def initialize_fespp_engine(
     @server.trigger("stats_unpin_original")
     def _stats_unpin_original(array_path, original_id):
         stats_dispatch.unpin_original(state, array_path, original_id)
+
+    @server.trigger("stats_pin_all")
+    def _stats_pin_all(array_path, dimension):
+        stats_dispatch.pin_all_originals(state, array_path, dimension)
+
+    @server.trigger("stats_unpin_all")
+    def _stats_unpin_all(array_path):
+        stats_dispatch.unpin_all_originals(state, array_path)
 
     @server.trigger("stats_compare_toggle")
     def _stats_compare_toggle(array_path, item_key):
@@ -1066,6 +1097,30 @@ def initialize_fespp_engine(
             _view, name,
         )
 
+    @controller.set("confirm_unselect_property")
+    def confirm_unselect_property():
+        """Confirm branch of the threshold-guard dialog:
+        delete every chain entry fed by the guarded property, in every
+        view, then re-apply the uncheck the guard vetoed — the guard
+        passes this time since the references are gone."""
+        info = dict(state.thr_unselect_dialog or {})
+        state.thr_unselect_dialog_visible = False
+        node_id = info.get("node_id")
+        if node_id is None:
+            return
+        refs = threshold_dispatch.chain_entries_for_property(
+            state, _scene_registry, _source_registry, _tree, node_id,
+        )
+        for view_id, entry_name in refs:
+            threshold_dispatch.threshold_delete(
+                state, controller, _scene_registry, _source_registry,
+                _view, entry_name, view_id=view_id,
+            )
+        remaining = [x for x in (state.ui_select_node_reservoir or [])
+                     if x != node_id]
+        state.ui_select_node_reservoir = remaining
+        state.dirty("ui_select_node_reservoir")
+
     @controller.set("threshold_set_range")
     def threshold_set_range(name, low, high):
         threshold_dispatch.threshold_set_range(
@@ -1128,11 +1183,9 @@ def initialize_fespp_engine(
         "ui_slices_i_visible_list",
         "ui_slices_j_visible_list",
         "ui_slices_k_visible_list",
-        "ui_slices_range_i",
-        "ui_slices_range_j",
-        "ui_slices_range_k",
+        "ui_volumes_list",
+        "ui_volumes_visible_list",
         "ui_slices_range_mode",
-        "ui_slices_volume_visible",
     )
     def _on_stats_inputs_change(**_):
         """Recompute the multi-property stats tables whenever an input
@@ -1354,6 +1407,11 @@ def initialize_fespp_engine(
             try:
                 if concern == "threshold":
                     dst_rep.apply_threshold_chain(src_rep.snapshot_threshold_chain())
+                    # A grid's chain mirrors onto its loaded wellbores —
+                    # keep the copy's destination view consistent.
+                    threshold_dispatch.sync_blocked_wellbore_chains(
+                        _scene_registry, dst_rep, rep_path, str(dst_view),
+                    )
                 elif concern == "slice":
                     dst_rep.apply_slice(src_rep.snapshot_slice())
                 elif concern == "clip":
@@ -1549,11 +1607,57 @@ def initialize_fespp_engine(
             threshold_set_range, threshold_set_visible,
         )
 
+    # Representation type is PER-REP — and PER-MARKER when a single
+    # marker is the active node: the toggle applies to that element
+    # only, its choice is remembered in `ui_rep_type_by_rep` (keyed by
+    # marker path in the marker case), and switching the active
+    # element re-seeds the control from that map. The guard stops the
+    # programmatic re-seed from re-triggering an apply.
+    _rep_type_sync = {"on": False}
+
+    def _active_marker_rep_key():
+        """Path of the active single-Marker node, else None."""
+        try:
+            nodes = state.ui_active_node_well or []
+            if not nodes:
+                return None
+            nid = nodes[0]
+            if (_tree.find_type(nid) or "") != "Marker":
+                return None
+            return _tree.find_path(nid)
+        except Exception:
+            return None
+
     @state.change("representation_active")
-    def _propagate_representation(representation_active, **kwargs):
-        slicer_dispatch.propagate_representation(
-            _source_registry, _scene_registry, controller, representation_active,
+    def _apply_representation_type(representation_active, **kwargs):
+        if _rep_type_sync["on"]:
+            return
+        rep_path = state.active_representation_path or ""
+        marker_path = _active_marker_rep_key()
+        key = marker_path or rep_path
+        if not key or not representation_active:
+            return
+        by_rep = dict(state.ui_rep_type_by_rep or {})
+        by_rep[key] = representation_active
+        state.ui_rep_type_by_rep = by_rep
+        slicer_dispatch.apply_representation_type(
+            state, controller, _source_registry, rep_path, representation_active,
+            marker_path=marker_path,
         )
+
+    @state.change("active_representation_path", "ui_active_node_well")
+    def _sync_representation_type_from_rep(**kwargs):
+        key = _active_marker_rep_key() or (state.active_representation_path or "")
+        if not key:
+            return
+        desired = (state.ui_rep_type_by_rep or {}).get(key) or "Surface"
+        if state.representation_active == desired:
+            return
+        _rep_type_sync["on"] = True
+        try:
+            state.representation_active = desired
+        finally:
+            _rep_type_sync["on"] = False
 
     @state.change("ui_slices_i_visible_list", "ui_slices_j_visible_list", "ui_slices_k_visible_list")
     def update_slices_visibility(
@@ -1592,6 +1696,17 @@ def initialize_fespp_engine(
     # ParaView. "manual" → toggles only update the per-tab selection
     # state; the toolbar Load button pushes the aggregated selection in
     # one shot. Independent from visibility (driven by the eye icons).
+
+    # Selection RULES (dependency expansion, trajectory/geometry vetoes,
+    # select→active) MUST register before the dispatch handlers below:
+    # trame runs same-var handlers in registration order, so a veto that
+    # rewrites `ui_select_node_*` mid-flush makes the dispatch read the
+    # CORRECTED list — the pipeline never sees the transient (a
+    # geometry-less selection used to tear the grid down and reload it
+    # without its ColorBy). UI-layer import is deliberate: the rules
+    # live next to the tree they govern.
+    from fespp_on_trame.app.ui.drawer.tree_views import wire_selection_rules
+    wire_selection_rules(_tree)
 
     @state.change("ui_select_node_surface")
     def on_change_ui_select_node_surface(**kwargs):
