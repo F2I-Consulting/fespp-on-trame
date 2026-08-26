@@ -1,9 +1,20 @@
 dataclasses_json
 numpy>=1.22.0 # @<1.22.0 low vulnerability CWE-119 buffer overflow
 Pillow>=10.4.0 # @9.5.0 critical vulnerability, see https://cwe.mitre.org/data/definitions/400.html https://www.first.org/cvss/calculator/3.1#CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
-trame
-trame-iframe
-trame-vuetify>=3.2.2
+# Release pins (v1.2.0): the trame stack is frozen to the versions the
+# validated image shipped — an unpinned rebuild silently drifted
+# trame-dockview 1.4.0 → 2.0.0, whose reworked DOM defeats the
+# overflow:visible CSS that lets the per-view action chrome overflow into
+# the dockview tab row (buttons rendered but clipped invisible).
+trame==3.13.2
+trame-iframe==1.1.1
+trame-vuetify==3.2.5
+# First-class requirements (the app imports them directly) — previously
+# pulled in TRANSITIVELY by the ptc git install; the PyPI ptc wheel does
+# not declare them, which broke the session at import
+# (`trame.widgets.color_opacity_editor` missing).
+trame-color-opacity-editor==1.1.0
+trame-components==2.5.0
 # Pinned: trame-vtk 2.11.9 added a top-level `import vtk` (the monolithic
 # module) in its serializers, which pulls in `vtkmodules.vtkViewsInfovis`
 # — a module ParaView's bundled VTK (PV 6.0.1) does NOT ship, so the
@@ -12,8 +23,13 @@ trame-vuetify>=3.2.2
 # vtk and works against the same ParaView. Revisit when upstream stops
 # importing the monolithic vtk (or ships vtkViewsInfovis).
 trame-vtk==2.11.8
-trame-dockview
-trame-plotly
+# Pinned: dockview 2.0.0 (dockview-core 4.x) renames its internal
+# containers — the app CSS forcing `overflow: visible` on
+# .dv-content-container / .dv-active-panel-wrapper no longer matches, so
+# the per-view TC/MR/⚙ chrome that pokes up into the tab row gets
+# clipped. Revisit the selectors before unpinning.
+trame-dockview==1.4.0
+trame-plotly==3.1.2
 plotly
 vtk
 requests>=2.32.2 # @<2.32.2 medium vulnerability CWE-670 always-incorrect control flow
@@ -24,6 +40,10 @@ marshmallow>=3.21.1 # @3.19.0 medium vulnerability asymmetric resource consumpti
 zipp>=3.19.1 # @3.15.0 medium vulnerability CVE-2024-5569 infinite loop
 wheel
 setuptools
-# La dépendance Git (format accepté par pip)
-git+https://github.com/Kitware/paraview-trame-components.git@main#egg=paraview-trame-components
-# paraview-trame-components
+# Pinned for the release — @main made every rebuild resolve whatever
+# Kitware had merged that day (same reproducibility trap as an unpinned
+# FESPP master). NOTE: main's stale __version__ said 0.14.2 while its
+# CODE was post-0.17 (ptc.color_opacity_editor & co) — the real PyPI
+# 0.14.2 wheel lacks those modules; 0.17.0 is the release that has them
+# (validated locally against trame-dockview 1.x).
+paraview-trame-components==0.17.0
