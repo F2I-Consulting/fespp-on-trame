@@ -35,7 +35,7 @@ RUN bash /root/build-fetpapi.sh
 # Placed HERE (not at the top): an ENV line invalidates the cache of
 # every later layer — above build.bash it would retrigger the full
 # ParaView superbuild.
-ENV FESPP_GIT_TAG="fot-v1.2.0-a5"
+ENV FESPP_GIT_TAG="fot-v1.2.0"
 COPY fespp-src-local* ${FESPP_BUILD_ROOT_DIR}/fespp/
 
 RUN bash /root/build-fespp.sh
