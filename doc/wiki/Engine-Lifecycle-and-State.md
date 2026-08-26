@@ -82,6 +82,7 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
 **Key classes / functions.**
 - `init_state_defaults(state) -> None` — called once near the start of `initialize_fespp_engine`. Pure sequence of `state.setdefault(name, default)` calls. It is the **authoritative catalogue of state-var shapes** — the inline comments document the exact dict/list structure of every non-trivial var (read this file to learn the data model). Key buckets and their documented shapes:
   - Selection: `ui_select_node_reservoir/surface/well` (lists), `fespp_data_selectors` (list).
+  - Per-tab active-property sets: `ui_active_node_<tab>_{array_name, rep_path, property_kind, array_path, rep_has_props}` for the three tabs, plus `ui_active_node_reservoir_pending` (selected-but-not-loaded gate) and the threshold-guard dialog vars (`thr_unselect_dialog`, `thr_unselect_dialog_visible`). The legacy shared vars (`active_color_array_name`, `active_property_kind`, `active_representation_path`, `active_color_array_path`, `active_representation_has_properties`) are **projections of the visible tab's set** — see `activator.project_shared_from_tab`.
   - Visibility: `ui_loaded_rep_paths`, `ui_hidden_rep_paths`, `ui_hidden_rep_paths_by_view` (`{panel_id: [rep_path,...]}`).
   - Coloring: `ui_loaded_array_paths`, `ui_active_array_by_rep` (`{rep_path: array_path}`, mirror of active panel), `ui_active_array_by_rep_by_view` (`{panel_id: {rep_path: array_path}}`, source of truth), `ui_loaded_marker_paths`, `ui_visible_marker_paths_by_view`, `panel_has_ts_by_id`.
   - Realizations: `ui_active_realization_by_array_by_view` (`{panel_id: {array_path: idx}}`), `ui_panel_active_mr_specs_by_id`, `panel_has_mr_by_id`, `ui_global_mr_specs`, `ui_global_mr_selected_path`, `ui_global_mr_selected_spec`.
@@ -260,7 +261,7 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
 
 **Key classes / functions.**
 - `resolve_view_and_html_view(server, panel_id) -> (pv_view, html_view)` — asks `server.context.multi_view.get_pv_view(panel_id)` / `get_html_view(panel_id)`. Returns `(pvsimple.GetActiveView(), None)` when `panel_id` is empty/unknown or no multi_view is mounted; if only the pv_view lookup misses, falls back to the active view but keeps any html_view.
-- `active_panel_id(server) -> str | None` — `multi_view._active_panel_id` (the focused render panel), or None when no multi-view is mounted yet.
+- `active_panel_id(server) -> str | None` — `multi_view._active_panel_id` coerced through `view_routing.resolve_active_render_panel`: the focused dockview panel can be a stats/distribution tab, and every caller here writes a colour or visibility bucket keyed by view — a non-render id would strand the write in a bucket no tree annotation or render path ever reads. None when no multi-view is mounted yet.
 
 **State.** None.
 

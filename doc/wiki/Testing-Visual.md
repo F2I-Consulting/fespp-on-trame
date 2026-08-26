@@ -10,6 +10,8 @@ baselines.
 .\test-visual.ps1 -Scenario eye_cycle  # one scenario
 .\test-visual.ps1 -UpdateBaselines     # re-record expected screenshots (after an INTENTIONAL UI change)
 .\test-visual.ps1 -Gpu                 # add --gpus all (default: software rendering)
+.\test-visual.ps1 -App <repo>\fespp_on_trame   # inject a LOCAL source tree over the image's copy
+
 ```
 
 ## How it works
@@ -32,7 +34,11 @@ baselines.
    (`pvpython /deploy/fespp_on_trame --server …` — bypasses the wslink
    launcher, which only spawns app processes per browser session), polls
    for `DONE`, collects `tests\visual\out\<scenario>\`, then either
-   records baselines (`-UpdateBaselines`) or diffs.
+   records baselines (`-UpdateBaselines`) or diffs. With `-App <path>`,
+   the local `fespp_on_trame` tree is copied into the container BEFORE
+   start — to BOTH `/deploy/` and the venv `site-packages/` (the app's
+   package imports resolve from site-packages; a `/deploy`-only copy is
+   inert) — validating a fix without rebuilding the image.
 3. **`tests/visual/compare.py`** — runs with pvpython in a `--rm`
    container: per-pixel diff with tolerance (default: a pixel differs
    when its max channel delta > 12/255; FAIL when > 0.5% of pixels
@@ -44,7 +50,14 @@ baselines.
 - `tests/visual/scenarios/*.json` — committed. Current set: `first_load`
   (camera + first paint), `eye_cycle` (geometry-eye hide/re-show),
   `ijk_modes` (full/slice/range + all-volume-eyes-closed), `colormap`
-  (below/above + min/max narrowing), `markers_md` (trajectory + marker set).
+  (below/above + min/max narrowing), `markers_md` (trajectory + marker set),
+  `geometry_cascade` (geometry uncheck cascades its properties), `bw_family`
+  (BW-first load order + family colour), `surfaces_bulk` (select-all
+  surfaces visibility), `threshold_auto` (threshold gate survives a
+  cross-tab activation), `release_gates` (threshold-guard dialog veto /
+  confirm + deterministic activation fallback + render-panel routing under
+  a fake stats focus), `color_scopes` (per-tab colour scoping: the shared
+  vars project from the visible tab and restore on tab return).
 - `tests/visual/baselines/<scenario>/` — **gitignored**: they depend on
   this machine's GPU rendering and on `data/private` datasets
   (`drogon.epc/.h5`). Re-record with `-UpdateBaselines` after any

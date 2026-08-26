@@ -12,12 +12,12 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 **Responsibility.** Translates the per-tab `ui_select_node_*` checkbox ID lists into assembly paths and writes the concatenated result into `state.fespp_data_selectors`. Also creates/destroys the per-kind companion objects (`Wellhead`, `TimeSeries`) tied to specific node kinds in the current selection.
 
 **Key classes / functions.**
-- `class Selector` — Holds three private per-tab path lists (`_selection_path_reservoir`, `_selection_path_surface`, `_selection_path_well`), a list of live `Wellhead`s (`_wellheads`), and at most one live `TimeSeries` (`_timeseries`). `state.fespp_data_selectors` is always rebuilt as `reservoir + surface + well` so order is stable.
+- `class Selector` — Holds three private per-tab path lists (`_selection_path_reservoir`, `_selection_path_surface`, `_selection_path_well`), a list of live `Wellhead`s (`_wellheads`), and a per-tab dict of live `TimeSeries` companions (`_timeseries = {tab: TimeSeries}`). `state.fespp_data_selectors` is always rebuilt as `reservoir + surface + well` so order is stable.
   - `__init__(self, tree: Tree)` — stores the `Tree`, initializes the empty path/companion lists, and `state.setdefault("first_selection", True)`.
   - `apply_z_scale(self, zscale)` — forwards the global Z exaggeration to every live `Wellhead` (the `Selector` owns them). Wellheads are Text reps with no `Scale` and absolute anchors, so the z-scale fan-out skips them and they need this explicit re-anchor — see `Wellhead.apply_z_scale`. Called from the `@state.change("ui_scale_z")` handler in `boot.py`, which covers BOTH z-scale entry points (the `TransformationEditor` persists its value into `ui_scale_z` before applying).
   - `optimize_tree_selection(self, selected_items)` — **Identity function now** (returns `list(selected_items)` or `[]`). It used to collapse "all children selected" groups to their parent path; that behavior is disabled under `ExplicitSelection=1`. The UI-side dependency expansion (auto-checking a Trajectory when a Channel/Marker is checked, auto-checking grouping descendants) happens in `tree_views.py` *before* this runs, so the input is already complete.
-  - `select_node_surface(self)` — deletes any live `TimeSeries`, walks `state.ui_select_node_surface`, re-creates a `TimeSeries` companion for any `TimeSeries`-kind node, resolves each ID to a path via `tree.find_path`, stores into `_selection_path_surface`, rebuilds `fespp_data_selectors`, flips `first_selection` False, sets `view_update = True`.
-  - `select_node_well(self)` — same shape; additionally deletes and re-creates `Wellhead` companions for every checked `Trajectory` node (rebuilds `_wellheads` from scratch each call), and re-creates a `TimeSeries` for any `TimeSeries` node.
+  - `select_node_surface(self)` — calls `_reset_timeseries("surface", ...)` (re-creates THIS tab's `TimeSeries` companion from its selection; other tabs keep theirs, and the time label deleted alongside it is restored from any surviving companion), resolves each ID to a path via `tree.find_path`, stores into `_selection_path_surface`, rebuilds `fespp_data_selectors`, flips `first_selection` False, sets `view_update = True`.
+  - `select_node_well(self)` — same shape; additionally deletes and re-creates `Wellhead` companions for every checked `Trajectory` node (rebuilds `_wellheads` from scratch each call), and resets the WELL tab's `TimeSeries` slot via `_reset_timeseries`.
   - `select_node_reservoir(self)` — same shape; forwards every checked path explicitly (no descendant auto-expansion). IjkGrid teardown on empty selection is NOT done here — it is handled by the `fespp_data_selectors` change handler (`_on_change_fespp_data_selectors_impl`) elsewhere.
 
 **State.** Reads `state.ui_select_node_surface`, `state.ui_select_node_well`, `state.ui_select_node_reservoir`, `state.first_selection`. Writes `state.fespp_data_selectors`, `state.first_selection`, `state.view_update`.
@@ -27,7 +27,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 **Gotchas.**
 - `optimize_tree_selection` is intentionally a no-op now; do not "restore" the collapse behavior without re-checking the `ExplicitSelection` flag — sending only a parent path silently drops checked child properties.
 - `select_node_well` rebuilds the *entire* `_wellheads` list on every call (delete-all then re-create), so each call is O(checked-trajectories), not incremental.
-- Only one `_timeseries` is tracked across the whole app; selecting a TimeSeries in one tab deletes the previously-tracked one (which only clears `ui_time_label`).
+- `_timeseries` is a per-tab dict: a selection change on one tab only resets ITS OWN companion — the LUT lock and `ui_time_label` of a TimeSeries checked on another tab survive (`TimeSeries.refresh_label` republishes the label from a surviving companion).
 - `if state.first_selection == True` uses `==` rather than `is`/truthiness — harmless but stylistically inconsistent.
 
 ---
@@ -37,7 +37,8 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 **Key classes / functions.**
 - `class TimeSeries`
-  - `__init__(self, tree: Tree, node_id)` — reads `title`, `minvalue`, `maxvalue` attributes from the node. When both min/max exist, calls `pvsimple.GetColorTransferFunction(title)` and `RescaleTransferFunction(float(min), float(max))`. Then, using `state.time_index`, looks up a per-timestep label attribute on the root node (id `0`) named `f"time{TimestepValues[index]:.6f}"`; if found, sets `state.ui_time_label` to it, otherwise to the raw `f"time{...:.6f}"` string.
+  - `__init__(self, tree: Tree, node_id)` — reads `title`, `minvalue`, `maxvalue` attributes from the node. When both min/max exist, calls `pvsimple.GetColorTransferFunction(title)` and `RescaleTransferFunction(float(min), float(max))`. Then calls `refresh_label()`.
+  - `refresh_label(self)` — using `state.time_index`, looks up a per-timestep label attribute on the root node (id `0`) named `f"time{TimestepValues[index]:.6f}"`; if found, sets `state.ui_time_label` to it, otherwise to the raw `f"time{...:.6f}"` string. Also used by `Selector._reset_timeseries` to restore the label from a surviving companion after another tab's companion was deleted.
   - `delete(self)` — clears `state.ui_time_label = ""`.
 
 **State.** Reads `state.time_index`. Writes `state.ui_time_label`.
@@ -77,6 +78,8 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ### `fespp_on_trame/app/core/activator.py`
 **Responsibility.** Reacts to active-node changes in the three trees (`ui_active_node_reservoir/surface/well`), updates the Attributes panel + LUT/PWF/scalar-bar for the active node, and re-applies ColorBy when the per-rep "eye" is open. It deliberately does NOT own ColorBy itself — that is owned by `state.ui_active_array_by_rep` (the eye state); this class only refreshes panel state and re-applies coloring as a side effect.
+
+**Per-tab scoping & projection.** Each tab's activation path writes ONLY its own `ui_active_node_<tab>_*` scoped set; the legacy shared vars every colour consumer reads (`active_color_array_name` / `active_property_kind` / `active_representation_path` / `active_color_array_path` / `active_representation_has_properties`) are re-computed from the VISIBLE tab's set by the module-level `project_shared_from_tab()` (also fired by a `@state.change("tab")` watcher, re-firing `update_color_editor` when the projected array changes so COE/categorical panels repopulate on tab return). Another tab's activity can therefore never clobber what the displayed tab's panels show; explicit `update_color_editor` calls in the activation paths are guarded on `state.tab == tab` for the same reason. Additional reservoir-side rules: a **BlockedWellbore** activation remaps the reservoir rep to its supporting grid (thresholds/slicers panels stay bound to the grid, read-only); `ui_active_node_reservoir_pending` publishes "selected but not loaded yet" (recomputed by `refresh_active()` after every load); the reservoir array name is best-effort seeded from the sanitized node title at activation, then upgraded to the array actually found on the data by the editor refresh.
 
 **Key classes / functions.**
 - Module helpers:
