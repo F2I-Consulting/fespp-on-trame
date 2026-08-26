@@ -135,6 +135,7 @@ class Activator:
                 "ui_active_node_reservoir_type": "",
                 "ui_active_node_reservoir_title": "",
                 "ui_active_node_reservoir_rep_path": "",
+                "ui_active_node_reservoir_array_name": "",
             })
             return
         node_id = ui_active_node_reservoir[0]
@@ -171,6 +172,21 @@ class Activator:
             "active_property_kind": property_kind,
             "ptc_show_vcr": is_ts_property,
             "active_color_array_name": "" if not is_property else state.active_color_array_name,
+            # Reservoir-scoped twin of `active_color_array_name` — the
+            # threshold panel gates on THIS one. The shared var is cleared
+            # by any WELL / SURFACE tab activation (a wellbore, a surface,
+            # a channel...), which used to grey the reservoir-scoped
+            # threshold buttons even though the reservoir active property
+            # never changed. Same pattern as `ui_active_node_reservoir_rep_path`.
+            # Best-effort seed from the node title (FESPP names VTK arrays
+            # via the same sanitizer); `_refresh_active_property_editor`
+            # upgrades it to the array name actually found on the data —
+            # but if that step short-circuits (rep still loading), the twin
+            # must NOT keep the PREVIOUS property's array.
+            "ui_active_node_reservoir_array_name": (
+                "" if not is_property
+                else make_valid_vtk_name(title_node or "")
+            ),
             # Active node path (used by the COE channel retarget; a no-op for
             # grid properties, but kept current so a stale wellbore channel
             # path doesn't linger).
@@ -337,6 +353,7 @@ class Activator:
         if is_ts_property:
             controller.on_data_loaded()
         controller.update_color_editor(array_name)
+        state.ui_active_node_reservoir_array_name = array_name
 
     def _publish_active_color_state(self, node_id):
         """Publish the COE-mode state (`active_color_array_name` /

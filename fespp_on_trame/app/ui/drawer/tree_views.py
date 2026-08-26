@@ -269,20 +269,43 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
     return result
 
 
+# Ids ADDED to a select list by a CASCADE during the current flush
+# (dependency expansion, geometry autoload on property check, forced
+# trajectory of a blocked well) — keyed by select var. Consumed by
+# `_wire_select_to_active` (registered last within the flush) so the
+# activation follows USER-checked nodes only: a cascade-added geometry
+# or trajectory must not steal the focus from the node the user actually
+# clicked (a stolen focus greys every "active property"-gated panel,
+# e.g. the reservoir threshold chain).
+_cascade_added: dict = {}
+
+
+def _note_cascade_added(select_var, ids):
+    if ids:
+        _cascade_added.setdefault(select_var, set()).update(ids)
+
+
 def _wire_select_to_active(select_var: str, active_var: str, prev_var: str):
     """When a new node is checked in `select_var`, set `active_var` to
-    that newly-added id. When the currently-active node is unchecked,
-    fall back to any remaining selected node. Activating via label
-    click does NOT alter selection (Vuetify's separate
-    update_activated callback handles that)."""
+    the newly-added USER-checked id (cascade-added ids never grab the
+    focus). When the currently-active node is unchecked, fall back to
+    any remaining selected node. Activating via label click does NOT
+    alter selection (Vuetify's separate update_activated callback
+    handles that)."""
     @_state.change(select_var)
     def _on_change(**_):
         curr = list(getattr(_state, select_var) or [])
         prev = list(getattr(_state, prev_var, []) or [])
         prev_set = set(prev)
         new_ones = [x for x in curr if x not in prev_set]
-        if new_ones:
-            setattr(_state, active_var, [new_ones[-1]])
+        cascade = _cascade_added.get(select_var)
+        user_new = [x for x in new_ones if not (cascade and x in cascade)]
+        if cascade:
+            # Same-flush consumption: registrations happen in the
+            # earlier-registered cascade handlers of this very flush.
+            cascade.clear()
+        if user_new:
+            setattr(_state, active_var, [user_new[-1]])
         else:
             active = getattr(_state, active_var) or []
             if active and active[0] not in curr:
@@ -356,6 +379,7 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
         if not curr_select and not prev_select:
             return
         expanded = _expand_selection_with_deps(curr_select, prev_select, tree)
+        _note_cascade_added(select_var, set(expanded) - set(curr_select))
         if set(expanded) != set(curr_select):
             setattr(_state, select_var, expanded)
             # Force the client resync even when the re-expanded value
@@ -393,6 +417,7 @@ def _wire_grid_geometry_on_property(tree):
                 or tree.find_first_child_of_type(folder, "UnstructuredGrid")
             if geom is not None and geom not in reservoir:
                 reservoir.append(geom)
+                _note_cascade_added("ui_select_node_reservoir", [geom])
                 added = True
         if added:
             _state.ui_select_node_reservoir = reservoir
@@ -424,6 +449,7 @@ def _wire_blocked_well_trajectory(tree):
             traj = tree.find_node_id_by_uuid(traj_uuid) if traj_uuid else None
             if traj is not None and traj not in well:
                 well.append(traj)
+                _note_cascade_added("ui_select_node_well", [traj])
                 added = True
         if added:
             _state.ui_select_node_well = well

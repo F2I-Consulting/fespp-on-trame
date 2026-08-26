@@ -33,6 +33,7 @@ def init_state_defaults(state):
     # than the global active_representation_path, which any tab (surface /
     # well) or an eye-click channel activation can overwrite.
     state.setdefault("ui_active_node_reservoir_rep_path", "")
+    state.setdefault("ui_active_node_reservoir_array_name", "")
     # Underlying property kind of the active node — drives the editor switch
     # in solid_color_panel (continuous LUT vs categorical list).
     state.setdefault("active_property_kind", "")

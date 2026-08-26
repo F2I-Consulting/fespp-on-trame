@@ -322,7 +322,14 @@ def threshold_add(state, controller, scene_registry, source_registry, activator,
     if provider is None:
         return
     if not array:
-        array = state.active_color_array_name or None
+        # Reservoir-scoped active property first — the shared
+        # `active_color_array_name` is clobbered by well/surface tab
+        # activations (see activator._handle_reservoir_change).
+        array = (
+            getattr(state, "ui_active_node_reservoir_array_name", "")
+            or state.active_color_array_name
+            or None
+        )
     if not array:
         return
     vid = view_id or _active_view_id(state)

@@ -16,7 +16,11 @@ param(
     [string]$Scenario = "all",
     [switch]$UpdateBaselines,
     [switch]$Gpu,
-    [string]$Image = "fespp_on_trame:local"
+    [string]$Image = "fespp_on_trame:local",
+    # Optional: inject a LOCAL fespp_on_trame source tree over the image's
+    # /deploy copy before the run — validates a fix without rebuilding the
+    # image (same loop as a hot-deploy).
+    [string]$App = ""
 )
 
 # NOT "Stop": with EAP=Stop, any native command whose redirected stderr
@@ -56,6 +60,13 @@ foreach ($sc in $scenarios) {
         --fespp-plugin-path /work/ttl/install-fespp/lib/paraview-6.0/plugins/Fespp/Fespp.so `
         --local-epc-file-path /deploy/data/empty.epc | Out-Null
     docker cp "$($sc.FullName)" "${cname}:/tmp/scenario.json" | Out-Null
+    if ($App) {
+        # /deploy n'est que le shim __main__ : les imports du paquet
+        # resolvent depuis le site-packages du venv (PV_VENV) — injecter
+        # aux DEUX emplacements, sinon le code local est inerte.
+        docker cp "$App" "${cname}:/deploy/" | Out-Null
+        docker cp "$App" "${cname}:/deploy/server/venv/lib/python3.12/site-packages/" | Out-Null
+    }
     docker start $cname | Out-Null
 
     # Poll for the DONE marker (the scenario runner always writes it).
