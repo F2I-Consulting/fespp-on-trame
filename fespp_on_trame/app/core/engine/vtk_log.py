@@ -219,7 +219,7 @@ def _flag_invalid_nodes(state, new_messages):
                 kept = [i for i in cur if i not in drop]
                 if len(kept) != len(cur):
                     setattr(state, var, kept)
-                    # Audit case 5: when the node the server just removed
+                    # When the node the server just removed
                     # (unreadable HDF5) was the ACTIVE one, clear the
                     # activation explicitly — a clean "nothing active"
                     # instead of the selection fallback promoting some

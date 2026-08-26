@@ -22,7 +22,7 @@ class Selector:
         self._selection_path_well = []
 
         self._wellheads = []
-        # Per-tab TimeSeries companions (audit case 20): one slot per
+        # Per-tab TimeSeries companions: one slot per
         # tree tab so a selection change on one tab never destroys the
         # companion (LUT lock + time label) another tab still relies on.
         self._timeseries = {}
@@ -58,7 +58,7 @@ class Selector:
 
     def _reset_timeseries(self, tab, node_ids):
         """Re-create THIS tab's TimeSeries companion from its selection;
-        the other tabs keep theirs (audit case 20). When this tab ends up
+        the other tabs keep theirs. When this tab ends up
         without one, the time label deleted alongside it is restored from
         any surviving companion."""
         old = self._timeseries.get(tab)

@@ -214,7 +214,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
 
     # Born hidden: a grid GEOMETRY that loaded in THIS run while one of
     # its blocked wellbores was already present gets its eye closed in
-    # every view (user decision 2026-08-19): with a BW selected,
+    # every view: with a BW selected,
     # checking a property must colour the wellbore through the mirror,
     # not raise the full grid over it. Same toggle machinery as the eye
     # click, so both pipelines' displays actually hide.
@@ -369,7 +369,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             # LATER state flush — after this run's frame push — through
             # an async html-widget reset, so the client would keep the
             # empty-scene default camera (pos z≈6.7 at origin) until
-            # the next manual interaction ([CAM]-probe diagnosis).
+            # the next manual interaction.
             # The sentinel is still set: on_view_reset_camera also
             # refreshes per-block visibility and re-syncs the client.
             try:
@@ -436,9 +436,9 @@ def run(state, controller, server, view, tree, collector, etp_connector,
                         except Exception:
                             pass
                     # A NEW blocked wellbore defaults its grid's GEOMETRY
-                    # eye to CLOSED in every view (user decision
-                    # 2026-08-19): the wells render INSIDE the grid, so a
-                    # visible geometry buries them. The user re-opens the
+                    # eye to CLOSED in every view: the wells render INSIDE
+                    # the grid, so a visible geometry buries them. The
+                    # user re-opens the
                     # eye deliberately to see the geometry over the wells
                     # — and later re-opens survive (only a NEW wellbore
                     # of the grid re-closes it).
@@ -554,7 +554,7 @@ def _update_visibility_tracking(state, present_paths):
     # The "visible by default" panel must be a RENDER panel: with a
     # stats / distribution tab focused, fespp_active_panel_id points at
     # a non-render panel, no bucket matches it, and a bulk load would
-    # arrive hidden in EVERY view (reported on select-all surfaces).
+    # arrive hidden in EVERY view.
     active_panel_id = view_routing.resolve_active_render_panel(state)
     for pid, paths in by_view.items():
         old = list(paths or [])

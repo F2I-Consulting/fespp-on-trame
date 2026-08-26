@@ -44,7 +44,7 @@ def project_shared_from_tab():
     `active_representation_path` / `active_color_array_path` /
     `active_representation_has_properties`).
 
-    Lot C of the 2026-08-20 state audit: each tab's activation path
+    Each tab's activation path
     writes ONLY its own `ui_active_node_<tab>_*` scoped set, and the
     shared vars become a pure projection of (visible tab → its set).
     Another tab's activity can no longer clobber what this tab's colour
@@ -211,7 +211,7 @@ class Activator:
             "ui_active_node_reservoir_title": title_node,
             "ui_active_node_reservoir_property_kind": property_kind,
             "ptc_show_vcr": is_ts_property,
-            # Reservoir-scoped active-property set (lot C: the shared vars
+            # Reservoir-scoped active-property set (the shared vars
             # are a PROJECTION of the visible tab's set, see
             # `project_shared_from_tab`). Best-effort array-name seed from
             # the node title (FESPP names VTK arrays via the same
@@ -234,11 +234,11 @@ class Activator:
         # (threshold / IJK slicer) keep resolving the GRID even after a later
         # wellbore / surface selection activates another rep.
         state.ui_active_node_reservoir_rep_path = rep_block_path or ""
-        # The BW→supporting-grid remap (audit case 6) may change the rep
+        # The BW→supporting-grid remap may change the rep
         # type the panels' v_if reads.
         if rep_type and rep_type != type_node_rep:
             state.ui_active_node_reservoir_type_rep = rep_type
-        # Audit case 3: "selected but not loaded yet" (manual load mode /
+        # "Selected but not loaded yet" (manual load mode /
         # mid-load). The threshold buttons gate on this flag so they
         # never sit blue-but-inert; data_load's refresh_active() re-runs
         # this handler after every load, clearing it automatically.
@@ -279,7 +279,7 @@ class Activator:
         consumers (color application) — rep_source is None for IjkGrid
         and for any path where the registry has nothing yet."""
         rep_node_id = self._tree.find_representation_node(node_id)
-        # Audit case 6: a BlockedWellbore activation keeps the reservoir
+        # A BlockedWellbore activation keeps the reservoir
         # panels (thresholds / IJK slicers) bound to its SUPPORTING GRID
         # — displayed read-only (no active property → the add buttons
         # stay greyed) instead of vanishing. Chains never mix: each grid
@@ -432,7 +432,7 @@ class Activator:
     def _publish_active_color_state(self, node_id, tab):
         """Publish the COE-mode state for the active node of the WELL /
         SURFACE tab — into that TAB's scoped set (`ui_active_node_<tab>_*`),
-        then re-project the shared vars from the visible tab (lot C).
+        then re-project the shared vars from the visible tab.
 
         The COE / SolidColor panel reads the projected
         `active_color_array_name` to decide colormap-vs-solid mode. For a
@@ -565,7 +565,7 @@ class Activator:
     def _activate_rep_source(self, node_id, tab):
         """Publish the TAB-scoped rep path / has-properties flag and
         activate the matching extracted source for a surface/well tree
-        node (the shared vars are projected from the visible tab, lot C).
+        node (the shared vars are projected from the visible tab).
         IjkGrid is never expected here."""
         rep_node_id = self._tree.find_representation_node(node_id)
         if rep_node_id is None:

@@ -1,7 +1,7 @@
 """Confirm dialog for unchecking a property that feeds threshold entries.
 
-Opened by the selection guard in `tree_views._expand_selection_with_deps`
-(audit case 2): the uncheck is vetoed first, then this dialog asks.
+Opened by the selection guard in `tree_views._expand_selection_with_deps`:
+the uncheck is vetoed first, then this dialog asks.
 "Delete & unselect" → `controller.confirm_unselect_property()` deletes the
 matching entries in every view then re-applies the uncheck (which then
 passes, the references being gone). "Cancel" → nothing to undo, the veto

@@ -31,7 +31,7 @@ class TimeSeries:
     def refresh_label(self):
         """Republish `ui_time_label` from the current TimeKeeper value —
         also used to restore the label after ANOTHER tab's companion was
-        deleted (audit case 20: the label must survive as long as one tab
+        deleted (the label must survive as long as one tab
         still has a checked TimeSeries)."""
         index = state.time_index
         if index is not None:

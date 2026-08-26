@@ -34,10 +34,10 @@ def init_state_defaults(state):
     # well) or an eye-click channel activation can overwrite.
     state.setdefault("ui_active_node_reservoir_rep_path", "")
     state.setdefault("ui_active_node_reservoir_array_name", "")
-    # Threshold-guard confirm dialog (audit case 2).
+    # Threshold-guard confirm dialog.
     state.setdefault("thr_unselect_dialog", None)
     state.setdefault("thr_unselect_dialog_visible", False)
-    # Per-tab scoped active-property sets (audit lot C): the shared
+    # Per-tab scoped active-property sets: the shared
     # active_color_array_name / active_property_kind /
     # active_representation_path / active_color_array_path /
     # active_representation_has_properties are PROJECTED from the visible

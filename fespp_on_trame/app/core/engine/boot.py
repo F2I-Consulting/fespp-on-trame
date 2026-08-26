@@ -1099,7 +1099,7 @@ def initialize_fespp_engine(
 
     @controller.set("confirm_unselect_property")
     def confirm_unselect_property():
-        """Confirm branch of the threshold-guard dialog (audit case 2):
+        """Confirm branch of the threshold-guard dialog:
         delete every chain entry fed by the guarded property, in every
         view, then re-apply the uncheck the guard vetoed — the guard
         passes this time since the references are gone."""

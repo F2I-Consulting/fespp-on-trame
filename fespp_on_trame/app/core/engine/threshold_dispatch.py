@@ -313,7 +313,7 @@ def chain_entries_for_property(state, scene_registry, source_registry, tree, pro
     view's chain of its grid: `[(view_id, entry_name), ...]`
     (`view_id=None` for the legacy single-registry provider). Matches
     the property's sanitized base array name and its MR `_real_<idx>`
-    variants. Used by the unselect guard (audit case 2): unchecking the
+    variants. Used by the unselect guard: unchecking the
     property that feeds a chain must ask before killing the entries."""
     from fespp_on_trame.app.core.element_type import for_kind as _fk
     kind = tree.find_type(prop_node_id) or ""

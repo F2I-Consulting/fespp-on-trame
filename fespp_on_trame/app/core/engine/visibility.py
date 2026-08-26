@@ -152,7 +152,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
         # the legacy shared instance. Re-showing BOTH painted the
         # legacy full-grid rep_data — whose mode and coloring never
         # track the per-view state — on top of the per-view crops /
-        # slices ([DISP]-probe diagnosis: legacy extractor Vis=1 over
+        # slices (legacy extractor visible over
         # the per-view crop after a geometry-eye re-show). The HIDE
         # side still sweeps both instances — belt and braces.
         ijk = source_registry.get_ijk_grid(rep_path)
@@ -203,7 +203,7 @@ def toggle_rep_visibility(state, controller, server, source_registry, rep_path,
         # shared instance while `sources_for_rep_path` prefers the
         # per-view set once a RepInScene exists — hiding only the
         # latter left the legacy slicers rendering on the second eye
-        # close ([EYE]-probe diagnosis: sliceri/j/k_0 survived).
+        # close (per-axis slicer proxies survive a bare rep_data hide).
         all_srcs = list(srcs)
         try:
             _ijk_legacy = source_registry.get_ijk_grid(rep_path)

@@ -408,7 +408,7 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
         if new_value is not None:
             ch_title = tree.find_title(node_id) or ""
             ch_kind = tree.find_type(node_id) or ""
-            # WELL-scoped set only (lot C): the shared vars are a
+            # WELL-scoped set only: the shared vars are a
             # projection of the visible tab — an eye click on a channel
             # must not clobber what the reservoir/surface panels show.
             state.update({

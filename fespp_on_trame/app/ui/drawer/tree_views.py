@@ -188,8 +188,7 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             descendants_to_drop.update(tree.find_all_descendant_ids(node_id))
         # SolidColor layout: a grid geometry's dependents are its SIBLING
         # properties (same PropertiesFolder), not descendants. Unchecking
-        # the geometry deselects them all in the same move (user decision
-        # 2026-08-19, replacing the short-lived geometry veto): a property
+        # the geometry deselects them all in the same move: a property
         # cannot render without its geometry. Blocked wellbores live in
         # their own folder and KEEP their selection — losing the grid's
         # properties reverts their coloring to solid.
@@ -258,7 +257,7 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             _state.empty_color_snackbar_visible = False
             _state.empty_color_snackbar_visible = True
 
-        # Threshold guard (audit case 2): unchecking THE property that
+        # Threshold guard: unchecking THE property that
         # feeds threshold entries would silently retarget or kill the
         # chain. Veto the unitary uncheck and open the confirm dialog
         # instead — its "Delete & unselect" deletes the entries in every
@@ -321,10 +320,10 @@ def _threshold_refs_for(tree, node_id):
 
 
 def _fallback_active(tree, old_id, curr):
-    """Where the focus goes when the ACTIVE node leaves the selection
-    (audit cases 5/16): deterministically to the geometry of the same
-    grid when it is still checked, else to the node's rep when still
-    checked, else NOWHERE (`[]`) — never an arbitrary `curr[0]`, which
+    """Where the focus goes when the ACTIVE node leaves the selection:
+    deterministically to the geometry of the same grid when it is still
+    checked, else to the node's rep when still checked, else NOWHERE
+    (`[]`) — never an arbitrary `curr[0]`, which
     could silently promote another property and retarget the colour /
     threshold gates without a user click."""
     try:
@@ -425,9 +424,7 @@ def _wire_dependency_expansion(select_var: str, prev_var: str,
             # Same resync as the cascade branch below: the re-add can
             # equal the var's previous SERVER value, so trame collapses
             # the push and the client checkbox stays visually unchecked
-            # while the node is still selected and rendering (reported
-            # as "3+ clicks on geometry end up deselecting it while
-            # everything stays visible").
+            # while the node is still selected and rendering.
             try:
                 _state.dirty(select_var)
             except Exception:
@@ -1087,8 +1084,8 @@ class TreeViews:
             - Grouping nodes (Collection / Wellbore / Feature /
               Interpretation): "empty → all", and BOTH "some" and
               "all" → empty. Clicking an INDETERMINATE box clears the
-              subtree (user decision 2026-08-19 — it used to
-              select-all, which read as the wrong direction).
+              subtree (a select-all here read as the wrong
+              direction).
               Matches the tri-state visual rendered by
               `_select_checkbox_icon`.
             - Leaves and reps: plain toggle. The selection-cascade

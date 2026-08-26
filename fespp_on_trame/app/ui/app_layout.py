@@ -115,8 +115,7 @@ def ui(server: Server, **kwargs) -> None:
                     # ELEVATED (solid surface): since the content-area
                     # ToolsBand was removed, a collapsed AppBar puts
                     # this button over the DARK dockview tab row, where
-                    # the old translucent `tonal` variant blended in —
-                    # users reported the reopen button "lost".
+                    # a translucent `tonal` variant blends in.
                     variant="elevated",
                     color="white",
                     size="small",

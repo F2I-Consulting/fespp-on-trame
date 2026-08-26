@@ -16,8 +16,8 @@ def resolve_active_render_panel(state, raw_id=None):
     """Coerce a panel id to a RENDER panel — the one loads, eye toggles
     and colour buckets must target. With a stats / distribution tab
     focused, the raw active id points at a non-render panel: colours and
-    visibility written to that bucket are silently lost (cases 22/23 of
-    the 2026-08-20 state audit). Fallback order: `raw_id` when it IS a
+    visibility written to that bucket are silently lost.
+    Fallback order: `raw_id` when it IS a
     render panel → the drawer-target render panel → the first render
     panel. Returns `raw_id` untouched when no render panel is known yet
     (early boot)."""

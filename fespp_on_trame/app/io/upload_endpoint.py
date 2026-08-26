@@ -34,7 +34,7 @@ def register_upload_route(server) -> bool:
                 # Reduce it to a bare basename (defusing `../` and absolute-path
                 # escapes on both `/` and `\` separators) so a POST to /upload
                 # can never create a file outside temp_dir. Extensions are NOT
-                # filtered (user decision): fesapi judges by CONTENT, so an EPC
+                # filtered: fesapi judges by CONTENT, so an EPC
                 # renamed `.txt` must still load — anything that isn't an `.h5`
                 # side-file is handed to fesapi below, and a parse failure
                 # surfaces through the `load_error` snackbar.
