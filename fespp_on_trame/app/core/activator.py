@@ -37,6 +37,46 @@ controller = server.controller
 from fespp_on_trame.app.core.node_kinds import GROUPING_KINDS as _GROUPING_KINDS
 
 
+def project_shared_from_tab():
+    """Project the VISIBLE tab's scoped active-property set into the
+    legacy shared vars every colour consumer still reads
+    (`active_color_array_name` / `active_property_kind` /
+    `active_representation_path` / `active_color_array_path` /
+    `active_representation_has_properties`).
+
+    Lot C of the 2026-08-20 state audit: each tab's activation path
+    writes ONLY its own `ui_active_node_<tab>_*` scoped set, and the
+    shared vars become a pure projection of (visible tab → its set).
+    Another tab's activity can no longer clobber what this tab's colour
+    / representation panels show, and switching back to a tab restores
+    its panels (the colour editor re-fires when the projected array
+    changes)."""
+    tab = getattr(state, "tab", "reservoir") or "reservoir"
+    prev_name = state.active_color_array_name
+    name = getattr(state, f"ui_active_node_{tab}_array_name", "") or ""
+    state.update({
+        "active_color_array_name": name,
+        "active_property_kind": getattr(
+            state, f"ui_active_node_{tab}_property_kind", "") or "",
+        "active_representation_path": getattr(
+            state, f"ui_active_node_{tab}_rep_path", "") or "",
+        "active_color_array_path": getattr(
+            state, f"ui_active_node_{tab}_array_path", "") or "",
+        "active_representation_has_properties": bool(getattr(
+            state, f"ui_active_node_{tab}_rep_has_props", False)),
+    })
+    if name and name != prev_name:
+        try:
+            controller.update_color_editor(name)
+        except Exception:
+            pass
+
+
+@state.change("tab")
+def _on_visible_tab_change(**_):
+    project_shared_from_tab()
+
+
 def _drill_to_inner(vtk_out):
     """If vtk_out is a vtkPartitionedDataSetCollection, return its first
     inner partition; otherwise return as-is."""
@@ -126,17 +166,17 @@ class Activator:
         if not ui_active_node_reservoir or len(ui_active_node_reservoir) == 0:
             state.update({
                 "ptc_show_vcr": False,
-                "active_color_array_name": "",
-                "active_property_kind": "",
                 "coe_panels": [],
-                "active_representation_path": "",
-                "active_representation_has_properties": False,
                 "ui_active_node_reservoir_type_rep": "",
                 "ui_active_node_reservoir_type": "",
                 "ui_active_node_reservoir_title": "",
                 "ui_active_node_reservoir_rep_path": "",
                 "ui_active_node_reservoir_array_name": "",
+                "ui_active_node_reservoir_property_kind": "",
+                "ui_active_node_reservoir_array_path": "",
+                "ui_active_node_reservoir_rep_has_props": False,
             })
+            project_shared_from_tab()
             return
         node_id = ui_active_node_reservoir[0]
         # Reject activation of a node whose subtree isn't checked. Trame
@@ -169,36 +209,49 @@ class Activator:
             "ui_active_node_reservoir_type_rep": type_node_rep,
             "ui_active_node_reservoir_type": type_node,
             "ui_active_node_reservoir_title": title_node,
-            "active_property_kind": property_kind,
+            "ui_active_node_reservoir_property_kind": property_kind,
             "ptc_show_vcr": is_ts_property,
-            "active_color_array_name": "" if not is_property else state.active_color_array_name,
-            # Reservoir-scoped twin of `active_color_array_name` — the
-            # threshold panel gates on THIS one. The shared var is cleared
-            # by any WELL / SURFACE tab activation (a wellbore, a surface,
-            # a channel...), which used to grey the reservoir-scoped
-            # threshold buttons even though the reservoir active property
-            # never changed. Same pattern as `ui_active_node_reservoir_rep_path`.
-            # Best-effort seed from the node title (FESPP names VTK arrays
-            # via the same sanitizer); `_refresh_active_property_editor`
-            # upgrades it to the array name actually found on the data —
-            # but if that step short-circuits (rep still loading), the twin
-            # must NOT keep the PREVIOUS property's array.
+            # Reservoir-scoped active-property set (lot C: the shared vars
+            # are a PROJECTION of the visible tab's set, see
+            # `project_shared_from_tab`). Best-effort array-name seed from
+            # the node title (FESPP names VTK arrays via the same
+            # sanitizer); `_refresh_active_property_editor` upgrades it to
+            # the array name actually found on the data — but if that step
+            # short-circuits (rep still loading), the value must NOT keep
+            # the PREVIOUS property's array.
             "ui_active_node_reservoir_array_name": (
                 "" if not is_property
                 else make_valid_vtk_name(title_node or "")
             ),
-            # Active node path (used by the COE channel retarget; a no-op for
-            # grid properties, but kept current so a stale wellbore channel
-            # path doesn't linger).
-            "active_color_array_path": (self._tree.find_path(node_id) or "") if is_property else "",
+            "ui_active_node_reservoir_array_path": (
+                (self._tree.find_path(node_id) or "") if is_property else ""
+            ),
             "coe_panels": [] if not is_property else state.coe_panels,
         })
 
         rep_block_path, rep_type, rep_source = self._activate_reservoir_rep(node_id)
         # Pin the reservoir-tab rep path so the reservoir-scoped panels
         # (threshold / IJK slicer) keep resolving the GRID even after a later
-        # wellbore / surface selection clobbers `active_representation_path`.
+        # wellbore / surface selection activates another rep.
         state.ui_active_node_reservoir_rep_path = rep_block_path or ""
+        # The BW→supporting-grid remap (audit case 6) may change the rep
+        # type the panels' v_if reads.
+        if rep_type and rep_type != type_node_rep:
+            state.ui_active_node_reservoir_type_rep = rep_type
+        # Audit case 3: "selected but not loaded yet" (manual load mode /
+        # mid-load). The threshold buttons gate on this flag so they
+        # never sit blue-but-inert; data_load's refresh_active() re-runs
+        # this handler after every load, clearing it automatically.
+        pending = False
+        if rep_block_path:
+            has_src = rep_source is not None
+            if not has_src and self._ijk_lookup is not None:
+                has_src = self._ijk_lookup(rep_block_path) is not None
+            if not has_src and self._source_registry is not None:
+                has_src = self._source_registry.get(rep_block_path) is not None
+            pending = not has_src
+        state.ui_active_node_reservoir_pending = pending
+        project_shared_from_tab()
 
         # Multi-realization synthetic nodes carry the actual VTK array name in
         # propTitle (the title attribute is the vtk-sanitized variant).
@@ -226,6 +279,23 @@ class Activator:
         consumers (color application) — rep_source is None for IjkGrid
         and for any path where the registry has nothing yet."""
         rep_node_id = self._tree.find_representation_node(node_id)
+        # Audit case 6: a BlockedWellbore activation keeps the reservoir
+        # panels (thresholds / IJK slicers) bound to its SUPPORTING GRID
+        # — displayed read-only (no active property → the add buttons
+        # stay greyed) instead of vanishing. Chains never mix: each grid
+        # owns its own, this only re-targets the DISPLAY.
+        if rep_node_id is not None and \
+                (self._tree.find_type(rep_node_id) or "") == "BlockedWellbore":
+            container = self._tree.find_parent_node_id_with_type(
+                rep_node_id, "GridContainer")
+            folder = (self._tree.find_first_child_of_type(container, "PropertiesFolder")
+                      if container is not None else None)
+            geom = None
+            if folder is not None:
+                geom = self._tree.find_first_child_of_type(folder, "IjkGrid") \
+                    or self._tree.find_first_child_of_type(folder, "UnstructuredGrid")
+            if geom is not None:
+                rep_node_id = geom
         rep_block_path = ""
         rep_type = None
         rep_source = None
@@ -244,8 +314,7 @@ class Activator:
                             controller.on_active_proxy_change()
                         except Exception:
                             pass
-        state.active_representation_has_properties = rep_has_properties
-        state.active_representation_path = rep_block_path
+        state.ui_active_node_reservoir_rep_has_props = rep_has_properties
         return rep_block_path, rep_type, rep_source
 
     def _resolve_color_target_source(self, rep_block_path, rep_type, rep_source, active_view):
@@ -352,19 +421,25 @@ class Activator:
         # time-series properties (the time slider resets its range).
         if is_ts_property:
             controller.on_data_loaded()
-        controller.update_color_editor(array_name)
+        # COE refresh only when the reservoir tab is displayed —
+        # refresh_active() re-runs this after loads whatever tab is
+        # visible, and update_color_editor writes the shared name.
+        if (getattr(state, "tab", "") or "") == "reservoir":
+            controller.update_color_editor(array_name)
         state.ui_active_node_reservoir_array_name = array_name
+        project_shared_from_tab()
 
-    def _publish_active_color_state(self, node_id):
-        """Publish the COE-mode state (`active_color_array_name` /
-        `active_property_kind`) for the active node of the WELL / SURFACE
-        tab.
+    def _publish_active_color_state(self, node_id, tab):
+        """Publish the COE-mode state for the active node of the WELL /
+        SURFACE tab — into that TAB's scoped set (`ui_active_node_<tab>_*`),
+        then re-project the shared vars from the visible tab (lot C).
 
-        The COE / SolidColor panel reads `active_color_array_name` to
-        decide colormap-vs-solid mode. For a property leaf we set the kind
-        + array name and push the per-view LUT into the COE; for anything
-        else (frame folder, marker, wellbore, trajectory geometry) we
-        clear so the panel falls back to Solid.
+        The COE / SolidColor panel reads the projected
+        `active_color_array_name` to decide colormap-vs-solid mode. For a
+        property leaf we set the kind + array name and push the per-view
+        LUT into the COE; for anything else (frame folder, marker,
+        wellbore, trajectory geometry) we clear the tab's set so the panel
+        falls back to Solid — WITHOUT touching what the other tabs show.
 
         Only publishes the editor STATE — the actual ColorBy for a channel
         is done by the eye (`toggle_dataarray_color`)."""
@@ -372,17 +447,20 @@ class Activator:
         is_multireal = for_kind(type_node).is_multi_realization()
         is_property = for_kind(type_node).is_property()
         if not is_property:
-            state.active_color_array_name = ""
-            state.active_property_kind = ""
-            state.active_color_array_path = ""
+            state.update({
+                f"ui_active_node_{tab}_array_name": "",
+                f"ui_active_node_{tab}_property_kind": "",
+                f"ui_active_node_{tab}_array_path": "",
+            })
+            project_shared_from_tab()
             return
         # The active NODE's own path — drives the COE's read-only channel
         # retarget so a wellbore-channel node shows ITS data even when a
         # sibling channel of the same frame is the one displayed.
         try:
-            state.active_color_array_path = self._tree.find_path(node_id) or ""
+            node_path = self._tree.find_path(node_id) or ""
         except Exception:
-            state.active_color_array_path = ""
+            node_path = ""
         property_kind = ""
         if type_node in ("ContinuousProperty", "DiscreteProperty", "CategoricalProperty"):
             property_kind = type_node
@@ -395,9 +473,17 @@ class Activator:
             prop_title = self._tree.find_attribute_value(node_id, "propTitle")
             if prop_title:
                 array_name = prop_title
-        state.active_property_kind = property_kind
-        state.active_color_array_name = array_name
-        if array_name:
+        state.update({
+            f"ui_active_node_{tab}_array_path": node_path,
+            f"ui_active_node_{tab}_property_kind": property_kind,
+            f"ui_active_node_{tab}_array_name": array_name,
+        })
+        project_shared_from_tab()
+        # Refresh the COE only when this tab is the visible one —
+        # `refresh_active()` re-runs this handler after loads regardless
+        # of which tab is displayed, and update_color_editor writes the
+        # shared name (it would undo the projection for the visible tab).
+        if array_name and (getattr(state, "tab", "") or "") == tab:
             try:
                 controller.update_color_editor(array_name)
             except Exception:
@@ -411,15 +497,18 @@ class Activator:
                 return
             type_node = self._tree.find_type(node_id)
             state.update({"ui_active_node_surface_type": type_node})
-            self._activate_rep_source(node_id)
-            self._publish_active_color_state(node_id)
+            self._activate_rep_source(node_id, "surface")
+            self._publish_active_color_state(node_id, "surface")
         else:
-            state.update({"ui_active_node_surface_type": ""})
-            state.active_representation_path = ""
-            state.active_representation_has_properties = False
-            state.active_color_array_name = ""
-            state.active_property_kind = ""
-            state.active_color_array_path = ""
+            state.update({
+                "ui_active_node_surface_type": "",
+                "ui_active_node_surface_rep_path": "",
+                "ui_active_node_surface_rep_has_props": False,
+                "ui_active_node_surface_array_name": "",
+                "ui_active_node_surface_property_kind": "",
+                "ui_active_node_surface_array_path": "",
+            })
+            project_shared_from_tab()
 
     def _handle_well_change(self, ui_active_node_well):
         if ui_active_node_well and len(ui_active_node_well) > 0:
@@ -429,14 +518,18 @@ class Activator:
                 return
             type_node = self._tree.find_type(node_id)
             state.update({"ui_active_node_well_type": type_node})
-            self._activate_rep_source(node_id)
-            self._publish_active_color_state(node_id)
+            self._activate_rep_source(node_id, "well")
+            self._publish_active_color_state(node_id, "well")
         else:
-            state.update({"ui_active_node_well_type": ""})
-            state.active_representation_path = ""
-            state.active_representation_has_properties = False
-            state.active_color_array_name = ""
-            state.active_property_kind = ""
+            state.update({
+                "ui_active_node_well_type": "",
+                "ui_active_node_well_rep_path": "",
+                "ui_active_node_well_rep_has_props": False,
+                "ui_active_node_well_array_name": "",
+                "ui_active_node_well_property_kind": "",
+                "ui_active_node_well_array_path": "",
+            })
+            project_shared_from_tab()
 
     def refresh_active(self):
         """Re-run the active-node handlers for whatever is currently
@@ -469,18 +562,26 @@ class Activator:
         except Exception:
             pass
 
-    def _activate_rep_source(self, node_id):
-        """Set active_representation_path and activate the matching
-        extracted source for a surface/well tree node. IjkGrid is never
-        expected here."""
+    def _activate_rep_source(self, node_id, tab):
+        """Publish the TAB-scoped rep path / has-properties flag and
+        activate the matching extracted source for a surface/well tree
+        node (the shared vars are projected from the visible tab, lot C).
+        IjkGrid is never expected here."""
         rep_node_id = self._tree.find_representation_node(node_id)
         if rep_node_id is None:
-            state.active_representation_path = ""
-            state.active_representation_has_properties = False
+            state.update({
+                f"ui_active_node_{tab}_rep_path": "",
+                f"ui_active_node_{tab}_rep_has_props": False,
+            })
+            project_shared_from_tab()
             return
         block_path = self._tree.find_path(rep_node_id)
-        state.active_representation_has_properties = self._tree.has_property_descendant(rep_node_id)
-        state.active_representation_path = block_path or ""
+        state.update({
+            f"ui_active_node_{tab}_rep_path": block_path or "",
+            f"ui_active_node_{tab}_rep_has_props": bool(
+                self._tree.has_property_descendant(rep_node_id)),
+        })
+        project_shared_from_tab()
         if not block_path or self._source_registry is None:
             return
         rep_source = self._source_registry.get(block_path)

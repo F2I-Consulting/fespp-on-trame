@@ -26,7 +26,16 @@ def resolve_view_and_html_view(server, panel_id):
 
 
 def active_panel_id(server):
-    """The id of the currently focused render panel, or None when no
-    multi-view is mounted yet."""
+    """The id of the render panel the current interaction targets, or
+    None when no multi-view is mounted yet.
+
+    `mv._active_panel_id` tracks the focused DOCKVIEW panel, which can
+    be a stats / distribution tab — every caller here writes a colour or
+    visibility bucket keyed by view, so a non-render id must be coerced
+    to a render panel (view_routing.resolve_active_render_panel)."""
     mv = getattr(server.context, "multi_view", None)
-    return getattr(mv, "_active_panel_id", None) if mv is not None else None
+    raw = getattr(mv, "_active_panel_id", None) if mv is not None else None
+    if raw is None:
+        return None
+    from fespp_on_trame.app.core.engine.view_routing import resolve_active_render_panel
+    return resolve_active_render_panel(server.state, raw)

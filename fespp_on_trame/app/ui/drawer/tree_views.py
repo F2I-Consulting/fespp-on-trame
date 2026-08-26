@@ -258,6 +258,25 @@ def _expand_selection_with_deps(curr_ids, prev_ids, tree):
             _state.empty_color_snackbar_visible = False
             _state.empty_color_snackbar_visible = True
 
+        # Threshold guard (audit case 2): unchecking THE property that
+        # feeds threshold entries would silently retarget or kill the
+        # chain. Veto the unitary uncheck and open the confirm dialog
+        # instead — its "Delete & unselect" deletes the entries in every
+        # view then re-applies the uncheck (which then passes, the refs
+        # being gone). Bulk unselects keep today's behaviour.
+        if len(removed) == 1 and removed[0] not in seen:
+            _guard_id = removed[0]
+            _refs = _threshold_refs_for(tree, _guard_id)
+            if _refs:
+                result.append(_guard_id)
+                seen.add(_guard_id)
+                _state.thr_unselect_dialog = {
+                    "node_id": _guard_id,
+                    "title": tree.find_title(_guard_id) or "?",
+                    "count": len(_refs),
+                }
+                _state.thr_unselect_dialog_visible = True
+
     if set(result) == set(prev_ids or []):
         # Fully-vetoed change: the effective selection is what it
         # already was — return the PREVIOUS list verbatim so downstream
@@ -285,13 +304,51 @@ def _note_cascade_added(select_var, ids):
         _cascade_added.setdefault(select_var, set()).update(ids)
 
 
-def _wire_select_to_active(select_var: str, active_var: str, prev_var: str):
+def _threshold_refs_for(tree, node_id):
+    """Threshold entries fed by this property node (all views), or []."""
+    try:
+        from trame.app import get_server
+        from fespp_on_trame.app.core.engine import threshold_dispatch
+        ctx = get_server().context
+        return threshold_dispatch.chain_entries_for_property(
+            _state,
+            getattr(ctx, "scene_registry", None),
+            getattr(ctx, "source_registry", None),
+            tree, node_id,
+        )
+    except Exception:
+        return []
+
+
+def _fallback_active(tree, old_id, curr):
+    """Where the focus goes when the ACTIVE node leaves the selection
+    (audit cases 5/16): deterministically to the geometry of the same
+    grid when it is still checked, else to the node's rep when still
+    checked, else NOWHERE (`[]`) — never an arbitrary `curr[0]`, which
+    could silently promote another property and retarget the colour /
+    threshold gates without a user click."""
+    try:
+        folder = tree.find_parent_node_id_with_type(old_id, "PropertiesFolder")
+        if folder is not None:
+            geom = tree.find_first_child_of_type(folder, "IjkGrid") \
+                or tree.find_first_child_of_type(folder, "UnstructuredGrid")
+            if geom is not None and geom != old_id and geom in curr:
+                return [geom]
+        rep = tree.find_representation_node(old_id)
+        if rep is not None and rep != old_id and rep in curr:
+            return [rep]
+    except Exception:
+        pass
+    return []
+
+
+def _wire_select_to_active(select_var: str, active_var: str, prev_var: str, tree):
     """When a new node is checked in `select_var`, set `active_var` to
     the newly-added USER-checked id (cascade-added ids never grab the
-    focus). When the currently-active node is unchecked, fall back to
-    any remaining selected node. Activating via label click does NOT
-    alter selection (Vuetify's separate update_activated callback
-    handles that)."""
+    focus). When the currently-active node is unchecked, fall back
+    deterministically via `_fallback_active` (geometry → rep → none).
+    Activating via label click does NOT alter selection (Vuetify's
+    separate update_activated callback handles that)."""
     @_state.change(select_var)
     def _on_change(**_):
         curr = list(getattr(_state, select_var) or [])
@@ -309,7 +366,8 @@ def _wire_select_to_active(select_var: str, active_var: str, prev_var: str):
         else:
             active = getattr(_state, active_var) or []
             if active and active[0] not in curr:
-                setattr(_state, active_var, [curr[0]] if curr else [])
+                setattr(_state, active_var,
+                        _fallback_active(tree, active[0], curr) if curr else [])
         setattr(_state, prev_var, curr)
 
 
@@ -505,15 +563,15 @@ def wire_selection_rules(tree):
     # which the expansion reads BEFORE it is updated for the tick.
     _wire_select_to_active(
         "ui_select_node_reservoir", "ui_active_node_reservoir",
-        "_prev_select_reservoir",
+        "_prev_select_reservoir", tree,
     )
     _wire_select_to_active(
         "ui_select_node_surface", "ui_active_node_surface",
-        "_prev_select_surface",
+        "_prev_select_surface", tree,
     )
     _wire_select_to_active(
         "ui_select_node_well", "ui_active_node_well",
-        "_prev_select_well",
+        "_prev_select_well", tree,
     )
 
 

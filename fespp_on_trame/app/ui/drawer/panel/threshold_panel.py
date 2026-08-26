@@ -69,7 +69,7 @@ class ThresholdPanel:
                     vuetify3.VBtn(
                         icon="mdi-set-all",
                         v_bind="props",
-                        disabled=("!ui_active_node_reservoir_array_name",),
+                        disabled=("!ui_active_node_reservoir_array_name || ui_active_node_reservoir_pending",),
                         click=(
                             "ui_threshold_pending_action = "
                             "{ action: 'add', parent: null }"
@@ -83,7 +83,13 @@ class ThresholdPanel:
                 )
             html.Span(
                 "(activate a property first)",
-                v_if="!ui_active_node_reservoir_array_name && (!ui_threshold_chain || ui_threshold_chain.length === 0)",
+                v_if="!ui_active_node_reservoir_array_name && !ui_active_node_reservoir_pending && (!ui_threshold_chain || ui_threshold_chain.length === 0)",
+                classes="text-caption text-medium-emphasis ml-1",
+                style="font-size: 0.7rem;",
+            )
+            html.Span(
+                "(load the selection first)",
+                v_if="ui_active_node_reservoir_pending",
                 classes="text-caption text-medium-emphasis ml-1",
                 style="font-size: 0.7rem;",
             )
@@ -133,7 +139,7 @@ class ThresholdPanel:
                         vuetify3.VBtn(
                             icon="mdi-set-center",
                             v_bind="props",
-                            disabled=("!ui_active_node_reservoir_array_name",),
+                            disabled=("!ui_active_node_reservoir_array_name || ui_active_node_reservoir_pending",),
                             click=(
                                 "ui_threshold_pending_action = "
                                 "{ action: 'add', parent: entry.name }"

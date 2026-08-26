@@ -404,26 +404,40 @@ def toggle_dataarray_color(state, controller, server, source_registry, tree,
     # channel's OWN extractor via
     # `channel_extractor_for(active_color_array_path)`).
     if is_channel:
+        from fespp_on_trame.app.core.activator import project_shared_from_tab
         if new_value is not None:
             ch_title = tree.find_title(node_id) or ""
             ch_kind = tree.find_type(node_id) or ""
-            state.active_representation_path = r_path
-            state.active_color_array_name = ch_title
-            state.active_color_array_path = array_path
-            state.active_property_kind = (
-                ch_kind if ch_kind in (
-                    "ContinuousProperty", "DiscreteProperty", "CategoricalProperty"
-                ) else ""
-            )
-            try:
-                controller.update_color_editor(ch_title)
-            except Exception:
-                pass
+            # WELL-scoped set only (lot C): the shared vars are a
+            # projection of the visible tab — an eye click on a channel
+            # must not clobber what the reservoir/surface panels show.
+            state.update({
+                "ui_active_node_well_rep_path": r_path,
+                "ui_active_node_well_array_name": ch_title,
+                "ui_active_node_well_array_path": array_path,
+                "ui_active_node_well_property_kind": (
+                    ch_kind if ch_kind in (
+                        "ContinuousProperty", "DiscreteProperty", "CategoricalProperty"
+                    ) else ""
+                ),
+            })
+            project_shared_from_tab()
+            # Refresh the COE only when the WELL tab is the visible one —
+            # update_color_editor writes the shared name and would undo
+            # the projection while another tab is displayed.
+            if (getattr(state, "tab", "") or "") == "well":
+                try:
+                    controller.update_color_editor(ch_title)
+                except Exception:
+                    pass
         else:
             # Channel hidden — leave colour-map mode (back to Solid).
-            state.active_color_array_name = ""
-            state.active_property_kind = ""
-            state.active_color_array_path = ""
+            state.update({
+                "ui_active_node_well_array_name": "",
+                "ui_active_node_well_property_kind": "",
+                "ui_active_node_well_array_path": "",
+            })
+            project_shared_from_tab()
     # The user switched the eye to a property that resolves to NO
     # renderable array (a partial stub, a missing array, or — for a
     # wellbore frame — a log on a partition the extractor discards).

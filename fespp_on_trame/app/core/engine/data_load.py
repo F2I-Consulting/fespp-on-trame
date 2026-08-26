@@ -33,6 +33,7 @@ from paraview import simple as pvsimple
 
 from fespp_on_trame.app.utils.color_palette import color_for_index
 from fespp_on_trame.app.core import element_type
+from fespp_on_trame.app.core.engine import view_routing
 
 
 def run(state, controller, server, view, tree, collector, etp_connector,
@@ -302,7 +303,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     try:
         scene_reg = getattr(server.context, "scene_registry", None)
         if newly_arrayed and scene_reg is not None:
-            active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+            active_pid = view_routing.resolve_active_render_panel(state)
             scene = scene_reg.get_scene(active_pid) if active_pid else None
             if scene is not None:
                 for r in newly_arrayed:
@@ -322,7 +323,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
     # instead of needing a manual eye click.
     try:
         scene_reg = getattr(server.context, "scene_registry", None)
-        active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+        active_pid = view_routing.resolve_active_render_panel(state)
         scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
         if scene is not None and (newly_markers or removed_markers):
             for marker_path, m_visible in (
@@ -398,7 +399,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             # as suffixed arrays ("<title>_real_<idx>"), so a resolve without
             # the index finds nothing and the fresh wellbores would stay
             # SolidColor — exactly, and only, when the active property is MR.
-            panel_id = getattr(state, "fespp_active_panel_id", "") or ""
+            panel_id = view_routing.resolve_active_render_panel(state)
             panel_realizations = dict(
                 (state.ui_active_realization_by_array_by_view or {})
                 .get(panel_id, {}) or {}
@@ -409,7 +410,7 @@ def run(state, controller, server, view, tree, collector, etp_connector,
             # `scene` are conditional (marker / re-show blocks), so this
             # block must not rely on them.
             scene_reg = getattr(server.context, "scene_registry", None)
-            active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+            active_pid = view_routing.resolve_active_render_panel(state)
             scene = scene_reg.get_scene(active_pid) if (scene_reg and active_pid) else None
             for bw_path in new_bw:
                 bw_id = tree.find_node_id(bw_path)
@@ -550,17 +551,11 @@ def _update_visibility_tracking(state, present_paths):
     updated = {}
     changed = False
     present = set(present_paths)
-    active_panel_id = state.fespp_active_panel_id or ""
     # The "visible by default" panel must be a RENDER panel: with a
     # stats / distribution tab focused, fespp_active_panel_id points at
     # a non-render panel, no bucket matches it, and a bulk load would
     # arrive hidden in EVERY view (reported on select-all surfaces).
-    # Fall back to the drawer-target render panel, else the first one.
-    render_ids = [p.get("id") for p in (state.fespp_render_panels or [])
-                  if isinstance(p, dict) and p.get("id")]
-    if render_ids and active_panel_id not in render_ids:
-        target = getattr(state, "drawer_target_view_id", "") or ""
-        active_panel_id = target if target in render_ids else render_ids[0]
+    active_panel_id = view_routing.resolve_active_render_panel(state)
     for pid, paths in by_view.items():
         old = list(paths or [])
         # 1. Drop unloaded reps.
@@ -649,7 +644,7 @@ def _update_marker_tracking(state, tree, present_paths):
     # auto-show markers freshly loaded this run in the ACTIVE panel: selecting
     # a marker / checking a MarkerFrame must display them without an extra eye
     # click (markers default to visible on load, like a property auto-colors).
-    active_pid = getattr(state, "fespp_active_panel_id", "") or ""
+    active_pid = view_routing.resolve_active_render_panel(state)
     by_view = dict(state.ui_visible_marker_paths_by_view or {})
     updated = {}
     changed = False
@@ -702,7 +697,7 @@ def _update_active_array_maps(state, tree, present_paths, last_array_for_rep, pr
     the rep stays in SolidColor on first load."""
     from fespp_on_trame.app.core.engine import realization_dispatch
 
-    active_panel_id = getattr(state, "fespp_active_panel_id", "") or None
+    active_panel_id = view_routing.resolve_active_render_panel(state) or None
     loaded_arrays_set = set(state.ui_loaded_array_paths or [])
     prev_active = dict(state.ui_active_array_by_rep or {})
     new_active = {}

@@ -12,6 +12,24 @@ Each caller keeps only its own nuance (slice/clip resolve the panel
 from paraview import simple as pvsimple
 
 
+def resolve_active_render_panel(state, raw_id=None):
+    """Coerce a panel id to a RENDER panel — the one loads, eye toggles
+    and colour buckets must target. With a stats / distribution tab
+    focused, the raw active id points at a non-render panel: colours and
+    visibility written to that bucket are silently lost (cases 22/23 of
+    the 2026-08-20 state audit). Fallback order: `raw_id` when it IS a
+    render panel → the drawer-target render panel → the first render
+    panel. Returns `raw_id` untouched when no render panel is known yet
+    (early boot)."""
+    raw = raw_id if raw_id is not None else (getattr(state, "fespp_active_panel_id", "") or "")
+    render_ids = [p.get("id") for p in (getattr(state, "fespp_render_panels", None) or [])
+                  if isinstance(p, dict) and p.get("id")]
+    if not render_ids or raw in render_ids:
+        return raw
+    target = getattr(state, "drawer_target_view_id", "") or ""
+    return target if target in render_ids else render_ids[0]
+
+
 def target_panel_id(state, scene_registry=None):
     """The panel an Attributes-drawer edit targets:
     `drawer_target_view_id` (the drawer picker, follows the active panel

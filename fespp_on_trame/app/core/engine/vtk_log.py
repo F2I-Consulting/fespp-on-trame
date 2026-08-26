@@ -219,6 +219,15 @@ def _flag_invalid_nodes(state, new_messages):
                 kept = [i for i in cur if i not in drop]
                 if len(kept) != len(cur):
                     setattr(state, var, kept)
+                    # Audit case 5: when the node the server just removed
+                    # (unreadable HDF5) was the ACTIVE one, clear the
+                    # activation explicitly — a clean "nothing active"
+                    # instead of the selection fallback promoting some
+                    # arbitrary still-checked node without a user click.
+                    active_var = var.replace("ui_select_node_", "ui_active_node_")
+                    act = list(getattr(state, active_var, []) or [])
+                    if act and act[0] in drop:
+                        setattr(state, active_var, [])
                     toast.append((tree.find_title(nid) or uuid, str(nid)))
         state.ui_invalid_node_ids = invalid
         state.ui_invalid_node_errors = errors

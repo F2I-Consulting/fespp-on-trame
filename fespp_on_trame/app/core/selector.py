@@ -22,7 +22,10 @@ class Selector:
         self._selection_path_well = []
 
         self._wellheads = []
-        self._timeseries = None
+        # Per-tab TimeSeries companions (audit case 20): one slot per
+        # tree tab so a selection change on one tab never destroys the
+        # companion (LUT lock + time label) another tab still relies on.
+        self._timeseries = {}
 
         state.setdefault("first_selection", True)
 
@@ -53,23 +56,37 @@ class Selector:
         so `selected_items` is already the complete set."""
         return list(selected_items) if selected_items else []
 
+    def _reset_timeseries(self, tab, node_ids):
+        """Re-create THIS tab's TimeSeries companion from its selection;
+        the other tabs keep theirs (audit case 20). When this tab ends up
+        without one, the time label deleted alongside it is restored from
+        any surviving companion."""
+        old = self._timeseries.get(tab)
+        if old is not None:
+            old.delete()
+            self._timeseries[tab] = None
+        for node_id in node_ids:
+            if self._tree.find_type(node_id) == "TimeSeries":
+                self._timeseries[tab] = TimeSeries(self._tree, node_id)
+        if self._timeseries.get(tab) is None:
+            for other in self._timeseries.values():
+                if other is not None:
+                    other.refresh_label()
+                    break
+
     def select_node_surface(self):
         """Push the surface tab's checked nodes into
-        fespp_data_selectors. Re-creates a TimeSeries companion when a
-        TimeSeries node is in the selection."""
-        if self._timeseries is not None:
-            self._timeseries.delete()
+        fespp_data_selectors. Re-creates the surface TimeSeries companion
+        when a TimeSeries node is in the selection."""
         optimized_selection = self.optimize_tree_selection(
             state.ui_select_node_surface,
         )
 
         list_selected = optimized_selection
+        self._reset_timeseries("surface", list_selected)
         path_selectors = []
 
         for node_id in list_selected:
-            if self._tree.find_type(node_id) == "TimeSeries":
-                self._timeseries = TimeSeries(self._tree, node_id)
-
             path = self._tree.find_path(node_id)
             if path:
                 path_selectors.append(path)
@@ -84,9 +101,8 @@ class Selector:
         """Push the well tab's checked nodes into fespp_data_selectors.
         Re-creates Wellhead companions for every checked Trajectory and
         a TimeSeries companion when one is in the selection."""
-        if self._timeseries is not None:
-            self._timeseries.delete()
         list_selected = state.ui_select_node_well.copy()
+        self._reset_timeseries("well", list_selected)
         for wellhead in self._wellheads:
             wellhead.delete()
         self._wellheads = []
@@ -94,9 +110,6 @@ class Selector:
         for node_id in list_selected:
             if self._tree.find_type(node_id) == "Trajectory":
                 self._wellheads.append(Wellhead(self._tree, node_id))
-
-            elif self._tree.find_type(node_id) == "TimeSeries":
-                self._timeseries = TimeSeries(self._tree, node_id)
 
         optimized_selection = self.optimize_tree_selection(
             state.ui_select_node_well,
@@ -122,12 +135,8 @@ class Selector:
         explicitly — with ExplicitSelection=1, the C++ side does NOT
         auto-load descendants of a non-grouping path, so each property
         the user wants must appear in the list."""
-        if self._timeseries is not None:
-            self._timeseries.delete()
         list_selected = state.ui_select_node_reservoir.copy()
-        for node_id in list_selected:
-            if self._tree.find_type(node_id) == "TimeSeries":
-                self._timeseries = TimeSeries(self._tree, node_id)
+        self._reset_timeseries("reservoir", list_selected)
 
         path_selectors = []
         for node_id in list_selected:

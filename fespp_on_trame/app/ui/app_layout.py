@@ -28,6 +28,9 @@ from fespp_on_trame.app.ui.shared.styles import inject_global_styles
 from fespp_on_trame.app.ui.shared.scripts import inject_client_scripts
 from fespp_on_trame.app.ui.shared.widget.hierarchy_snackbar import HierarchySnackbar
 from fespp_on_trame.app.ui.shared.widget.empty_color_snackbar import EmptyColorSnackbar
+from fespp_on_trame.app.ui.shared.widget.threshold_unselect_dialog import (
+    ThresholdUnselectDialog,
+)
 from fespp_on_trame.app.ui.shared.widget.load_error_snackbar import LoadErrorSnackbar
 
 
@@ -134,5 +137,6 @@ def ui(server: Server, **kwargs) -> None:
         HierarchySnackbar().render()
         EmptyColorSnackbar().render()
         LoadErrorSnackbar().render()
+        ThresholdUnselectDialog().render()
 
         return layout

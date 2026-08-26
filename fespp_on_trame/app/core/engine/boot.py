@@ -1097,6 +1097,30 @@ def initialize_fespp_engine(
             _view, name,
         )
 
+    @controller.set("confirm_unselect_property")
+    def confirm_unselect_property():
+        """Confirm branch of the threshold-guard dialog (audit case 2):
+        delete every chain entry fed by the guarded property, in every
+        view, then re-apply the uncheck the guard vetoed — the guard
+        passes this time since the references are gone."""
+        info = dict(state.thr_unselect_dialog or {})
+        state.thr_unselect_dialog_visible = False
+        node_id = info.get("node_id")
+        if node_id is None:
+            return
+        refs = threshold_dispatch.chain_entries_for_property(
+            state, _scene_registry, _source_registry, _tree, node_id,
+        )
+        for view_id, entry_name in refs:
+            threshold_dispatch.threshold_delete(
+                state, controller, _scene_registry, _source_registry,
+                _view, entry_name, view_id=view_id,
+            )
+        remaining = [x for x in (state.ui_select_node_reservoir or [])
+                     if x != node_id]
+        state.ui_select_node_reservoir = remaining
+        state.dirty("ui_select_node_reservoir")
+
     @controller.set("threshold_set_range")
     def threshold_set_range(name, low, high):
         threshold_dispatch.threshold_set_range(

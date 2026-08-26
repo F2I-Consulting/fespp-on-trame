@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 10 },
+    { "op": "dump", "vars": ["active_color_array_name", "active_property_kind", "ui_active_node_reservoir_array_name"] },
+    { "op": "check", "title": "Continuous property for continuous color map", "var": "ui_select_node_surface", "settle": 8 },
+    { "op": "dump", "vars": ["active_color_array_name", "ui_active_node_surface_array_name", "ui_active_node_reservoir_array_name"] },
+    { "op": "set", "var": "tab", "value": "surface", "settle": 3 },
+    { "op": "dump", "vars": ["active_color_array_name", "active_representation_path"] },
+    { "op": "set", "var": "tab", "value": "reservoir", "settle": 3 },
+    { "op": "dump", "vars": ["active_color_array_name", "active_property_kind", "active_representation_path"] }
+  ]
+}

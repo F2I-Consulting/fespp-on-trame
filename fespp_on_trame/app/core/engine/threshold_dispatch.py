@@ -308,6 +308,58 @@ def refresh_threshold_ui_for_active_grid(state, scene_registry, source_registry,
     publish_threshold_chain(state, scene_registry, source_registry, view_id=view_id)
 
 
+def chain_entries_for_property(state, scene_registry, source_registry, tree, prop_node_id):
+    """Threshold entries fed by the given PROPERTY node, across every
+    view's chain of its grid: `[(view_id, entry_name), ...]`
+    (`view_id=None` for the legacy single-registry provider). Matches
+    the property's sanitized base array name and its MR `_real_<idx>`
+    variants. Used by the unselect guard (audit case 2): unchecking the
+    property that feeds a chain must ask before killing the entries."""
+    from fespp_on_trame.app.core.element_type import for_kind as _fk
+    kind = tree.find_type(prop_node_id) or ""
+    if not _fk(kind).is_property():
+        return []
+    rep_id = tree.find_representation_node(prop_node_id)
+    rep_path = tree.find_path(rep_id) if rep_id is not None else None
+    if not rep_path:
+        return []
+    title = tree.find_title(prop_node_id) or ""
+    if _fk(kind).is_multi_realization():
+        prop_title = tree.find_attribute_value(prop_node_id, "propTitle")
+        if prop_title:
+            title = prop_title
+    base = make_valid_vtk_name(title)
+    if not base:
+        return []
+
+    def _matches(arr):
+        return arr == base or arr.startswith(base + "_real_")
+
+    out = []
+    view_ids = list(scene_registry.view_ids()) if scene_registry is not None else []
+    for vid in view_ids:
+        rep = scene_registry.get_rep(vid, rep_path)
+        if rep is None:
+            continue
+        try:
+            chain = rep.get_chain()
+        except Exception:
+            continue
+        for entry in chain or []:
+            if _matches(entry.get("array") or ""):
+                out.append((vid, entry["name"]))
+    if not view_ids and source_registry is not None:
+        ijk = source_registry.get_ijk_grid(rep_path)
+        if ijk is not None:
+            try:
+                for entry in ijk.get_chain() or []:
+                    if _matches(entry.get("array") or ""):
+                        out.append((None, entry["name"]))
+            except Exception:
+                pass
+    return out
+
+
 def threshold_add(state, controller, scene_registry, source_registry, activator, view,
                   parent_name=None, array=None, view_id=None, tree=None):
     """Add a threshold under `parent_name` (or the rep root if None).
