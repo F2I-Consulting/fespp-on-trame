@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-icon"
+version = "0.1.0"
+description = "Decoupled Trame widget: the application's own icon, for the layout it builds itself"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_icon/**/*.py",
+    "/trame_fespp_icon/**/*.js",
+    "/trame_fespp_icon/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_icon"]
+artifacts = [
+    "trame_fespp_icon/module/serve/*.js",
+    "trame_fespp_icon/module/serve/*.css",
+]
