@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>data-explorer-tree — demo</title>
+  <!-- Vue from CDN + the built widget bundle: open this file directly (needs build first). -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="./trame_fespp_tree/module/serve/style.css" />
+  <script src="./trame_fespp_tree/module/serve/trame_fespp_tree.umd.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #app { height: 100vh; width: 340px; border-right: 1px solid #ccc; display: flex; flex-direction: column; }
+    .out { flex: 0 0 auto; border-top: 1px solid #ddd; background: #fafafa; padding: 6px 8px;
+           font: 12px/1.4 monospace; color: #444; white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // A vtkDataAssembly serialized to XML (same shape as SerializeToXML). Per-node
+    // data lives in attributes: label/type/eye/color/state/...
+    const ASSEMBLY = `<?xml version="1.0"?>
+<Root type="vtkDataAssembly" version="1.0" id="0">
+  <Geogrid id="1" label="Geogrid (Feature)" type="Feature" info="Structural feature">
+    <IjkGrid id="2" type="IjkGrid" eye="rep" color="#5e35b1" crs="EPSG:23031" dims="100x80x40" count="320000">
+      <PORO id="3" type="ContinuousProperty" eye="array" units="frac" />
+      <PERM id="4" type="ContinuousProperty" eye="array" units="mD" />
+    </IjkGrid>
+  </Geogrid>
+  <TopReservoir id="5" type="TriangulatedSet" eye="rep" color="#43a047" crs="EPSG:23031" count="15234" />
+  <BaseReservoir id="6" type="TriangulatedSet" eye="rep" color="#8d6e63" />
+  <FaultA id="7" type="PolylineSet" eye="rep" color="#e53935" />
+  <WELL_A id="8" label="WELL-A" type="Wellbore" color="#fb8c00">
+    <Trajectory id="9" type="Trajectory" eye="rep" color="#6d4c41" count="1820" />
+    <Markers id="10" type="MarkerFrame" />
+  </WELL_A>
+</Root>`;
+
+    const TABS = [
+      { name: "Reservoir", kinds: ["IjkGrid", "UnstructuredGrid"] },
+      { name: "Surface", kinds: ["TriangulatedSet", "Grid2d", "PolylineSet", "PointSet"] },
+      { name: "Well", kinds: ["Wellbore", "Trajectory", "MarkerFrame"] },
+    ];
+    const CTX = [
+      { key: "properties", label: "Properties…" },
+      { key: "export", label: "Export…" },
+      { key: "delete", label: "Delete", danger: true, separatorBefore: true },
+    ];
+
+    const app = Vue.createApp({
+      data() {
+        return { assembly: ASSEMBLY, tabs: TABS, ctx: CTX, log: "(interact with the tree)" };
+      },
+      template: `
+        <DataExplorerTree
+          :assembly="assembly" :tabs="tabs" :context-actions="ctx" :color-editing="true"
+          @selected-changed="onSel" @eye-toggle="onVis" @active-changed="onActive"
+          @colour-request="onColour" @context-action="onCtx" />
+        <div class="out">{{ log }}</div>`,
+      methods: {
+        onSel(e) { this.log = "selected (" + e.length + "): " + JSON.stringify(e); console.log("selected", e); },
+        onVis(e) { this.log = "eye-toggle: " + JSON.stringify(e); console.log("eye-toggle", e); },
+        onActive(e) { this.log = "active: " + e; console.log("active", e); },
+        onColour(e) { this.log = "colour: " + JSON.stringify(e); console.log("colour", e); },
+        onCtx(e) { this.log = "context: " + JSON.stringify(e); console.log("context", e); },
+      },
+    });
+    app.use(window.trame_fespp_tree);
+    app.mount("#app");
+  </script>
+</body>
+</html>

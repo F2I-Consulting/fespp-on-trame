@@ -1,0 +1,24 @@
+{
+  "name": "vue-trame_fespp_tree",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --emptyOutDir"
+  },
+  "peerDependencies": {
+    "vue": "^2.7.0 || >=3.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-vue": "^9.33.0",
+    "vite": "^5.0.0",
+    "vue": "^3.4.0",
+    "vue-eslint-parser": "^9.4.3"
+  },
+  "dependencies": {
+    "@mdi/js": "^7.4.47"
+  }
+}

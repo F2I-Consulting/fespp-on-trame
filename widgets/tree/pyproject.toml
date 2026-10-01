@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-tree"
+version = "0.1.0"
+description = "Decoupled Trame widget: the fespp-on-trame data-explorer tree (custom Vue, no Vuetify)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_tree/**/*.py",
+    "/trame_fespp_tree/**/*.js",
+    "/trame_fespp_tree/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_tree"]
+# Built bundle lands in the gitignored serve/ dir; hatchling excludes VCS-ignored
+# files unless listed as artifacts.
+artifacts = [
+    "trame_fespp_tree/module/serve/*.js",
+    "trame_fespp_tree/module/serve/*.css",
+]
