@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>view-card — demo</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="./trame_fespp_view_card/module/serve/style.css" />
+  <script src="./trame_fespp_view_card/module/serve/trame_fespp_view_card.umd.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    .view { position: relative; overflow: hidden; height: 100vh; background: #1e2a38; }
+    .view-label { position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; color: #9fb; opacity: 0.3; font-size: 28px; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const app = Vue.createApp({
+      data() { return { open1: true, open2: true }; },
+      template: `
+      <div class="view">
+        <div class="view-label">3D view</div>
+        <floating-card v-if="open1" title="Card A" :x0="40" :y0="40" :width="240" :height="180" @close="open1=false">
+          <div>Drag the header, resize the bottom-right corner, click to bring to front. Always clamped inside this view.</div>
+        </floating-card>
+        <floating-card v-if="open2" title="Card B" :x0="140" :y0="120" :width="220" @close="open2=false">
+          <div>Second card (auto height).</div>
+        </floating-card>
+      </div>`,
+    });
+    app.use(window.trame_fespp_view_card);
+    app.mount("#app");
+  </script>
+</body>
+</html>

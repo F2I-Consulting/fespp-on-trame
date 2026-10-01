@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-view-tools"
+version = "0.1.0"
+description = "Decoupled Trame widgets: per-view toolbar + clamped floating tool cards (custom Vue)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_view_tools/**/*.py",
+    "/trame_fespp_view_tools/**/*.js",
+    "/trame_fespp_view_tools/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_view_tools"]
+artifacts = [
+    "trame_fespp_view_tools/module/serve/*.js",
+    "trame_fespp_view_tools/module/serve/*.css",
+]

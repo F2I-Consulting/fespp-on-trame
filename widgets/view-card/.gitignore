@@ -1,0 +1,15 @@
+# Build output (regenerated into the python serve dir)
+trame_fespp_view_card/module/serve/
+
+# Node
+vue-components/node_modules/
+vue-components/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-title3dview"
+version = "0.1.0"
+description = "Decoupled Trame widget: the camera strip of a 3D view's title bar (custom Vue)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_title3dview/**/*.py",
+    "/trame_fespp_title3dview/**/*.js",
+    "/trame_fespp_title3dview/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_title3dview"]
+artifacts = [
+    "trame_fespp_title3dview/module/serve/*.js",
+    "trame_fespp_title3dview/module/serve/*.css",
+]

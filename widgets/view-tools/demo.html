@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>view-tools — demo (ViewToolbar)</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="./trame_fespp_view_tools/module/serve/style.css" />
+  <script src="./trame_fespp_view_tools/module/serve/trame_fespp_view_tools.umd.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    .views { display: flex; height: 100vh; gap: 3px; background: #333; }
+    .view { display: flex; flex: 1; background: #1e2a38; }
+    .view-area { position: relative; overflow: hidden; flex: 1 1 0; }
+    .view-label { position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 28px; color: #9fb; opacity: 0.35; pointer-events: none; }
+    .open { position: absolute; bottom: 8px; left: 8px; color: #9fb; font-size: 12px; }
+    .open .hint { opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // The toolbar is the per-view PICKER. The actual tool windows are the
+    // FloatingCard widget — now its own repo (trame-fespp-view-card).
+    const TOOLS = [
+      { key: "tree", icon: "▤", title: "Data Explorer" },
+      { key: "coe", icon: "🎨", title: "Color Editor (COE)" },
+      { key: "transform", icon: "⤢", title: "Transform" },
+      { key: "slice", icon: "▱", title: "Slice" },
+    ];
+    const ACTIONS = [{ key: "reset", icon: "⛶", title: "Reset camera" }];
+    const app = Vue.createApp({
+      data() { return { TOOLS, ACTIONS, open1: ["tree"], open2: ["coe"], log: "" }; },
+      methods: {
+        tog(arr, k) { const i = arr.indexOf(k); i >= 0 ? arr.splice(i, 1) : arr.push(k); },
+        act(k) { this.log = "action: " + k; },
+      },
+      template: `
+      <div class="views">
+        <div class="view">
+          <view-toolbar :tools="TOOLS" :open="open1" :actions="ACTIONS"
+                        @toggle="(k) => tog(open1, k)" @action="act" />
+          <div class="view-area">
+            <div class="view-label">VIEW 1</div>
+            <div class="open">open: {{ open1.join(', ') || '—' }}
+              <span class="hint">(cards → trame-fespp-view-card)</span></div>
+          </div>
+        </div>
+        <div class="view">
+          <view-toolbar :tools="TOOLS" :open="open2" @toggle="(k) => tog(open2, k)" />
+          <div class="view-area">
+            <div class="view-label">VIEW 2</div>
+            <div class="open">open: {{ open2.join(', ') || '—' }}</div>
+          </div>
+        </div>
+      </div>`,
+    });
+    app.use(window.trame_fespp_view_tools);
+    app.mount("#app");
+  </script>
+</body>
+</html>
