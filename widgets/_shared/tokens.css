@@ -1,0 +1,64 @@
+/*
+ * The palette every panel of this application draws from.
+ *
+ * Split out of panel.css because a widget may need the colours without a
+ * single `fp-` class of its own: importing the whole sheet for three custom
+ * properties ships ~4 KB of rules its markup never matches into its bundle.
+ * `panel.css` imports this file, so a widget that uses the classes gets the
+ * tokens with them and never imports both.
+ *
+ *   <style>@import "../../../_shared/tokens.css";</style>
+ *
+ * A plain (unscoped) style block: a scoped one would rewrite `:root` into a
+ * selector that matches nothing and the custom properties would be lost.
+ */
+
+:root {
+  /* F2I charter dark blue, the single accent */
+  --fp-accent: #00436d;
+  --fp-accent-soft: #e3eef6;
+
+  --fp-ink: #222;
+  --fp-ink-soft: #555;
+  --fp-ink-mute: #666;
+  /* the faintest ink still readable: it carries the sentence that says why a
+     panel is empty, so it stays above the 4.5:1 the charter asks for */
+  --fp-ink-faint: #6f6f6f;
+
+  --fp-bg: #fff;
+  --fp-bar-bg: #f5f5f5;
+
+  --fp-line: #ddd;
+  --fp-line-soft: #eee;
+  --fp-line-faint: #f0f0f0;
+  --fp-field-line: #ccc;
+  --fp-btn-line: #bbb;
+
+  --fp-warn-bg: #fde9c9;
+  --fp-warn-ink: #8a5a00;
+  --fp-error-bg: #fde0e0;
+  --fp-error-ink: #b00020;
+  --fp-neutral-bg: #eee;
+
+  /* The icon palette (widgets/_shared/icons/fespp-icons.js). A colour names
+     the FAMILY of the object, so a tree sorts itself before a word is read.
+     They live here rather than in the module because an icon is drawn with
+     `var(--fp-ic-<family>)`: without these lines every drawing of the set
+     paints nothing at all. */
+  --fp-ic-rock: #8a7043;      /* grids, their folders, their subsets */
+  --fp-ic-surface: #00897b;   /* horizons, triangulated sets, points, lines */
+  --fp-ic-well: #4a6572;      /* the hole: bore, trajectory, casing */
+  --fp-ic-log: #1f76c4;       /* a log track and its curves */
+  --fp-ic-top: #e0701a;       /* a formation top */
+  --fp-ic-prop: #4054b2;      /* a property and its values */
+  --fp-ic-time: #b8860b;      /* dates, time steps */
+  --fp-ic-real: #7b4fc4;      /* realizations, a designated part */
+  --fp-ic-oil: #2e9e5b;       /* the fluids, on the trade's own convention */
+  --fp-ic-gas: #d1453a;
+  --fp-ic-water: #2d8fd5;
+
+  --fp-font: system-ui, sans-serif;
+  --fp-size: 12px;
+  --fp-size-small: 11px;
+  --fp-size-tiny: 10px;
+}

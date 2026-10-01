@@ -1,0 +1,448 @@
+/*
+ * The one look every panel of this application wears.
+ *
+ * The values below are those the file-health, reconcile and volumetrics panels
+ * had already settled on. A widget imports the file from a PLAIN (unscoped)
+ * style block — a scoped block would rewrite `:root` into a selector that
+ * matches nothing and the custom properties would be lost:
+ *
+ *   <style>@import "../../../_shared/panel.css";</style>
+ *   <style scoped> .fxx-thing { color: var(--fp-accent); } </style>
+ *
+ * The palette lives next door in tokens.css, imported here: a widget that
+ * needs the colours and none of the classes imports THAT one instead.
+ *
+ * vite inlines the imports into each widget's own style.css, so a bundle still
+ * stands alone. Class names are prefixed `fp-` and are global on purpose: they
+ * are the shared vocabulary. A widget keeps its own prefixed class beside the
+ * shared one whenever it needs a local tweak — or when a browser test holds the
+ * element by that name.
+ */
+
+@import "./tokens.css";
+
+/* --- shell ---------------------------------------------------------------- */
+
+.fp-panel {
+  font-family: var(--fp-font);
+  font-size: var(--fp-size);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--fp-bg);
+  color: var(--fp-ink);
+}
+
+.fp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--fp-line);
+  background: var(--fp-bar-bg);
+  flex-wrap: wrap;
+}
+
+/* A second row under the bar: same rhythm, no fill, a lighter rule. */
+.fp-subbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--fp-line-soft);
+  flex-wrap: wrap;
+}
+
+.fp-title {
+  font-weight: 700;
+  color: var(--fp-accent);
+}
+
+.fp-lab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fp-ink-soft);
+  white-space: nowrap;
+}
+
+/* A tick box and its words, clickable as one. */
+.fp-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fp-sum {
+  color: var(--fp-ink-mute);
+}
+
+.fp-right {
+  margin-left: auto;
+}
+
+/* Where the class WRAPS the group instead of sitting on its first control —
+   the shape <fp-panel> renders — it lays that group out with the bar's own
+   rhythm; the three panels that write their right group by hand already do
+   exactly this. A `.fp-right` that is itself a control has no element child
+   and is left alone. */
+.fp-right:has(> *) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fp-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* R9. An action that can run past a second says so where it happens: a 2 px
+   indeterminate bar under the header row, with the previous content kept
+   underneath — a table emptied while it recomputes tells the reader its
+   figures are gone. */
+.fp-busy {
+  flex: 0 0 auto;
+  height: 2px;
+  overflow: hidden;
+  background: var(--fp-accent-soft);
+}
+
+.fp-busy::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 35%;
+  background: var(--fp-accent);
+  animation: fp-busy-run 1.1s linear infinite;
+}
+
+@keyframes fp-busy-run {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+/* Movement is the only thing this bar says; where it is unwelcome the bar
+   still says it, in full accent. */
+@media (prefers-reduced-motion: reduce) {
+  .fp-busy::after {
+    width: 100%;
+    animation: none;
+  }
+}
+
+.fp-empty {
+  color: var(--fp-ink-faint);
+  font-style: italic;
+  padding: 16px;
+}
+
+/* A band, full width, UNDER the bar — never inside the row of controls,
+   which a growing note pushes about. It stays until its cause is gone or
+   the reader closes it: a note that evaporates on the next refresh is a
+   silence one gesture later. */
+.fp-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--fp-warn-ink);
+  background: var(--fp-warn-bg);
+  padding: 3px 8px;
+  font-size: var(--fp-size-small);
+}
+
+/* An action that FAILED, as against something merely held back. */
+.fp-note-error {
+  color: var(--fp-error-ink);
+  background: var(--fp-error-bg);
+}
+
+.fp-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* --- controls -------------------------------------------------------------- */
+
+.fp-btn {
+  border: 1px solid var(--fp-btn-line);
+  background: var(--fp-bg);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--fp-accent);
+  padding: 2px 8px;
+  font: inherit;
+  font-weight: 600;
+}
+
+/* Inert, not invisible: #bbb on white is 1.9:1 and the word disappears. */
+.fp-btn:disabled {
+  color: #8a8a8a;
+  border-color: var(--fp-line);
+  cursor: default;
+}
+
+.fp-btn.fp-on {
+  background: var(--fp-accent-soft);
+  border-color: var(--fp-accent);
+}
+
+.fp-primary {
+  background: var(--fp-accent);
+  border-color: var(--fp-accent);
+  color: #fff;
+}
+
+.fp-primary:disabled {
+  background: #6b8496;
+  border-color: #6b8496;
+  color: #fff;
+}
+
+/* An icon sits tighter than a word. */
+.fp-btn.fp-icon {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 5px;
+}
+
+.fp-btn.fp-tiny {
+  padding: 1px 6px;
+  font-size: var(--fp-size-small);
+}
+
+/* Segmented control: buttons welded into one strip, one of them on. */
+.fp-seg {
+  display: inline-flex;
+}
+
+.fp-segbtn {
+  border: 1px solid var(--fp-btn-line);
+  background: var(--fp-bg);
+  color: var(--fp-ink-soft);
+  font-size: var(--fp-size-small);
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.fp-segbtn:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+.fp-segbtn:last-child {
+  border-radius: 0 3px 3px 0;
+}
+
+.fp-segbtn + .fp-segbtn {
+  border-left: none;
+}
+
+.fp-segbtn.fp-on {
+  background: var(--fp-accent);
+  border-color: var(--fp-accent);
+  color: #fff;
+}
+
+.fp-sel,
+.fp-num,
+.fp-input {
+  padding: 2px 4px;
+  border: 1px solid var(--fp-field-line);
+  border-radius: 3px;
+  font: inherit;
+  background: var(--fp-bg);
+  min-width: 0;
+}
+
+/* --- chips ----------------------------------------------------------------- */
+
+.fp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-weight: 600;
+  font-size: var(--fp-size-small);
+  background: var(--fp-neutral-bg);
+  color: var(--fp-ink-soft);
+  max-width: 100%;
+}
+
+/* A chip ellipses, and its whole text stays reachable in the `title` (R12).
+   An inline-flex box cannot ellipse its own anonymous text, so the words are
+   a child of it. */
+.fp-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-chip-accent {
+  background: var(--fp-accent-soft);
+  color: var(--fp-accent);
+}
+
+.fp-chip-warn {
+  background: var(--fp-warn-bg);
+  color: var(--fp-warn-ink);
+}
+
+.fp-chip-error {
+  background: var(--fp-error-bg);
+  color: var(--fp-error-ink);
+}
+
+/* The smaller badge used to count or qualify a row. */
+.fp-chip-sm {
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: var(--fp-size-tiny);
+  font-weight: 400;
+}
+
+/* An outlined chip the reader can click. */
+.fp-chip-line {
+  border: 1px solid var(--fp-accent-soft);
+  background: #f4f8fb;
+  color: var(--fp-accent);
+  font-weight: 400;
+  border-radius: 12px;
+  padding: 1px 4px;
+}
+
+.fp-chip-line.fp-on {
+  background: var(--fp-accent-soft);
+  border-color: var(--fp-accent);
+}
+
+/* "off" CARRIES meaning (what a chip is excluded from), so it is read, not
+   guessed: #6f6f6f on #f2f2f2 is 5:1. */
+.fp-chip-off {
+  color: #6f6f6f;
+  border-color: var(--fp-line);
+  background: #f2f2f2;
+}
+
+/* The bare × / ★ button carried inside a chip. */
+.fp-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  padding: 2px;
+  border-radius: 50%;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.fp-chip-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.fp-chip-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* --- tables ---------------------------------------------------------------- */
+
+.fp-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.fp-table th {
+  position: sticky;
+  top: 0;
+  background: var(--fp-bg);
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 2px solid var(--fp-line);
+  color: var(--fp-accent);
+  white-space: nowrap;
+}
+
+.fp-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--fp-line-faint);
+}
+
+.fp-table th.num {
+  text-align: right;
+}
+
+.fp-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the confirmation dialog ------------------------------------------------ */
+
+/*
+ * ONE gesture whose cost is larger than what that gesture shows (ticking a
+ * folder that stands for thirty unread properties) asks before acting, and
+ * acts on nothing until the answer. The shape is the import dialog's, which
+ * was the only modal of the application, promoted here so the second one
+ * looks like the first: a scrim over everything, a 420 px card, the panel
+ * title, and two buttons — stepping back first and focused, going on
+ * accented. `Esc` and a click on the scrim step back.
+ *
+ * Teleport the scrim to `body`: a dockview panel clips and stacks its own
+ * content, so a dialog rendered in place would be cut off by the panel edge.
+ */
+.fp-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fp-dialog {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--fp-bg);
+  color: var(--fp-ink);
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  font-family: var(--fp-font);
+  font-size: var(--fp-size);
+}
+
+.fp-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--fp-bar-bg);
+  border-bottom: 1px solid var(--fp-line);
+}
+
+.fp-dialog-head .fp-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fp-dialog-body {
+  padding: 12px;
+  line-height: 1.45;
+}
+
+.fp-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--fp-line);
+}

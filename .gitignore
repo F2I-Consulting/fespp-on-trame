@@ -93,3 +93,11 @@ deploy/
 # rendering and partly on private datasets; out/ is per-run output.
 tests/visual/baselines/
 tests/visual/out/
+
+# Widgets (monorepo): JS build artefacts and python caches
+widgets/**/node_modules/
+widgets/**/__pycache__/
+widgets/**/dist/
+# Icon contact sheet: generated from widgets/_shared/icons/fespp-icons.js
+# (node scripts/gen_icon_sheet.mjs), never committed.
+widgets/_shared/icons/svg/

@@ -1,0 +1,106 @@
+{
+  "root": true,
+  "env": { "browser": true, "es2022": true, "node": true },
+  // Named by path: the toolchain is installed once, in the tree widget, and
+  // this config now sits one level above it. It had to move: ESLint resolves
+  // an `overrides[].files` glob against the CONFIG FILE's own directory, and
+  // the lists at the bottom are written in the widgets' own terms.
+  "parser": "./tree/vue-components/node_modules/vue-eslint-parser",
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module" },
+  "plugins": ["vue"],
+  "extends": ["eslint:recommended", "plugin:vue/vue3-essential"],
+  "rules": {
+    "no-undef": "error",
+    "no-unused-vars": ["warn", { "args": "none" }],
+    "vue/multi-word-component-names": "off",
+
+    // ---- the shared component set, made unavoidable ----------------------
+    // Each rule names the charter rule it holds and the component that holds
+    // it, and each refuses a SHAPE rather than a tag name: the tag, the
+    // class written by hand, and the binding that reaches the same thing
+    // with a colon. A file that legitimately draws none of these controls
+    // goes on the PERMANENT exemption list at the bottom, with its reason.
+    "vue/no-restricted-html-elements": ["error",
+      { "element": "button",
+        "message": "R15/R18: a widget does not draw its own button - <fp-btn> from _shared/components. A menu row, a tree row or card chrome is NOT a button: add the file to the exemption list at the bottom of this config, with its reason." },
+      { "element": "select",
+        "message": "R18: a widget does not draw its own select - <fp-select>." }],
+
+    // the locale bug, banned at the source
+    "vue/no-restricted-static-attribute": ["error",
+      { "element": "input", "key": "type", "value": "number",
+        "message": "<input type=number> is written AND read in the browser's locale (\"0,25\" in French) - <fp-num>." }],
+
+    // R18 is about the SHAPE, not two tag names: a `<div class="fp-btn"
+    // @click>` is a button with no required tooltip, an eighth private
+    // vocabulary is the thing the messages above say has stopped being
+    // writable, and `:type="t"` is the locale bug with a colon. Two rules on
+    // purpose: no-restricted-syntax carries the message on the static form
+    // (95 % of them), no-restricted-class is the net for a class bound in an
+    // object or an array.
+    "vue/no-restricted-syntax": ["error",
+      { "selector": "VAttribute[key.name='class'] > VLiteral[value=/(^| )[a-z-]*-empty( |$)/]",
+        "message": "R8: an empty state is <fp-empty shows gesture> - the class on its own lets a mute one through." },
+      { "selector": "VAttribute[key.name='class'] > VLiteral[value=/(^| )fp-btn( |$)/]",
+        "message": "R15/R18: `fp-btn` is <fp-btn>'s own class. Written by hand it is a button without the required tooltip, and on a <div> or an <a> it is a button no keyboard reaches." },
+      { "selector": "VAttribute[key.name='class'] > VLiteral[value=/(^| )f[a-z]{2,5}-(btn|header|head|bar|chip)( |$)/]",
+        "message": "R18: a private copy of a shared class. The button is <fp-btn>, the header is <fp-panel>, the chip is <fp-chip>; a MODIFIER on one of them is named for what it changes (`fhl-zero`), not for the control it re-implements." },
+      { "selector": "VElement[rawName='input'] > VStartTag > VAttribute[directive=true][key.argument.name='type']",
+        "message": "An input type written as a binding is the same locale bug with a colon: :type=\"numType\" reaches type=number - <fp-num>." }],
+    "vue/no-restricted-class": ["error", "/-empty$/",
+      "fp-btn", "/^f[a-z]{2,5}-(btn|header|head|bar|chip)$/"],
+
+    // closes the loop: <fp-btn> written but never imported is caught here,
+    // and again at runtime by the harness's unresolved-tag check. The
+    // patterns are ANCHORED: unanchored, "v-" swallows every <nav-bar>.
+    "vue/no-undef-components": ["error",
+      { "ignorePatterns": ["^v-", "^xml-viewer$", "^upload-", "^TreeNode$", "^Teleport$", "^trame-plotly$"] }]
+  },
+  "globals": { "d3": "readonly", "Vue": "readonly", "trame": "readonly" },
+
+  "overrides": [
+    // PERMANENT - they ARE the controls the four rules send everyone to: the
+    // button, the select and the one empty state live here.
+    {
+      "files": ["_shared/components/*.vue"],
+      "rules": {
+        "vue/no-restricted-html-elements": "off",
+        "vue/no-restricted-syntax": "off",
+        "vue/no-restricted-class": "off"
+      }
+    },
+
+    // PERMANENT - these are not the charter's controls
+    {
+      "files": [
+        "view-card/vue-components/src/*.vue",   // the card FRAME chrome: the × and the dock tools, opacity .8
+        "view-tools/vue-components/src/*.vue",  // a 30 px <v-icon> rail
+        "title3dview/vue-components/src/*.vue", // the TITLE BAR's own strip: chrome of the tab row, white ink on the F2I blue, no ground of its own
+        "navigation/vue-components/src/ViewContextMenu.vue"  // a right-click menu row
+      ],
+      "rules": { "vue/no-restricted-html-elements": "off" }
+    },
+
+    // PERMANENT, and NARROW - R13 reserves fdx-tabs to the tree, and its menu
+    // rows and node rows are not the charter's buttons; the XML explorer's
+    // document tabs and its breadcrumb are a navigation stack (R13 names it:
+    // several open documents, not readings of one), chrome again. The rule is
+    // REWRITTEN with the button dropped rather than switched off, so a
+    // <select> goes on being refused in these files: switching the whole
+    // rule off would exempt it for ever, which is the one thing this gate
+    // exists to prevent.
+    {
+      "files": ["tree/vue-components/src/*.vue", "xmlviewer/vue-components/src/XmlViewer.vue"],
+      "rules": {
+        "vue/no-restricted-html-elements": ["error",
+          { "element": "select",
+            "message": "R18: a widget does not draw its own select - <fp-select>." }]
+      }
+    }
+
+    // There is no pending list any more: the last of its nineteen files left
+    // it on 2026-09-16. A widget that must draw one of the refused shapes
+    // goes on a PERMANENT list above, with its reason - never on a new
+    // pending one.
+  ]
+}
