@@ -1,0 +1,125 @@
+{
+  "steps": [
+    {
+      "op": "load",
+      "path": "/tmp/testdata/drogon.epc",
+      "settle": 8
+    },
+    {
+      "op": "dump_tree",
+      "type": "Property",
+      "limit": 20
+    },
+    {
+      "op": "check",
+      "title": "Facies",
+      "settle": 12
+    },
+    {
+      "op": "check",
+      "title": "Drilled trajectory",
+      "settle": 8
+    },
+    {
+      "op": "activate",
+      "title": "Facies",
+      "settle": 3
+    },
+    {
+      "op": "reset_camera",
+      "settle": 2
+    },
+    {
+      "op": "call",
+      "method": "property_slicer",
+      "args": [
+        {
+          "op": "add_subject",
+          "subject": "Facies"
+        },
+        "view_1"
+      ],
+      "settle": 3
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_property_card__view_1"
+      ]
+    },
+    {
+      "op": "call",
+      "method": "property_slicer",
+      "args": [
+        {
+          "op": "add_box",
+          "mode": "range"
+        },
+        "view_1"
+      ],
+      "settle": 3
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_property_card__view_1",
+        "ui_geometry_card__view_1"
+      ]
+    },
+    {
+      "op": "call",
+      "method": "geometry_slicer",
+      "args": [
+        {
+          "op": "target",
+          "path": "@scene"
+        },
+        "view_1"
+      ],
+      "settle": 3
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_geometry_card__view_1"
+      ]
+    },
+    {
+      "op": "call",
+      "method": "geometry_slicer",
+      "args": [
+        {
+          "op": "all_visible",
+          "on": true
+        },
+        "view_1"
+      ],
+      "settle": 2
+    },
+    {
+      "op": "card_narrow",
+      "card": "ui_geometry_card__view_1",
+      "method": "geometry_slicer",
+      "box": 0,
+      "fraction": 0.85
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_geometry_card__view_1"
+      ]
+    },
+    {
+      "op": "isolate_cut_probe"
+    },
+    {
+      "op": "scene_crop_probe",
+      "pieces": 1
+    },
+    {
+      "op": "render_timing",
+      "label": "scene cut with the grid isolated by a property box",
+      "frames": 2
+    }
+  ]
+}

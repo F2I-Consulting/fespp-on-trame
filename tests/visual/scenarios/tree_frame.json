@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "check", "title": "Depth Surface - Interpreted", "settle": 8 },
+    { "op": "check", "title": "Depth Points (Interpreted)", "settle": 8 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "nav_frame_node", "args": [{"title": "Depth Surface - Interpreted"}, null, false], "settle": 3 },
+    { "op": "call", "method": "nav_frame_node", "args": [{"title": "Depth Surface - Interpreted"}, null, true], "settle": 3 },
+    { "op": "call", "method": "nav_frame_node", "args": [{"title": "Time Surface - Interpreted"}, null, true], "settle": 2 },
+    { "op": "expect", "var": "ui_view_note__view_1", "contains": "not loaded" }
+  ]
+}

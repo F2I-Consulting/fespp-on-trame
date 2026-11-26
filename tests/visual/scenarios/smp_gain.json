@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+
+    { "op": "vtk_backend", "backend": "Sequential" },
+    { "op": "filter_bench", "repeat": 3 },
+    { "op": "vtk_backend", "backend": "STDThread" },
+    { "op": "filter_bench", "repeat": 3 },
+
+    { "op": "vtk_backend", "backend": "Sequential" },
+    { "op": "filter_bench", "repeat": 3 },
+    { "op": "vtk_backend", "backend": "STDThread" },
+    { "op": "filter_bench", "repeat": 3 }
+  ]
+}

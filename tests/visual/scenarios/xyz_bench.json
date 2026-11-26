@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "check", "title": "region", "settle": 8 },
+    { "op": "activate", "title": "region", "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "set_range", "id": "r4", "low": -9000, "high": -8600}, "view_1"], "settle": 3 },
+    { "op": "xyz_vs_scene_bench", "fraction": 0.6, "steps": 6 },
+    { "op": "xyz_vs_scene_bench", "fraction": 0.2, "steps": 6 }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "steps": [
+    {
+      "op": "load",
+      "path": "/tmp/testdata/drogon.epc",
+      "settle": 8
+    },
+    {
+      "op": "check",
+      "title": "Facies",
+      "settle": 12
+    },
+    {
+      "op": "check",
+      "title": "Total Porosity",
+      "settle": 12
+    },
+    {
+      "op": "check",
+      "title": "Drilled trajectory",
+      "settle": 10
+    },
+    {
+      "op": "reset_camera",
+      "settle": 3
+    },
+    {
+      "op": "activate",
+      "title": "Geogrid",
+      "settle": 3
+    },
+    {
+      "op": "call",
+      "method": "node_values",
+      "args": [
+        {
+          "offset": 0,
+          "assoc": "CELLS"
+        },
+        "view_1"
+      ],
+      "settle": 2
+    },
+    {
+      "op": "expect",
+      "var": "ui_node_values_by_view",
+      "key": [
+        "view_1",
+        "filter_on"
+      ],
+      "equals": "TotalPorosity"
+    },
+    {
+      "op": "expect",
+      "var": "ui_node_values_by_view",
+      "key": [
+        "view_1",
+        "geometry"
+      ],
+      "equals": false
+    },
+    {
+      "op": "expect",
+      "var": "ui_node_values_by_view",
+      "key": [
+        "view_1",
+        "filter_on"
+      ],
+      "truthy": true
+    },
+    {
+      "op": "eye",
+      "title": "Facies",
+      "settle": 6
+    },
+    {
+      "op": "call",
+      "method": "node_values",
+      "args": [
+        {
+          "offset": 0,
+          "assoc": "CELLS"
+        },
+        "view_1"
+      ],
+      "settle": 2
+    },
+    {
+      "op": "expect",
+      "var": "ui_node_values_by_view",
+      "key": [
+        "view_1",
+        "filter_on"
+      ],
+      "equals": "Facies"
+    },
+    {
+      "op": "call",
+      "method": "toggle_tool",
+      "args": [
+        "frustum",
+        "view_1"
+      ],
+      "settle": 2
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          0,
+          0,
+          1000,
+          700,
+          1000,
+          700
+        ],
+        "view_1",
+        "frustum"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_sel_counts__view_1"
+      ]
+    },
+    {
+      "op": "expect",
+      "var": "ui_sel_counts__view_1",
+      "size_ge": 2
+    },
+    {
+      "op": "call",
+      "method": "selection_extract",
+      "args": [
+        {
+          "path": {
+            "title": "Geogrid"
+          },
+          "mode": "keep"
+        },
+        "view_1"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          0,
+          0,
+          1000,
+          700,
+          1000,
+          700
+        ],
+        "view_1",
+        "frustum"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_sel_counts__view_1"
+      ]
+    },
+    {
+      "op": "expect",
+      "var": "ui_sel_counts__view_1",
+      "size_ge": 2
+    }
+  ]
+}

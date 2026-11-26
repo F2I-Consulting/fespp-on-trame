@@ -1,0 +1,98 @@
+{"text": "show Hugin", "intent": "show"}
+{"text": "Can you display the porosity of Hugin please?", "intent": "show", "kind": "porosity"}
+{"text": "display PERMX", "intent": "show", "kind": "permeability"}
+{"text": "show me the gamma ray log for 15/9-F-4", "intent": "show", "kind": "gamma ray"}
+{"text": "I'd like to see the net-to-gross property on the Hugin grid in 3D, if that's possible.", "intent": "show", "kind": "net to gross"}
+{"text": "put Top Hugin in the view", "intent": "show"}
+{"text": "shwo water saturation", "intent": "show", "kind": "water saturation"}
+{"text": "could you bring up the facies?", "intent": "show", "kind": "facies"}
+{"text": "Visualise the Draupne fine grid", "intent": "show"}
+{"text": "show resistivity on F-12", "intent": "show", "kind": "resistivity"}
+{"text": "hide Base Hugin", "intent": "hide"}
+{"text": "hide the wells", "intent": "hide"}
+{"text": "Please remove the porosity from the 3D view.", "intent": "hide", "kind": "porosity"}
+{"text": "get rid of Top Hugin, it's in the way", "intent": "hide"}
+{"text": "turn off Draupne fine", "intent": "hide"}
+{"text": "can you hide well 15/9-F-11 A?", "intent": "hide"}
+{"text": "hide GR", "intent": "hide", "kind": "gamma ray"}
+{"text": "i dont need the surfaces anymore, hide them", "intent": "hide"}
+{"text": "isolate Hugin", "intent": "isolate"}
+{"text": "show only 15/9-F-12 and hide everything else", "intent": "isolate"}
+{"text": "Would it be possible to display just the Top Hugin surface on its own?", "intent": "isolate"}
+{"text": "Show Hugin porosity higher than 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2}
+{"text": "filter perm > 100 mD", "intent": "threshold", "kind": "permeability", "min": 100}
+{"text": "keep only the cells with water saturation below 50%", "intent": "threshold", "kind": "water saturation", "max": 0.5}
+{"text": "threshold NTG between 0.4 and 0.8", "intent": "threshold", "kind": "net to gross", "min": 0.4, "max": 0.8}
+{"text": "Could you hide all the cells where the porosity is under 10 percent?", "intent": "threshold", "kind": "porosity", "min": 0.1}
+{"text": "only cells with PERMX from 50 to 2000 please", "intent": "threshold", "kind": "permeability", "min": 50, "max": 2000}
+{"text": "sw < 0.3", "intent": "threshold", "kind": "water saturation", "max": 0.3}
+{"text": "For Draupne fine, I only want to see cells with a porosity between 12 and 30 %, can you do that?", "intent": "threshold", "kind": "porosity", "min": 0.12, "max": 0.3}
+{"text": "I need the good reservoir only: permeabilty greater than 500", "intent": "threshold", "kind": "permeability", "min": 500}
+{"text": "remove the filter", "intent": "clear_threshold"}
+{"text": "clear the porosity threshold", "intent": "clear_threshold", "kind": "porosity"}
+{"text": "Can you bring back all the cells? No more filtering please.", "intent": "clear_threshold"}
+{"text": "slice Hugin along K", "intent": "slice", "axis": "k"}
+{"text": "cut the grid in the I direction", "intent": "slice", "axis": "i"}
+{"text": "show me a J section through Hugin", "intent": "slice", "axis": "j"}
+{"text": "slice k 10 to 20", "intent": "slice", "axis": "k"}
+{"text": "hide the NaN values", "intent": "hide_nan", "on": true}
+{"text": "hide missing values pls", "intent": "hide_nan", "on": true}
+{"text": "show the null cells again", "intent": "hide_nan", "on": false}
+{"text": "Is there a way to get rid of the cells that have no data?", "intent": "hide_nan", "on": true}
+{"text": "switch to viridis", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "change the colour map to jet please", "intent": "colormap", "preset": "Jet"}
+{"text": "use a grayscale color table", "intent": "colormap", "preset": "Grayscale"}
+{"text": "Could the porosity be displayed with the turbo palette instead?", "intent": "colormap", "kind": "porosity", "preset": "Turbo"}
+{"text": "set the colour range from 0 to 0.35", "intent": "color_range", "min": 0, "max": 0.35}
+{"text": "fix the color scale between 10 and 1000 for the permeability", "intent": "color_range", "kind": "permeability", "min": 10, "max": 1000}
+{"text": "Could you make the colour bar go from 0 to 30% porosity?", "intent": "color_range", "kind": "porosity", "min": 0, "max": 0.3}
+{"text": "rescale the colours", "intent": "rescale"}
+{"text": "fit the colour scale to the data", "intent": "rescale"}
+{"text": "the colour bar looks off, can you reset it to the data range?", "intent": "rescale"}
+{"text": "use flat colours", "intent": "flat_colors", "on": true}
+{"text": "turn off the shading, I want to see the exact colors", "intent": "flat_colors", "on": true}
+{"text": "put the shading back on", "intent": "flat_colors", "on": false}
+{"text": "reset camera", "intent": "reset_camera"}
+{"text": "zoom on well 15/9-F-4", "intent": "reset_camera"}
+{"text": "I've lost the model somewhere, could you recentre the view?", "intent": "reset_camera"}
+{"text": "vertical exaggeration x5", "intent": "z_scale", "factor": 5}
+{"text": "set the z scale to 10", "intent": "z_scale", "factor": 10}
+{"text": "Please put the vertical exaggeration back to 1.", "intent": "z_scale", "factor": 1}
+{"text": "open a new 3D view", "intent": "new_view"}
+{"text": "new view", "intent": "new_view"}
+{"text": "Can I get a second 3D window so I can look at two things side by side?", "intent": "new_view"}
+{"text": "open the statistics panel", "intent": "open_panel", "panel": "stats"}
+{"text": "show me a histogram of porosity", "intent": "open_panel", "panel": "stats", "kind": "porosity"}
+{"text": "open the log viewer for 15/9-F-12", "intent": "open_panel", "panel": "welllog"}
+{"text": "I'd like to check how the well logs match the grid properties along the wells", "intent": "open_panel", "panel": "reconcile"}
+{"text": "compare PHIT and PERMX", "intent": "open_panel", "panel": "compare"}
+{"text": "make a crossplot of density vs neutron", "intent": "open_panel", "panel": "crossplot"}
+{"text": "open distribution", "intent": "open_panel", "panel": "distribution"}
+{"text": "show the XML of Top Hugin", "intent": "open_panel", "panel": "xml"}
+{"text": "can you open the stratigraphic column?", "intent": "open_panel", "panel": "stratigraphy"}
+{"text": "open the calculator", "intent": "open_panel", "panel": "calculator"}
+{"text": "Could you run a data quality check on what I've loaded?", "intent": "open_panel", "panel": "health"}
+{"text": "what is Top Hugin?", "intent": "describe"}
+{"text": "who created the PERMX property?", "intent": "describe", "kind": "permeability"}
+{"text": "Tell me more about the Hugin grid, where does it come from?", "intent": "describe"}
+{"text": "list the wells", "intent": "list"}
+{"text": "what properties are loaded?", "intent": "list"}
+{"text": "which grids do I have in this session", "intent": "list"}
+{"text": "what's the mean porosity of Hugin?", "intent": "value", "kind": "porosity"}
+{"text": "max perm?", "intent": "value", "kind": "permeability"}
+{"text": "median NTG in Hugin", "intent": "value", "kind": "net to gross"}
+{"text": "What is the average water saturation?", "intent": "value", "kind": "water saturation"}
+{"text": "whats the minimum gamma ray on 15/9-F-4", "intent": "value", "kind": "gamma ray"}
+{"text": "give me the range of PHIT", "intent": "value", "kind": "porosity"}
+{"text": "How high does the permeability get in Draupne fine?", "intent": "value", "kind": "permeability"}
+{"text": "average porosty in draupne fine pls", "intent": "value", "kind": "porosity"}
+{"text": "Could you tell me the mean RHOB value for well 15/9-F-11 A?", "intent": "value", "kind": "bulk density"}
+{"text": "undo", "intent": "undo"}
+{"text": "oops, go back", "intent": "undo"}
+{"text": "cancel that last change please", "intent": "undo"}
+{"text": "save the session", "intent": "save_session"}
+{"text": "Can you save my work so I can pick it up again tomorrow?", "intent": "save_session"}
+{"text": "save everything", "intent": "save_session"}
+{"text": "help", "intent": "help"}
+{"text": "hi! what can you do?", "intent": "help"}
+{"text": "What kind of commands do you understand?", "intent": "help"}

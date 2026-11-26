@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "etp_open", "url": "wss://admeinterop.energy.azure.com/api/reservoir-ddms-etp/v2/",
+      "partition": "opendes", "dataspace": "eml:///dataspace('demo/drogon')", "settle": 30 },
+    { "op": "tree_tick", "title": "Geogrid" },
+    { "op": "wait", "s": 40 },
+    { "op": "crs_dump" },
+    { "op": "axes_labels_probe", "expect": ["E (m)", "N (m)", "Z (m)"] }
+  ]
+}

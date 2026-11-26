@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "vtk_backend" },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "welllog_probe", "cutoff_p50": true, "cutoff_missing": true },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "pixel_blame", "rgb": [255, 0, 255], "tol": 8, "expect_none": true,
+      "experiments": [
+        { "view": { "UseFXAA": 0 } },
+        { "rep": { "InterpolateScalarsBeforeMapping": 0 } },
+        { "text": { "TextPropMode": "3D Text" } },
+        { "text": { "TextPropMode": "2D Text Widget" } },
+        { "view": { "UseFXAA": 0 }, "rep": { "InterpolateScalarsBeforeMapping": 0 } }
+      ] }
+  ]
+}

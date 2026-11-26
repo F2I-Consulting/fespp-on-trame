@@ -1,0 +1,23 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "call", "method": "open_reconcile", "args": [], "settle": 4 },
+    { "op": "reconcile_panel_probe", "expect_note_contains": "No log yet", "expect_welllog_wells": 0 },
+
+    { "op": "call", "method": "reconcile_tree_paths",
+      "args": [{ "panel_of_kind": "reconcile" },
+               [{ "title": "well_feature_NO_15_9-F-1_A_84B691" }, { "title": "WatSat", "under": "WatSat" }]],
+      "settle": 5 },
+    { "op": "dump", "vars": ["ui_tick_confirm"] },
+    { "op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 30 },
+    { "op": "reconcile_panel_probe", "expect_logs": ["SW"], "expect_rows_min": 1,
+      "expect_welllog_wells": 0, "expect_ticks_min": 2 },
+
+    { "op": "call", "method": "reconcile_tree_action",
+      "args": [{ "panel_of_kind": "reconcile" },
+               { "action": "reconcile-remove", "path": { "title": "SW", "under": "well_feature_NO_15_9-F-1_A_84B691" } }],
+      "settle": 10 },
+    { "op": "reconcile_panel_probe", "expect_no_logs": ["SW"], "expect_welllog_wells": 0 }
+  ]
+}

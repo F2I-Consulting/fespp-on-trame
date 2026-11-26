@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "interactive_render_probe", "lod": false },
+    { "op": "check_raw", "title": "55/33-A-4", "answer": true, "settle": 20 },
+    { "op": "interactive_render_probe", "lod": true },
+    { "op": "shot", "name": "after_interaction" }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "steps": [
+    {
+      "op": "load",
+      "path": "/tmp/testdata/drogon.epc",
+      "settle": 25
+    },
+    {
+      "op": "tree_tick",
+      "type": "Trajectory",
+      "every": true
+    },
+    {
+      "op": "wait",
+      "s": 15
+    },
+    {
+      "op": "render_timing",
+      "label": "every trajectory, at rest",
+      "frames": 6
+    },
+    {
+      "op": "render_timing",
+      "label": "every trajectory, dragged (GPU)",
+      "frames": 6,
+      "drag": 1
+    },
+    {
+      "op": "tree_tick",
+      "type": "Wellbore",
+      "every": true
+    },
+    {
+      "op": "wait",
+      "s": 8
+    },
+    {
+      "op": "call",
+      "method": "tick_confirm_answer",
+      "args": [
+        true
+      ],
+      "settle": 60
+    },
+    {
+      "op": "memory",
+      "label": "every log"
+    },
+    {
+      "op": "log_track_probe"
+    },
+    {
+      "op": "render_timing",
+      "label": "every log, at rest",
+      "frames": 6
+    },
+    {
+      "op": "render_timing",
+      "label": "every log, dragged (GPU)",
+      "frames": 6,
+      "drag": 1
+    },
+    {
+      "op": "symbols_cost"
+    },
+    {
+      "op": "turn_cost",
+      "no_lod": true
+    }
+  ]
+}

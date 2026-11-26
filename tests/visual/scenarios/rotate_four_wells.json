@@ -1,0 +1,113 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-A-4"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 20
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-A-2"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 20
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-3"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 20
+  },
+  {
+   "op": "log_track_probe",
+   "count": 3
+  },
+  {
+   "op": "render_timing",
+   "label": "three wells, at rest",
+   "frames": 8
+  },
+  {
+   "op": "render_timing",
+   "label": "three wells, dragged",
+   "frames": 8,
+   "drag": 0.5
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-1"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 20
+  },
+  {
+   "op": "log_track_probe",
+   "count": 4
+  },
+  {
+   "op": "render_timing",
+   "label": "four wells, one plumb, at rest",
+   "frames": 8
+  },
+  {
+   "op": "render_timing",
+   "label": "four wells, one plumb, dragged",
+   "frames": 8,
+   "drag": 0.5
+  },
+  {
+   "op": "render_timing",
+   "label": "four wells, one plumb, dragged at full resolution (GPU)",
+   "frames": 8,
+   "drag": 1
+  },
+  {
+   "op": "peek",
+   "name": "four_wells"
+  }
+ ]
+}

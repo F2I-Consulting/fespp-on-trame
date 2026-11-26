@@ -1,0 +1,160 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc",
+   "settle": 25
+  },
+  {
+   "op": "check",
+   "title": "GR",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "settle": 15
+  },
+  {
+   "op": "call",
+   "method": "add_to_welllog",
+   "args": [
+    {
+     "title": "GR",
+     "under": "well_feature_NO_15_9-19_A_B5088C"
+    }
+   ],
+   "settle": 12
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lit": 0
+  },
+  {
+   "op": "activate",
+   "title": "GR",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "tab": "well",
+   "settle": 3
+  },
+  {
+   "op": "call",
+   "method": "node_values",
+   "args": [
+    {
+     "offset": 0
+    },
+    "view_1"
+   ],
+   "settle": 3
+  },
+  {
+   "op": "call",
+   "method": "node_highlight",
+   "args": [
+    [
+     16000,
+     16100,
+     16200
+    ],
+    "view_1"
+   ],
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lit": 3
+  },
+  {
+   "op": "expect",
+   "var": "ui_log_lit",
+   "key": [
+    "well_feature_NO_15_9-19_A_B5088C",
+    "GR"
+   ],
+   "truthy": true
+  },
+  {
+   "op": "call",
+   "method": "welllog_cursor",
+   "args": [
+    {
+     "well": "well_feature_NO_15_9-19_A_B5088C",
+     "depths": [
+      {
+       "ref": "MD",
+       "value": 3300
+      }
+     ],
+     "curves": [
+      "GR"
+     ]
+    }
+   ],
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lit": 4,
+   "lit_cursor": 1
+  },
+  {
+   "op": "call",
+   "method": "welllog_cursor",
+   "args": [
+    {
+     "well": "well_feature_NO_15_9-19_A_B5088C",
+     "depths": [
+      {
+       "ref": "MD",
+       "value": 3400
+      }
+     ],
+     "curves": [
+      "GR"
+     ]
+    }
+   ],
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lit": 4,
+   "lit_cursor": 1
+  },
+  {
+   "op": "call",
+   "method": "node_highlight",
+   "args": [
+    [],
+    "view_1"
+   ],
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lit": 1,
+   "lit_cursor": 1
+  },
+  {
+   "op": "expect",
+   "var": "ui_log_lit",
+   "equals": {}
+  },
+  {
+   "op": "log_as",
+   "title": "GR",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "mode": "tube",
+   "settle": 6
+  },
+  {
+   "op": "log_track_probe",
+   "count": 0,
+   "tube": true,
+   "lit": 0,
+   "lit_rings": 1
+  }
+ ]
+}

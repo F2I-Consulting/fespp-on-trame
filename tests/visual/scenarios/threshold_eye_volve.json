@@ -1,0 +1,17 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "activate", "title": "Fluids", "settle": 3 },
+
+    { "op": "vtk_backend", "backend": "Sequential" },
+    { "op": "call", "method": "threshold_add", "args": [["Fluids", null], "view_1"], "settle": 12 },
+    { "op": "threshold_colour_probe", "expect": "Fluids" },
+
+    { "op": "vtk_backend", "backend": "STDThread" },
+    { "op": "call", "method": "threshold_add", "args": [["Fluids", null], "view_1"], "settle": 12 },
+
+    { "op": "check", "title": "active_cell", "settle": 25 },
+    { "op": "threshold_colour_probe", "expect": "active_cell" }
+  ]
+}

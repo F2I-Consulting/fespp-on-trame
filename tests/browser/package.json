@@ -1,0 +1,14 @@
+{
+  "name": "fespp-browser-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "boot": "node probes/boot.mjs",
+    "signals": "node probes/signals.mjs",
+    "sweep": "node probes/sweep.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
+}

@@ -1,0 +1,144 @@
+{"text": "keep only cells with porosity above 0.25", "intent": "threshold", "kind": "porosity", "min": 0.25}
+{"text": "Filter permeability between 50 and 2,000 mD", "intent": "threshold", "kind": "permeability", "min": 50, "max": 2000}
+{"text": "water saturation no more than 40%", "intent": "threshold", "kind": "water saturation", "max": 0.4}
+{"text": "show me only the gas cap", "intent": "threshold", "category": "gas", "exclude": false}
+{"text": "I don't want to see the shaly cells anymore", "intent": "threshold", "category": "shale", "exclude": true}
+{"text": "hide the water and oil zones in Volve", "intent": "threshold", "categories": ["water", "oil"], "exclude": true, "objects": ["Volve_SGrid"]}
+{"text": "Sw <= 0.3", "intent": "threshold", "kind": "water saturation", "max": 0.3}
+{"text": "remove the cells where porosity is under 8 %", "intent": "threshold", "kind": "porosity", "min": 0.08}
+{"text": "pls net to gross at least 0.5", "intent": "threshold", "kind": "net to gross", "min": 0.5}
+{"text": "Please you can show me porosity more big than 0.2 in Hugin?", "intent": "threshold", "kind": "porosity", "min": 0.2, "objects": ["Hugin"]}
+{"text": "only sandstone and siltstone", "intent": "threshold", "categories": ["sandstone", "siltstone"], "exclude": false}
+{"text": "perm >= 1000", "intent": "threshold", "kind": "permeability", "min": 1000}
+{"text": "shw permeabilty of volve", "intent": "show", "kind": "permeability", "objects": ["Volve_SGrid"]}
+{"text": "can you display well F-4?", "intent": "show", "objects": ["15/9-F-4"]}
+{"text": "I'd like to see the water saturation", "intent": "show", "kind": "water saturation"}
+{"text": "bring back Top Reservoir", "intent": "show", "objects": ["Top Reservoir"]}
+{"text": "display porosity on Hugin", "intent": "show", "kind": "porosity", "objects": ["Hugin"]}
+{"text": "turn on the facies", "intent": "show", "kind": "facies"}
+{"text": "Show 15/9-F-12", "intent": "show", "objects": ["15/9-F-12"]}
+{"text": "put the Base Hugin surface on screen", "intent": "show", "objects": ["Base Hugin"]}
+{"text": "show the gamma ray along F-4", "intent": "show", "kind": "gamma ray", "objects": ["15/9-F-4"]}
+{"text": "you can to hide the well F-12 please", "intent": "hide", "objects": ["15/9-F-12"]}
+{"text": "I don't need Top Reservoir anymore, hide it", "intent": "hide", "objects": ["Top Reservoir"]}
+{"text": "turn off the permeability", "intent": "hide", "kind": "permeability"}
+{"text": "Hide Hugin", "intent": "hide", "objects": ["Hugin"]}
+{"text": "could you remove the Base Hugin surface from the view?", "intent": "hide", "objects": ["Base Hugin"]}
+{"text": "make 15/9-F-11 A disappear", "intent": "hide", "objects": ["15/9-F-11 A"]}
+{"text": "hide PHIT", "intent": "hide", "objects": ["PHIT"]}
+{"text": "i dont want to see the volve grid", "intent": "hide", "objects": ["Volve_SGrid"]}
+{"text": "which cells does F-11 A go through?", "intent": "well_cells", "objects": ["15/9-F-11 A"]}
+{"text": "show the grid cells crossed by the wells", "intent": "well_cells"}
+{"text": "which wells cross the oil leg?", "intent": "well_cells", "category": "oil"}
+{"text": "cells penetrated by wells where permeability exceeds 200 mD", "intent": "well_cells", "kind": "permeability", "min": 200}
+{"text": "display the blocked wellbores", "intent": "well_cells"}
+{"text": "keep only the wells that go through gas", "intent": "well_cells", "category": "gas", "well_filter": "keep_crossing"}
+{"text": "hide the wells crossing the aquifer", "intent": "well_cells", "category": "water", "well_filter": "hide_crossing"}
+{"text": "what cells does well 12 intersect?", "intent": "well_cells", "objects": ["15/9-F-12"]}
+{"text": "where do the wells hit limestone?", "intent": "well_cells", "category": "limestone"}
+{"text": "what's the average porosity in Hugin?", "intent": "value", "kind": "porosity", "objects": ["Hugin"]}
+{"text": "max permeability?", "intent": "value", "kind": "permeability"}
+{"text": "give me the mean water saturation", "intent": "value", "kind": "water saturation"}
+{"text": "how high does net to gross go on Volve?", "intent": "value", "kind": "net to gross", "objects": ["Volve_SGrid"]}
+{"text": "standard deviation of PERMX", "intent": "value", "objects": ["PERMX"]}
+{"text": "Could you tell me the typical porosity of the reservoir?", "intent": "value", "kind": "porosity"}
+{"text": "median permeability please", "intent": "value", "kind": "permeability"}
+{"text": "average gamma ray for 15/9-F-4", "intent": "value", "kind": "gamma ray", "objects": ["15/9-F-4"]}
+{"text": "whats the min of WatSat", "intent": "value", "objects": ["WatSat"]}
+{"text": "open the porosity histogram", "intent": "open_panel", "panel": "stats", "kind": "porosity"}
+{"text": "open the log viewer for F-4", "intent": "open_panel", "panel": "welllog", "objects": ["15/9-F-4"]}
+{"text": "I need a crossplot", "intent": "open_panel", "panel": "crossplot"}
+{"text": "open the calculator", "intent": "open_panel", "panel": "calculator"}
+{"text": "bring up the stratigraphic column", "intent": "open_panel", "panel": "stratigraphy"}
+{"text": "run a data quality check", "intent": "open_panel", "panel": "health"}
+{"text": "open the distribution of permeability", "intent": "open_panel", "panel": "distribution", "kind": "permeability"}
+{"text": "compare the well logs against the grid", "intent": "open_panel", "panel": "reconcile"}
+{"text": "open the view comparison", "intent": "open_panel", "panel": "compare"}
+{"text": "in Hugin, highlight porosity of at most 10 %", "intent": "highlight", "objects": ["Hugin"], "kind": "porosity", "max": 0.1}
+{"text": "light up the cells where permeability is below 5 mD", "intent": "highlight", "kind": "permeability", "max": 5}
+{"text": "make the oil zone stand out", "intent": "highlight", "category": "oil"}
+{"text": "highlight water saturation between 0.1 and 0.25", "intent": "highlight", "kind": "water saturation", "min": 0.1, "max": 0.25}
+{"text": "Highlight the sandy cells", "intent": "highlight", "category": "sandstone"}
+{"text": "could you highlight cells with a net to gross of 0.8 or more?", "intent": "highlight", "kind": "net to gross", "min": 0.8}
+{"text": "highlite perm < 20", "intent": "highlight", "kind": "permeability", "max": 20}
+{"text": "highlight shale and limestone", "intent": "highlight", "categories": ["shale", "limestone"]}
+{"text": "switch the colormap to viridis", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "use jet colors", "intent": "colormap", "preset": "Jet"}
+{"text": "grayscale please", "intent": "colormap", "preset": "Grayscale"}
+{"text": "color the porosity with inferno", "intent": "colormap", "preset": "Inferno (matplotlib)", "kind": "porosity"}
+{"text": "apply the turbo palette", "intent": "colormap", "preset": "Turbo"}
+{"text": "cool to warm color map for permeability", "intent": "colormap", "preset": "Cool to Warm", "kind": "permeability"}
+{"text": "qualitative colours for the facies", "intent": "colormap", "preset": "Brewer Qualitative Set1", "kind": "facies"}
+{"text": "a rainbow color table", "intent": "colormap", "preset": "Rainbow Uniform"}
+{"text": "set the color range from 0 to 0.4", "intent": "color_range", "min": 0, "max": 0.4}
+{"text": "color scale for permeability between 10 and 1,000", "intent": "color_range", "kind": "permeability", "min": 10, "max": 1000}
+{"text": "cap the colour bar at 0.3", "intent": "color_range", "max": 0.3}
+{"text": "stretch the porosity colours from 5 % to 25 %", "intent": "color_range", "kind": "porosity", "min": 0.05, "max": 0.25}
+{"text": "lower bound of the color map: 0.1", "intent": "color_range", "min": 0.1}
+{"text": "make the water saturation legend go from 0.2 to 0.9", "intent": "color_range", "kind": "water saturation", "min": 0.2, "max": 0.9}
+{"text": "colorbar max 500 for perm", "intent": "color_range", "kind": "permeability", "max": 500}
+{"text": "set depth colors from 2,000 to 3,200 m", "intent": "color_range", "kind": "depth", "min": 2000, "max": 3200}
+{"text": "describe the Hugin grid", "intent": "describe", "objects": ["Hugin"]}
+{"text": "what is PERMX?", "intent": "describe", "objects": ["PERMX"]}
+{"text": "where does Top Reservoir come from?", "intent": "describe", "objects": ["Top Reservoir"]}
+{"text": "tell me about well F-4", "intent": "describe", "objects": ["15/9-F-4"]}
+{"text": "info on Volve_SGrid", "intent": "describe", "objects": ["Volve_SGrid"]}
+{"text": "what unit is the permeability in?", "intent": "describe", "kind": "permeability"}
+{"text": "when was Base Hugin created?", "intent": "describe", "objects": ["Base Hugin"]}
+{"text": "Details about the facies property", "intent": "describe", "kind": "facies"}
+{"text": "no, that's not what I meant", "intent": "complain"}
+{"text": "you picked the wrong property", "intent": "complain"}
+{"text": "nothing happened", "intent": "complain"}
+{"text": "wrong well", "intent": "complain"}
+{"text": "that is not what I asked for", "intent": "complain"}
+{"text": "I can't see anything now", "intent": "complain"}
+{"text": "nope, try again", "intent": "complain"}
+{"text": "this answer makes no sense", "intent": "complain"}
+{"text": "show only the Hugin grid", "intent": "isolate", "objects": ["Hugin"]}
+{"text": "just the porosity, nothing else", "intent": "isolate", "kind": "porosity"}
+{"text": "only Top Reservoir on screen", "intent": "isolate", "objects": ["Top Reservoir"]}
+{"text": "take the filter off", "intent": "clear_threshold"}
+{"text": "clear the permeability threshold", "intent": "clear_threshold", "kind": "permeability"}
+{"text": "get rid of all the thresholds", "intent": "clear_threshold"}
+{"text": "remove the highlighting", "intent": "clear_highlight"}
+{"text": "unhighlight everything", "intent": "clear_highlight"}
+{"text": "stop highlighting", "intent": "clear_highlight"}
+{"text": "slice Hugin along J", "intent": "slice", "axis": "j", "objects": ["Hugin"]}
+{"text": "cut the grid in I", "intent": "slice", "axis": "i"}
+{"text": "k slice from layer 3 to 9", "intent": "slice", "axis": "k", "min": 3, "max": 9}
+{"text": "hide the cells without a value", "intent": "hide_nan", "on": true}
+{"text": "show the cells with no data again", "intent": "hide_nan", "on": false}
+{"text": "hide NaNs pls", "intent": "hide_nan", "on": true}
+{"text": "Dont hide the undefined cells", "intent": "hide_nan", "on": false}
+{"text": "Rescale", "intent": "rescale"}
+{"text": "fit the color map to the value range", "intent": "rescale"}
+{"text": "reset the porosity color range to its data range", "intent": "rescale", "kind": "porosity"}
+{"text": "turn off shading", "intent": "flat_colors", "on": true}
+{"text": "bring the lighting back", "intent": "flat_colors", "on": false}
+{"text": "flat colours please", "intent": "flat_colors", "on": true}
+{"text": "recenter", "intent": "reset_camera"}
+{"text": "zoom to well F-4", "intent": "reset_camera", "objects": ["15/9-F-4"]}
+{"text": "fit the view on Top Reservoir", "intent": "reset_camera", "objects": ["Top Reservoir"]}
+{"text": "vertical exaggeration 5", "intent": "z_scale", "factor": 5}
+{"text": "scale z by 2.5", "intent": "z_scale", "factor": 2.5}
+{"text": "stretch the vertical axis 10 times", "intent": "z_scale", "factor": 10}
+{"text": "I'd like a second 3D view next to this one", "intent": "new_view"}
+{"text": "add another render view", "intent": "new_view"}
+{"text": "new view", "intent": "new_view"}
+{"text": "what is loaded?", "intent": "list"}
+{"text": "list the wells", "intent": "list"}
+{"text": "which properties does Volve have?", "intent": "list", "objects": ["Volve_SGrid"]}
+{"text": "Undo", "intent": "undo"}
+{"text": "go back one step", "intent": "undo"}
+{"text": "revert that", "intent": "undo"}
+{"text": "could you save this session for later?", "intent": "save_session"}
+{"text": "save my work", "intent": "save_session"}
+{"text": "keep a copy of this session", "intent": "save_session"}
+{"text": "Help", "intent": "help"}
+{"text": "what kind of things can I ask you to do?", "intent": "help"}
+{"text": "which commands do you understand?", "intent": "help"}
+{"text": "what is a pillar in a corner-point grid?", "intent": "ask"}
+{"text": "what's the difference between a fault and a horizon?", "intent": "ask"}
+{"text": "what does RESQML stand for?", "intent": "ask"}
+{"text": "what is a blocked wellbore?", "intent": "ask"}
+{"text": "what is a gas-oil contact?", "intent": "ask"}

@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 12 },
+    { "op": "xml_relations_probe", "title": "GasSat", "of_rep": true, "series_ge": 2, "settle": 4 }
+  ]
+}

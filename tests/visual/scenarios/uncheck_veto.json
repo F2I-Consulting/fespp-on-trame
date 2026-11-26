@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "dump", "vars": ["selected_paths", "empty_color_snackbar_text"] },
+    { "op": "uncheck", "title": "Wellbore1 Interp1 TrajRep", "settle": 4 },
+    { "op": "dump", "vars": ["selected_paths", "empty_color_snackbar_text"] },
+    { "op": "shot", "name": "trajectory_kept_by_blocked_well" }
+  ]
+}

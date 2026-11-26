@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "GasSat", "settle": 15 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "derived_filter_probe", "grid": "GasSat", "prop": "GasSat", "settle": 3 }
+  ]
+}

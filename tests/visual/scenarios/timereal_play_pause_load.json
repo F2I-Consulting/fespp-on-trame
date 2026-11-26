@@ -1,0 +1,24 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/dynamicDiscreteProp.epc", "settle": 15 },
+    { "op": "check", "title": "Pressure (PRESSURE)", "settle": 15 },
+    { "op": "activate", "title": "Pressure (PRESSURE)", "settle": 3 },
+    { "op": "timereal_play", "on": true, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2 },
+    { "op": "timereal_play", "on": false, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2 },
+    { "op": "check", "title": "Pillar Grid_Boundary_Fault", "settle": 10 },
+    { "op": "timereal_play", "on": true, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2 },
+    { "op": "timereal_play", "on": false, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2 },
+    { "op": "check", "title": "Pillar Grid_Boundary_Fault_West", "settle": 10 },
+    { "op": "timereal_play", "on": true, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2 },
+    { "op": "timereal_play", "on": false, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2 },
+    { "op": "dump", "vars": ["ui_tree_solid_colors", "ui_object_colors"] },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "peek", "name": "subreps" }
+  ]
+}

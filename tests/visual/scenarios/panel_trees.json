@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "panel_tree_probe" }
+  ]
+}

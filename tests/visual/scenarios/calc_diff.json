@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 8 },
+    { "op": "check", "title": "OilSat", "under": "OilSat", "settle": 12 },
+    { "op": "derived_probe", "prop": "OilSat", "under": "OilSat", "name": "dOilSat 5-0", "expr": "OilSat__t5 - OilSat__t0" },
+    { "op": "derived_probe", "prop": "OilSat", "under": "OilSat", "name": "OilSat now minus t0", "expr": "OilSat - OilSat__t0" },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "calc_diff" }
+  ]
+}

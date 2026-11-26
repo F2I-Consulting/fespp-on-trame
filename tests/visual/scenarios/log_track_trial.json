@@ -1,0 +1,549 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-A-4"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "contains": "Read"
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "pictogram_probe",
+   "count_ge": 1
+  },
+  {
+   "op": "call",
+   "method": "set_zscale_now",
+   "args": [
+    22
+   ],
+   "settle": 4
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "on_hole": true
+  },
+  {
+   "op": "eye",
+   "title": "Coal Facies Indicator",
+   "under": "55/33-A-4",
+   "settle": 6
+  },
+  {
+   "op": "log_track_probe",
+   "count": 0
+  },
+  {
+   "op": "set",
+   "var": "ui_tree_layout__view_1",
+   "value": "kind"
+  },
+  {
+   "op": "eye",
+   "title": "Relative AI Near (Depth, 2018)",
+   "under": "55/33-A-4",
+   "settle": 10
+  },
+  {
+   "op": "reset_camera",
+   "settle": 2
+  },
+  {
+   "op": "camera",
+   "elevation": -80,
+   "azimuth": 25,
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lines": 1,
+   "on_hole": true,
+   "true_range": true,
+   "tube": true,
+   "tubes": 0,
+   "markers_ge": 1,
+   "marker_scale": 2.5,
+   "rails": [2],
+   "scale_labels": 6
+  },
+  {
+   "op": "peek",
+   "name": "graph_whole"
+  },
+  {
+   "op": "camera",
+   "from": "south",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "curtain": true
+  },
+  {
+   "op": "camera",
+   "from": "east",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "curtain": true
+  },
+  {
+   "op": "peek",
+   "name": "graph_from_the_east"
+  },
+  {
+   "op": "camera",
+   "from": "north",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "curtain": true
+  },
+  {
+   "op": "camera",
+   "from": "west",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "curtain": true
+  },
+  {
+   "op": "camera",
+   "frame": "log_track",
+   "margin": 1.3,
+   "settle": 3,
+   "above": 0.3
+  },
+  {
+   "op": "camera",
+   "frame": "log_track",
+   "margin": 1.3,
+   "settle": 3,
+   "above": 0.3
+  },
+  {
+   "op": "peek",
+   "name": "graph_close"
+  },
+  {
+   "op": "eye",
+   "title": "Seismic Near Amplitude (Depth, 2018)",
+   "under": "55/33-A-4",
+   "settle": 8
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lines": 1,
+   "curves": 0,
+   "chips": 1,
+   "coloured": true,
+   "on_hole": true,
+   "true_range": true
+  },
+  {
+   "op": "log_as",
+   "title": "Seismic Near Amplitude (Depth, 2018)",
+   "under": "55/33-A-4",
+   "mode": "curve",
+   "settle": 4
+  },
+  {
+   "op": "log_track_probe",
+   "count": 0,
+   "lines": 1,
+   "curves": 1,
+   "chips": 1,
+   "coloured": true,
+   "on_hole": true,
+   "curves_unbarred": true
+  },
+  {
+   "op": "call",
+   "method": "add_to_welllog",
+   "args": [
+    {
+     "title": "55/33-A-4"
+    }
+   ],
+   "settle": 12
+  },
+  {
+   "op": "log_track_probe",
+   "curves": 1,
+   "coloured": true,
+   "colours_of_2d": true
+  },
+  {
+   "op": "log_as",
+   "title": "Seismic Near Amplitude (Depth, 2018)",
+   "under": "55/33-A-4",
+   "mode": "graph",
+   "settle": 4
+  },
+  {
+   "op": "eye",
+   "title": "Total Porosity",
+   "under": "55/33-A-4",
+   "settle": 8
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lines": 1,
+   "on_hole": true,
+   "true_range": true
+  },
+  {
+   "op": "log_as",
+   "title": "Total Porosity",
+   "under": "55/33-A-4",
+   "mode": "tube",
+   "settle": 4
+  },
+  {
+   "op": "log_track_probe",
+   "count": 0,
+   "lines": 0,
+   "tube": true,
+   "tubes": 1,
+   "markers_ge": 1
+  },
+  {
+   "op": "camera",
+   "frame": "log_tube",
+   "margin": 1.2,
+   "span": 0.06,
+   "settle": 3
+  },
+  {
+   "op": "peek",
+   "name": "tube_porosity"
+  },
+  {
+   "op": "log_as",
+   "title": "Total Porosity",
+   "under": "55/33-A-4",
+   "mode": "graph",
+   "settle": 4
+  },
+  {
+   "op": "camera",
+   "frame": "log_track",
+   "margin": 1.3,
+   "settle": 3,
+   "above": 0.3
+  },
+  {
+   "op": "camera",
+   "frame": "log_track",
+   "margin": 1.3,
+   "settle": 3,
+   "above": 0.3
+  },
+  {
+   "op": "log_as",
+   "title": "Total Porosity",
+   "under": "55/33-A-4",
+   "mode": "curve",
+   "settle": 4
+  },
+  {
+   "op": "log_track_probe",
+   "count": 0,
+   "lines": 1,
+   "curves": 1,
+   "chips": 1,
+   "coloured": true,
+   "on_hole": true
+  },
+  {
+   "op": "peek",
+   "name": "curve_alone"
+  },
+  {
+   "op": "eye",
+   "title": "Total Porosity (Original Log)",
+   "under": "55/33-A-4",
+   "settle": 8
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lines": 1,
+   "curves": 0,
+   "chips": 1,
+   "coloured": true,
+   "on_hole": true,
+   "true_range": true,
+   "tube": true,
+   "tubes": 0
+  },
+  {
+   "op": "eye",
+   "title": "Zone Index",
+   "under": "55/33-A-4",
+   "settle": 8
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lines": 1,
+   "on_hole": true,
+   "true_range": true,
+   "chips": 1,
+   "rails": [1],
+   "scale_labels": 4
+  },
+  {
+   "op": "activate",
+   "title": "Zone Index",
+   "under": "55/33-A-4",
+   "tab": "well",
+   "settle": 3
+  },
+  {
+   "op": "call",
+   "method": "node_values",
+   "args": [
+    {
+     "offset": 0
+    },
+    "view_1"
+   ],
+   "settle": 2
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_node_values_by_view"
+   ]
+  },
+  {
+   "op": "expect",
+   "var": "ui_node_values_by_view",
+   "key": [
+    "view_1",
+    "columns",
+    0
+   ],
+   "equals": "sample"
+  },
+  {
+   "op": "expect",
+   "var": "ui_node_values_by_view",
+   "key": [
+    "view_1",
+    "columns"
+   ],
+   "contains": "MD"
+  },
+  {
+   "op": "expect",
+   "var": "ui_node_values_by_view",
+   "key": [
+    "view_1",
+    "total"
+   ],
+   "equals": 15556
+  },
+  {
+   "op": "camera",
+   "from": "south",
+   "settle": 3
+  },
+  {
+   "op": "camera",
+   "frame": "log_track",
+   "margin": 1.3,
+   "settle": 3,
+   "above": 0.3
+  },
+  {
+   "op": "camera",
+   "frame": "log_track",
+   "margin": 1.3,
+   "settle": 3,
+   "above": 0.3
+  },
+  {
+   "op": "peek",
+   "name": "graph_of_codes"
+  },
+  {
+   "op": "cursor_sweep",
+   "n": 15,
+   "selection": false,
+   "titles": [
+    "log track"
+   ]
+  },
+  {
+   "op": "pick_probe",
+   "expect_text": "Well Log Frame",
+   "at": "log_track"
+  },
+  {
+   "op": "context_extra",
+   "action": "markers-larger",
+   "title": "Stratigraphic Marker Set",
+   "under": "55/33-A-4",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "tube": true,
+   "marker_scale": 5,
+   "markers_ge": 1
+  },
+  {
+   "op": "context_extra",
+   "action": "markers-smaller",
+   "title": "Stratigraphic Marker Set",
+   "under": "55/33-A-4",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "tube": true,
+   "marker_scale": 2.5,
+   "markers_ge": 1
+  },
+  {
+   "op": "context_extra",
+   "action": "marker-names-on",
+   "title": "Stratigraphic Marker Set",
+   "under": "55/33-A-4",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "names_ge": 0,
+   "names": 6
+  },
+  {
+   "op": "pictogram_probe",
+   "count_ge": 1,
+   "drag": 0.5
+  },
+  {
+   "op": "peek",
+   "name": "marker_names"
+  },
+  {
+   "op": "context_extra",
+   "action": "marker-names-off",
+   "title": "Stratigraphic Marker Set",
+   "under": "55/33-A-4",
+   "settle": 3
+  },
+  {
+   "op": "log_track_probe",
+   "names": 0
+  },
+  {
+   "op": "set",
+   "var": "ui_tree_layout__view_1",
+   "value": "flat"
+  },
+  {
+   "op": "eye",
+   "title": "Coal Facies Indicator",
+   "under": "55/33-A-4",
+   "settle": 8
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1,
+   "lines": 1,
+   "on_hole": true
+  },
+  {
+   "op": "reset_camera",
+   "settle": 2
+  },
+  {
+   "op": "camera",
+   "elevation": -75,
+   "azimuth": 20,
+   "settle": 3
+  },
+  {
+   "op": "peek",
+   "name": "wellhead_pictogram"
+  },
+  {
+   "op": "call",
+   "method": "set_zscale_now",
+   "args": [
+    5
+   ],
+   "settle": 4
+  },
+  {
+   "op": "camera",
+   "from": "south",
+   "settle": 3
+  },
+  {
+   "op": "peek",
+   "name": "section_from_the_south"
+  },
+  {
+   "op": "camera",
+   "from": "north",
+   "settle": 3
+  },
+  {
+   "op": "peek",
+   "name": "section_from_the_north"
+  },
+  {
+   "op": "folder_eye",
+   "title": "55/33-A-4",
+   "visible": false,
+   "settle": 4
+  },
+  {
+   "op": "log_track_probe",
+   "count": 0,
+   "lines": 0,
+   "tube": true,
+   "tubes": 0,
+   "markers": 0
+  },
+  {
+   "op": "peek",
+   "name": "well_closed"
+  }
+ ]
+}

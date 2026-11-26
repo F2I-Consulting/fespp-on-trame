@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/vector_props.epc", "settle": 6 },
+    { "op": "check", "title": "poro", "settle": 6 },
+    { "op": "call", "method": "open_time_depth", "args": [], "settle": 12 },
+    { "op": "call", "method": "time_depth_law_edit", "args": [{ "op": "add_column", "at": "centre" }], "settle": 1 },
+    { "op": "expect", "var": "ui_time_depth_law", "key": "can_generate", "equals": true },
+    { "op": "call", "method": "time_depth_law_edit", "args": [{ "op": "generate" }], "settle": 10 },
+    { "op": "expect", "var": "ui_time_depth_law", "key": "generated", "equals": true },
+    { "op": "expect", "var": "ui_time_depth_law", "key": "model", "equals": "m1" },
+    { "op": "call", "method": "open_globe", "args": [], "settle": 10 },
+    { "op": "dump", "vars": ["ui_hidden_tree_rows", "fespp_last_render_panel_id", "ui_open_view_kinds", "visible_paths__view_1", "visible_paths__view_3", "visible_paths__view_2"] },
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusOnlyProp.epc", "settle": 10 },
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 10 },
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusWell.epc", "settle": 20 },
+    { "op": "dump", "vars": ["ui_hidden_tree_rows", "visible_paths__view_1", "visible_paths__view_3", "visible_paths__view_2"] },
+    { "op": "expect", "var": "ui_cube_tree", "key": "grid", "truthy": true },
+    { "op": "expect", "var": "ui_hidden_tree_rows", "size_ge": 1 }
+  ]
+}

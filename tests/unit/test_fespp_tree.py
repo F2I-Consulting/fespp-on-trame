@@ -1,16 +1,23 @@
 """
-Tests unitaires pour fespp_on_trame.app.core.fespp_tree.Tree
+Unit tests for fespp_on_trame.engine.tree.Tree.
 
-Couvre :
-  - set_tree : dispatch reservoir / surface / well
-  - find_type : lecture du type d'un nœud
-  - find_path : chemin d'un nœud
-  - add_subtreeview_data : construction récursive, exclusion des enfants Realization
-  - optimize_tree_selection : remontée optimisée de la sélection
+The fixtures reproduce the data assembly contract of the FESPP plugin:
+
+  type      the FINE type, derived from FESAPI: "IjkGrid", "ContinuousProperty",
+            "Wellbore", "Grid2d"... It is what `find_type` returns and what
+            the whole application compares against.
+  typeCode  the numeric code of the TreeViewNodeType enum, a much coarser
+            ROLE ("Properties" covers all three property classes). It is
+            what `find_role` returns, through the table the plugin publishes.
+
+The two axes are orthogonal: the code cannot give the fine type, and the
+fine type does not say whether a property belongs to a grid or is a log
+channel. The tests below lock that distinction in.
 """
 import pytest
+
 from tests.unit.fake_assembly import FakeDataAssembly
-from fespp_on_trame.app.core.fespp_tree import Tree
+from fespp_on_trame.engine.tree import Tree
 
 
 # ---------------------------------------------------------------------------
@@ -19,19 +26,22 @@ from fespp_on_trame.app.core.fespp_tree import Tree
 
 def _make_assembly_ijk_with_property() -> tuple[FakeDataAssembly, dict]:
     """
-    Arbre minimal :
+    Minimal tree, one grid with one property:
       root
         IjkGrid_MyGrid           (node 1)
           Properties_Pressure    (node 2)
     """
     asm = FakeDataAssembly()
-    grid = asm.add_node_with_attrs("_grid1", 0, label="IjkGrid_MyGrid", type="1")
-    prop = asm.add_node_with_attrs("_prop1", grid, label="Properties_Pressure", type="4")
+    grid = asm.add_node_with_attrs("_grid1", 0, label="IjkGrid_MyGrid",
+                                   type="IjkGrid", typeCode="2")
+    prop = asm.add_node_with_attrs("_prop1", grid, label="Properties_Pressure",
+                                   type="ContinuousProperty", typeCode="4")
     return asm, {"grid": grid, "prop": prop}
 
 
 def _make_assembly_realization() -> tuple[FakeDataAssembly, dict]:
     """
+    A grid with a Realization node holding two realizations:
     root
       IjkGrid_MyGrid               (node 1)
         Realization_Pressure       (node 2, type=Realization)
@@ -39,24 +49,25 @@ def _make_assembly_realization() -> tuple[FakeDataAssembly, dict]:
           _uuid_real1              (node 4, Properties, label=Pressure_real1)
     """
     asm = FakeDataAssembly()
-    grid = asm.add_node_with_attrs("_grid1", 0, label="IjkGrid_MyGrid", type="1")
+    grid = asm.add_node_with_attrs("_grid1", 0, label="IjkGrid_MyGrid",
+                                   type="IjkGrid", typeCode="2")
     real_node = asm.add_node_with_attrs(
         "_realization_Pressure", grid,
-        label="Realization_Pressure", type="13"
+        label="Realization_Pressure", type="Realization", typeCode="13"
     )
     child0 = asm.add_node_with_attrs(
         "_uuid-real0", real_node,
-        label="Pressure_real0", type="4"
+        label="Pressure_real0", type="ContinuousProperty", typeCode="4"
     )
     child1 = asm.add_node_with_attrs(
         "_uuid-real1", real_node,
-        label="Pressure_real1", type="4"
+        label="Pressure_real1", type="ContinuousProperty", typeCode="4"
     )
     return asm, {"grid": grid, "real": real_node, "c0": child0, "c1": child1}
 
 
 # ---------------------------------------------------------------------------
-# Tests : set_tree / dispatch
+# set_tree / dispatch
 # ---------------------------------------------------------------------------
 
 class TestSetTree:
@@ -70,14 +81,16 @@ class TestSetTree:
 
     def test_wellbore_goes_to_well(self):
         asm = FakeDataAssembly()
-        asm.add_node_with_attrs("_w1", 0, label="Wellbore_Well1", type="5")
+        asm.add_node_with_attrs("_w1", 0, label="Wellbore_Well1",
+                            type="Wellbore", typeCode="5")
         tree = Tree(None)
         tree.set_tree(asm)
         assert len(tree._data_hierarchy_well) == 1
 
     def test_grid2d_goes_to_surface(self):
         asm = FakeDataAssembly()
-        asm.add_node_with_attrs("_s1", 0, label="Grid2d_Horizon1", type="1")
+        asm.add_node_with_attrs("_s1", 0, label="Grid2d_Horizon1",
+                            type="Grid2d", typeCode="2")
         tree = Tree(None)
         tree.set_tree(asm)
         assert len(tree._data_hierarchy_surface) == 1
@@ -93,19 +106,42 @@ class TestSetTree:
 
 
 # ---------------------------------------------------------------------------
-# Tests : find_type
+# find_type, find_role, renders
 # ---------------------------------------------------------------------------
 
 class TestFindType:
-    def test_find_type_returns_label_prefix(self):
+    def test_find_type_is_the_fine_fesapi_name(self):
         asm, ids = _make_assembly_ijk_with_property()
         tree = Tree(asm)
         assert tree.find_type(ids["grid"]) == "IjkGrid"
 
-    def test_find_type_property(self):
+    def test_find_type_property_is_the_class_not_the_role(self):
+        """The FINE type tells Continuous / Discrete / Categorical apart; the
+        role does not, it covers all three under "Properties"."""
         asm, ids = _make_assembly_ijk_with_property()
         tree = Tree(asm)
-        assert tree.find_type(ids["prop"]) == "Properties"
+        assert tree.find_type(ids["prop"]) == "ContinuousProperty"
+
+    def test_find_role_is_the_coarse_enum_label(self):
+        asm, ids = _make_assembly_ijk_with_property()
+        tree = Tree(asm)
+        assert tree.find_role(ids["prop"]) is None      # no enum table set
+        tree.set_type_enum({"2": {"label": "Representation", "mapper": "Mapper"},
+                            "4": {"label": "Properties", "mapper": "Data"}})
+        assert tree.find_role(ids["prop"]) == "Properties"
+        assert tree.find_type(ids["prop"]) == "ContinuousProperty"
+
+    def test_renders_asks_the_plugin_not_a_name_list(self):
+        """Whether a node renders comes from the plugin's MapperType.
+
+        A property carries data but has no geometry of its own: the plugin
+        classes it as MapperType Data, not Mapper."""
+        asm, ids = _make_assembly_ijk_with_property()
+        tree = Tree(asm)
+        tree.set_type_enum({"2": {"label": "Representation", "mapper": "Mapper"},
+                            "4": {"label": "Properties", "mapper": "Data"}})
+        assert tree.renders(ids["grid"]) is True
+        assert tree.renders(ids["prop"]) is False
 
     def test_find_type_realization(self):
         asm, ids = _make_assembly_realization()
@@ -123,7 +159,7 @@ class TestFindType:
 
 
 # ---------------------------------------------------------------------------
-# Tests : find_path
+# find_path
 # ---------------------------------------------------------------------------
 
 class TestFindPath:
@@ -142,18 +178,34 @@ class TestFindPath:
 
 
 # ---------------------------------------------------------------------------
-# Tests : add_subtreeview_data — exclusion des enfants Realization
+# add_subtreeview_data: Realization children, partial objects
 # ---------------------------------------------------------------------------
 
 class TestAddSubtreeviewData:
-    def test_realization_node_has_no_children_in_treeview(self):
-        """Les enfants d'un nœud Realization ne doivent pas apparaître dans le treeview."""
+    def test_realization_children_are_folded_by_the_plugin_not_here(self):
+        """Realizations are folded by the C++ plugin, not by the tree.
+
+        The plugin creates synthetic MultiRealization nodes WITHOUT children
+        (searchRealization), so a "Realization" node gets no special handling
+        here: its children are listed like those of any other node."""
         asm, ids = _make_assembly_realization()
         tree = Tree(asm)
-        # Le nœud Realization est l'enfant 0 de grid
         data = tree.add_subtreeview_data(ids["grid"], 0, "reservoir")
-        treeview = data["treeview"]
-        assert "children" not in treeview  # enfants masqués
+        children = data["treeview"].get("children", [])
+        assert len(children) == 2
+        assert {c["title"] for c in children} == {None}   # no title attribute set
+
+    def test_partial_node_is_flagged_and_uncheckable(self):
+        """A PARTIAL object is flagged and cannot be checked.
+
+        It carries only its title and uuid, so there is nothing to load; this
+        is the one masking rule the tree applies."""
+        asm = FakeDataAssembly()
+        asm.add_node_with_attrs("_p1", 0, label="partial_Ghost", title="Ghost",
+                                type="partial", typeCode="15")
+        tree = Tree(asm)
+        data = tree.add_subtreeview_data(0, 0, "unknown")
+        assert data["treeview"]["title"].startswith("!!!PARTIAL!!!")
 
     def test_property_node_in_treeview(self):
         asm, ids = _make_assembly_ijk_with_property()
@@ -168,50 +220,37 @@ class TestAddSubtreeviewData:
         data = tree.add_subtreeview_data(0, 0, "unknown")
         children = data["treeview"].get("children", [])
         assert len(children) == 1
-        assert children[0]["type"] == "Properties"
+        assert children[0]["type"] == "ContinuousProperty"
 
 
 # ---------------------------------------------------------------------------
-# Tests : optimize_tree_selection  (méthode sur Selector, pas Tree)
+# optimize_tree_selection (a Selector method, not a Tree one)
 # ---------------------------------------------------------------------------
 
 class TestOptimizeTreeSelection:
+    """In EXPLICIT selection mode the method is the IDENTITY.
+
+    The C++ side runs with ExplicitSelection=1 (set in app.boot), so it does
+    not load the descendants of a parent path. Collapsing a selection to its
+    parent would silently drop the properties checked in the tree."""
+
     def _make_selector(self):
-        from fespp_on_trame.app.core.fespp_selection import Selector
-        from unittest.mock import MagicMock
-        ijkgrid_mock = MagicMock()
-        return Selector(ijkgrid_mock, Tree(None))
+        from fespp_on_trame.engine.selector import Selector
+        return Selector(Tree(None))
 
-    def _make_tree_data(self):
-        return [
-            {
-                "id": 1, "title": "MyGrid",
-                "children": [
-                    {"id": 2, "title": "PropA"},
-                    {"id": 3, "title": "PropB"},
-                ]
-            }
-        ]
-
-    def test_all_leaves_selected_returns_parent(self):
+    def test_selection_is_forwarded_verbatim(self):
         selector = self._make_selector()
-        tree_data = self._make_tree_data()
-        result = selector.optimize_tree_selection([2, 3], tree_data)
-        assert result == [1]
+        assert selector.optimize_tree_selection([2, 3]) == [2, 3]
 
-    def test_one_leaf_stays(self):
+    def test_a_single_leaf_is_not_collapsed_to_its_parent(self):
         selector = self._make_selector()
-        tree_data = self._make_tree_data()
-        result = selector.optimize_tree_selection([2], tree_data)
-        assert 2 in result
-        assert 1 not in result
+        assert selector.optimize_tree_selection([2]) == [2]
 
     def test_empty_selection(self):
         selector = self._make_selector()
-        result = selector.optimize_tree_selection([], [])
-        assert result == []
+        assert selector.optimize_tree_selection([]) == []
 
     def test_none_selection(self):
         selector = self._make_selector()
-        result = selector.optimize_tree_selection(None, [])
+        result = selector.optimize_tree_selection(None)
         assert result is None or result == []

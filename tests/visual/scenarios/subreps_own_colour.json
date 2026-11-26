@@ -1,0 +1,41 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/dynamicDiscreteProp.epc",
+   "settle": 15
+  },
+  {
+   "op": "check",
+   "title": "Pressure (PRESSURE)",
+   "settle": 15
+  },
+  {
+   "op": "check",
+   "title": "Pillar Grid_Boundary_Fault",
+   "settle": 10
+  },
+  {
+   "op": "check",
+   "title": "Pillar Grid_Boundary_Fault_West",
+   "settle": 10
+  },
+  {
+   "op": "scene_entries",
+   "match": "subrep",
+   "no_missing_array": true
+  },
+  {
+   "op": "scene_entries",
+   "match": "gridfolder_5a3f639d-1b77-5cbb-9a56-a803332c1cbf/_propsfolder"
+  },
+  {
+   "op": "reset_camera",
+   "settle": 2
+  },
+  {
+   "op": "peek",
+   "name": "subreps_coloured"
+  }
+ ]
+}

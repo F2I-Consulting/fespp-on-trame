@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/velocity_lattice.epc", "settle": 10 },
+    { "op": "dump", "vars": ["ui_cube_grid_rows", "ui_open_tools_by_view", "ui_tree_families"] },
+    { "op": "expect", "var": "ui_cube_grid_rows", "size_ge": 1 },
+    { "op": "expect", "var": "ui_open_tools_by_view", "key": "view_1", "equals": ["tree_seismic"] },
+    { "op": "tree_tick", "title": "velocity" },
+    { "op": "wait", "s": 8 },
+    { "op": "dump", "vars": ["ui_vdomain__view_1", "ui_legends__view_1", "visible_paths__view_1"] },
+    { "op": "expect", "var": "ui_vdomain__view_1", "equals": "time" },
+    { "op": "expect", "var": "ui_legends__view_1", "key": ["tables", 0, "family"], "equals": "seismic" },
+    { "op": "call", "method": "open_compare", "args": [], "settle": 8 },
+    { "op": "expect", "var": "ui_compare_tree_families", "equals": ["Seismic"] },
+    { "op": "load", "path": "/tmp/testdata/vector_props.epc", "settle": 10 },
+    { "op": "dump", "vars": ["ui_cube_grid_rows", "ui_open_tools_by_view", "ui_compare_tree_families"] },
+    { "op": "expect", "var": "ui_cube_grid_rows", "size_ge": 1 },
+    { "op": "expect", "var": "ui_open_tools_by_view", "key": "view_1", "contains": "tree_seismic" },
+    { "op": "expect", "var": "ui_compare_tree_families", "equals": ["Reservoir", "Seismic"] }
+  ]
+}

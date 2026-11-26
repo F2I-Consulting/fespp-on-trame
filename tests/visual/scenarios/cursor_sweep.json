@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "cursor_sweep", "n": 7 }
+  ]
+}

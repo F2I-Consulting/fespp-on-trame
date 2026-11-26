@@ -1,0 +1,21 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25 },
+    { "op": "tree_tick", "title": "55/33-A-4" },
+    { "op": "wait", "s": 6 },
+    { "op": "expect", "var": "ui_tick_confirm", "key": "title", "contains": "Read" },
+    { "op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 25 },
+    { "op": "activate", "title": "Horizontal Permeability", "under": "55/33-A-4", "tab": "well", "settle": 3 },
+    { "op": "eye", "title": "Horizontal Permeability", "under": "55/33-A-4", "settle": 8 },
+    { "op": "log_track_probe", "count": 1, "gaps": 0, "chips": 1, "marker_chips_ge": 1 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_ok": true },
+    { "op": "peek", "name": "nan_hidden" },
+    { "op": "call", "method": "cmap_hide_nan", "args": [false, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": false, "expect_ok": true },
+    { "op": "log_track_probe", "count": 1, "gaps": 1 },
+    { "op": "peek", "name": "nan_drawn" },
+    { "op": "call", "method": "cmap_hide_nan", "args": [true, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_ok": true },
+    { "op": "log_track_probe", "count": 1, "gaps": 0 }
+  ]
+}

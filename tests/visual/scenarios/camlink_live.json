@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "open_render_view", "args": ["view_1"], "settle": 6 },
+    { "op": "dump", "vars": ["fespp_render_panels", "fespp_last_render_panel_id"] },
+    { "op": "call", "method": "camlink_toggle", "args": ["view_1", "view_2"], "settle": 3 },
+    { "op": "expect", "var": "view_links", "key": ["view_1"], "contains": "view_2" },
+    { "op": "camera_move", "drag": [60, 40], "settle": 2 },
+    { "op": "camlink_probe" },
+    { "op": "camera_move", "wheel": 3, "settle": 2 },
+    { "op": "camlink_probe" }
+  ]
+}

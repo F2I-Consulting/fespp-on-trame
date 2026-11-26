@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 3 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.6 },
+    { "op": "scene_crop_probe", "pieces": 1 },
+    { "op": "tick_log" },
+    { "op": "wait", "s": 15 },
+    { "op": "scene_crop_probe", "pieces": 1 },
+    { "op": "tick_log", "skip": 3 },
+    { "op": "wait", "s": 15 },
+    { "op": "scene_crop_probe", "pieces": 1 },
+    { "op": "render_timing", "label": "cut scene with logs", "frames": 2 }
+  ]
+}

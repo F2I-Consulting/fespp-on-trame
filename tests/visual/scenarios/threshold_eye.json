@@ -1,0 +1,19 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+
+    { "op": "vtk_backend", "backend": "Sequential" },
+    { "op": "call", "method": "threshold_add", "args": [["Facies", null], "view_1"], "settle": 8 },
+    { "op": "threshold_colour_probe", "expect": "Facies" },
+    { "op": "call", "method": "threshold_range", "args": [[{"chain_entry": 0}, [2.0, 9.0]], "view_1"], "settle": 6 },
+
+    { "op": "vtk_backend", "backend": "STDThread" },
+    { "op": "call", "method": "threshold_range", "args": [[{"chain_entry": 0}, [1.0, 10.0]], "view_1"], "settle": 6 },
+    { "op": "call", "method": "threshold_add", "args": [["Facies", null], "view_1"], "settle": 8 },
+
+    { "op": "check", "title": "Temperature", "settle": 12 },
+    { "op": "threshold_colour_probe", "expect": "Temperature" }
+  ]
+}

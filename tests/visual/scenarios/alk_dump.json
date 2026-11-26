@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "dump_tree", "type": "Grid", "limit": 20 },
+    { "op": "dump_tree", "type": "Property", "limit": 60 },
+    { "op": "dump_tree", "type": "folder", "limit": 20 },
+    { "op": "dump_tree", "type": "Real", "limit": 20 },
+    { "op": "dump_tree", "type": "Time", "limit": 20 }
+  ]
+}

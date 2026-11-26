@@ -1,0 +1,73 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-A-4"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "contains": "Read"
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "eye",
+   "title": "Zone Index",
+   "under": "55/33-A-4",
+   "settle": 8
+  },
+  {
+   "op": "block_codes_probe",
+   "array": "Zone",
+   "codes_ge": 2
+  },
+  {
+   "op": "call",
+   "method": "set_zscale_now",
+   "args": [
+    22
+   ],
+   "settle": 4
+  },
+  {
+   "op": "reset_camera",
+   "settle": 2
+  },
+  {
+   "op": "camera",
+   "elevation": -75,
+   "azimuth": 20,
+   "settle": 2
+  },
+  {
+   "op": "peek",
+   "name": "zone_index_whole"
+  },
+  {
+   "op": "camera",
+   "zoom": 5,
+   "settle": 2
+  },
+  {
+   "op": "peek",
+   "name": "zone_index_close"
+  }
+ ]
+}

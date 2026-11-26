@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Geogrid", "settle": 3 },
+    { "op": "camera", "elevation": -55, "azimuth": 25, "settle": 2 },
+    { "op": "call", "method": "slicer_mode", "args": ["slice", "view_1"], "settle": 6 },
+    { "op": "slicer_probe" },
+    { "op": "shot", "name": "slices" },
+    { "op": "call", "method": "threshold_add", "args": [["Facies", null], "view_1"], "settle": 8 },
+    { "op": "call", "method": "threshold_range", "args": [[{"chain_entry": 0}, [2.0, 6.0]], "view_1"], "settle": 6 },
+    { "op": "slicer_probe", "expect_thresholded": true },
+    { "op": "shot", "name": "slices_thresholded" }
+  ]
+}

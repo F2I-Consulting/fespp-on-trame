@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "block_color_probe", "min_coloured": 82000, "bars": 1 },
+    { "op": "check_raw", "title": "55/33-A-4", "answer": true, "settle": 20 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "block_color_probe", "min_coloured": 78000, "bars": 1, "legend": 2 },
+    { "op": "colorbar_probe", "expect": "Facies", "legend_min": 2 },
+    { "op": "shot", "name": "grid_and_well" }
+  ]
+}

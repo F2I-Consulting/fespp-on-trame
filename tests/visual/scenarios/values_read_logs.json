@@ -1,0 +1,36 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25 },
+    { "op": "call", "method": "add_to_welllog",
+      "args": [{ "title": "Acoustic Impedance", "under": "55/33-2" }], "settle": 15 },
+    { "op": "call", "method": "values_focus",
+      "args": ["welllog", { "title": "Acoustic Impedance", "under": "55/33-2" }], "settle": 2 },
+    { "op": "call", "method": "node_values", "args": [{ "offset": 0, "hide_nan": true }, "view_1"], "settle": 3 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "rows"], "truthy": true },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1"], "missing": "read" },
+
+    { "op": "call", "method": "values_focus",
+      "args": ["welllog", { "title": "Acoustic Impedance (Edited)", "under": "55/33-2" }], "settle": 2 },
+    { "op": "call", "method": "node_values", "args": [{ "offset": 0, "hide_nan": true }, "view_1"], "settle": 3 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "read"], "truthy": true },
+
+    { "op": "call", "method": "values_read",
+      "args": [{ "title": "Acoustic Impedance (Edited)", "under": "55/33-2" }, "view_1"], "settle": 15 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "rows"], "truthy": true },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "hide_nan"], "equals": true },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1"], "missing": "read" },
+
+    { "op": "call", "method": "values_focus",
+      "args": ["welllog", { "title": "Acoustic Impedance", "under": "55/33-2" }], "settle": 2 },
+    { "op": "call", "method": "node_values", "args": [{ "offset": 0, "hide_nan": false }, "view_1"], "settle": 3 },
+    { "op": "uncheck", "title": "Acoustic Impedance", "under": "55/33-2", "settle": 10 },
+    { "op": "expect", "var": "ui_values_focus", "key": "path", "truthy": true },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "read"], "truthy": true },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "hide_nan"], "equals": false },
+
+    { "op": "check", "title": "Acoustic Impedance", "under": "55/33-2", "settle": 12 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "rows"], "truthy": true },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "hide_nan"], "equals": false },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1"], "missing": "read" }
+  ]
+}

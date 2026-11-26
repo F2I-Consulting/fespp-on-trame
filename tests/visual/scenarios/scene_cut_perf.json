@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "check", "title": "Drilled trajectory", "settle": 10 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "render_timing", "label": "whole scene", "frames": 5 },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 3 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.6 },
+    { "op": "render_timing", "label": "one box narrowed on its 3 axes", "frames": 5 },
+    { "op": "scene_cut_step_timing", "steps": 3 },
+    { "op": "scene_cut_faces_check" },
+    { "op": "scene_cut_mark_profile" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_box", "mode": "slice"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b5", "subject": "x"}, "view_1"], "settle": 1 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c9", "cmp": "below"}, "view_1"], "settle": 1 },
+    { "op": "render_timing", "label": "two boxes", "frames": 5 },
+    { "op": "scene_cut_step_timing", "steps": 3 },
+    { "op": "scene_cut_faces_check" },
+    { "op": "profile_call", "method": "geometry_slicer", "args": [{"op": "player", "id": "r2", "action": "step", "value": 30}, "view_1"], "top": 12, "settle": 1 },
+    { "op": "render_timing", "label": "after a player step", "frames": 3 },
+    { "op": "scene_crop_probe", "pieces": 1 }
+  ]
+}

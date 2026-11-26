@@ -1,0 +1,18 @@
+{
+ "steps": [
+  {"op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25},
+  {"op": "tree_tick", "title": "55/33-A-4"},
+  {"op": "wait", "s": 6},
+  {"op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 25},
+  {"op": "log_track_probe", "count": 1},
+  {"op": "activate", "title": "Well Log Frame", "under": "55/33-A-4", "tab": "well", "settle": 3},
+  {"op": "call", "method": "node_values", "args": [{"offset": 0, "assoc": "POINTS"}, "view_1"], "settle": 4},
+  {"op": "call", "method": "node_highlight", "args": [[4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009, 4010], "view_1"], "settle": 4},
+  {"op": "log_track_probe", "count": 1, "lit": 11},
+  {"op": "selection_probe", "none": true},
+  {"op": "camera", "frame": "log_lit", "margin": 1.2, "settle": 3},
+  {"op": "peek", "name": "frame_samples_lit"},
+  {"op": "call", "method": "node_highlight", "args": [[], "view_1"], "settle": 3},
+  {"op": "log_track_probe", "count": 1, "lit": 0}
+ ]
+}

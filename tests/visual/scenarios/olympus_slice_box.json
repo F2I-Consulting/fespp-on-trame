@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 8 },
+    { "op": "check", "title": "Porosity", "settle": 10 },
+    { "op": "activate", "title": "Sector", "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1", "ui_tool_targets__view_1", "active_path__view_1"] },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_box", "mode": "range"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "box_mode", "id": "b5", "mode": "slice"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b5", "subject": "i"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1", "ui_slicers__view_1"] },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["card", "boxes", 1, "cuts", "i", 0, "cmp"], "equals": "only" },
+    { "op": "dump", "vars": ["ui_slicers__view_1"] }
+  ]
+}

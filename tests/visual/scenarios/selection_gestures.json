@@ -1,0 +1,18 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "call", "method": "nav_set_pivot", "args": ["view_1"], "settle": 1 },
+    { "op": "expect", "var": "ui_view_note__{vid}", "contains": "Pick a cell first" },
+    { "op": "expect", "var": "ui_pick_info__{vid}", "equals": "" },
+    { "op": "call", "method": "view_context_menu", "args": [[3, 3, 1000, 700], "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_ctx_menu__{vid}", "key": ["items"], "equals": [] },
+    { "op": "call", "method": "toggle_tool", "args": ["pick", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[500, 350, 500, 350, 1000, 700], "view_1", "surface"], "settle": 4 },
+    { "op": "expect", "var": "ui_sel_counts__{vid}", "size_ge": 1 },
+    { "op": "call", "method": "highlight_rep", "args": [{"title": "Geogrid"}], "settle": 3 },
+    { "op": "expect", "var": "ui_sel_counts__{vid}", "equals": {} },
+    { "op": "call", "method": "unselect_rep", "args": [{"title": "Geogrid"}], "settle": 3 }
+  ]
+}

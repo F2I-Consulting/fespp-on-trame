@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 40 },
+    { "op": "dump_tree", "type": "Property", "limit": 25 },
+    { "op": "dump_tree", "type": "IjkGrid", "limit": 5 }
+  ]
+}

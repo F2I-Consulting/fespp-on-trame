@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25 },
+    { "op": "tree_tick", "title": "55/33-A-4" },
+    { "op": "wait", "s": 6 },
+    { "op": "expect", "var": "ui_tick_confirm", "key": "title", "contains": "Read" },
+    { "op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 25 },
+    { "op": "eye", "title": "Horizontal Permeability", "under": "55/33-A-4", "settle": 8 },
+    { "op": "log_track_probe", "count": 1, "lines": 1, "chips": 1, "coloured": true },
+    { "op": "dump", "vars": ["ui_tree_extra_chips"] },
+    { "op": "eye", "title": "Facies", "under": "55/33-A-4", "settle": 8 },
+    { "op": "dump", "vars": ["ui_tree_extra_chips", "visible_paths__view_1"] },
+    { "op": "peek", "name": "facies_codes" },
+    { "op": "log_track_probe", "count": 1, "lines": 1, "chips": 1, "on_hole": true }
+  ]
+}

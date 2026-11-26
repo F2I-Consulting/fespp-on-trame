@@ -1,0 +1,144 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc",
+   "settle": 25
+  },
+  {
+   "op": "check",
+   "title": "GR",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "settle": 15
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "GR"
+   ]
+  },
+  {
+   "op": "tree_action",
+   "action": "add-to-welllog",
+   "title": "TWTIME",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "read": true
+  },
+  {
+   "op": "wait",
+   "s": 20
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "TWTIME"
+   ],
+   "closed": [
+    "GR"
+   ]
+  },
+  {
+   "op": "welllog_expect",
+   "curves": [
+    "TWTIME"
+   ]
+  },
+  {
+   "op": "tree_action",
+   "action": "add-selected-to-welllog",
+   "title": "WIRE_GM",
+   "under": "well_feature_NO_15_9-19_A_B5088C"
+  },
+  {
+   "op": "wait",
+   "s": 15
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "TWTIME"
+   ],
+   "closed": [
+    "GR"
+   ]
+  },
+  {
+   "op": "welllog_expect",
+   "curves": [
+    "GR",
+    "TWTIME"
+   ]
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1
+  },
+  {
+   "op": "check",
+   "title": "EFAC",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "settle": 15
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "EFAC"
+   ],
+   "closed": [
+    "TWTIME",
+    "GR"
+   ]
+  },
+  {
+   "op": "tree_action",
+   "action": "add-to-welllog",
+   "title": "ELECTROFACIES_14_CLUST_3",
+   "under": "well_feature_NO_15_9-19_A_B5088C"
+  },
+  {
+   "op": "wait",
+   "s": 20
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "EFAC"
+   ],
+   "closed": [
+    "TWTIME",
+    "GR",
+    "PROBA"
+   ]
+  },
+  {
+   "op": "welllog_expect",
+   "curves": [
+    "EFAC",
+    "PROBA"
+   ]
+  },
+  {
+   "op": "tree_action",
+   "action": "add-to-welllog",
+   "title": "Well_Log_Interp_Wilfried",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "read": true
+  },
+  {
+   "op": "wait",
+   "s": 20
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "Well_Log_Interp_Wilfried"
+   ],
+   "closed": [
+    "EFAC",
+    "TWTIME",
+    "GR",
+    "PROBA"
+   ]
+  }
+ ]
+}

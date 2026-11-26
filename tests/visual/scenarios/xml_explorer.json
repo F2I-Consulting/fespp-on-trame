@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "xml_probe", "title": "Temperature", "under": "Geogrid", "settle": 3, "follow": true },
+    { "op": "globe_probe" }
+  ]
+}

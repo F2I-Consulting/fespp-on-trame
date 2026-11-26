@@ -1,0 +1,23 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "check", "title": "SOIL", "settle": 12 },
+    { "op": "activate", "title": "SOIL", "settle": 3 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "SOIL"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "box_mode", "id": "b1", "mode": "slice"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_cut", "box": "b1", "subject": "SOIL"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "set_cut", "id": "c3", "at": 0.45}, "view_1"], "settle": 4 },
+    { "op": "isolate_probe" },
+    { "op": "render_timing", "label": "SOIL cut only", "frames": 1 },
+    { "op": "peek", "name": "1_soil_cut" },
+    { "op": "call", "method": "cmap_hide_nan", "args": [true, "view_1"], "settle": 4 },
+    { "op": "isolate_probe" },
+    { "op": "render_timing", "label": "SOIL cut, NaN cells hidden", "frames": 1 },
+    { "op": "peek", "name": "2_soil_cut_nan_hidden" },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "set_cut", "id": "c3", "at": 0.5}, "view_1"], "settle": 4 },
+    { "op": "isolate_probe" },
+    { "op": "render_timing", "label": "SOIL cut moved to 0.5, NaN cells hidden", "frames": 1 },
+    { "op": "peek", "name": "3_soil_cut_moved" }
+  ]
+}

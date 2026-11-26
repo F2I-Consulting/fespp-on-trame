@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "block_color_probe", "min_coloured": 70000, "bars": 1 },
+    { "op": "interactive_frame_probe", "min_coloured": 30000, "force_lod": true },
+
+    { "op": "camera_move", "drag": [60, 40], "settle": 3 },
+    { "op": "interactive_frame_probe", "min_coloured": 10000, "force_lod": true },
+
+    { "op": "check", "title": "Temperature", "settle": 12 },
+    { "op": "block_color_probe", "min_coloured": 30000, "bars": 1 },
+    { "op": "interactive_frame_probe", "min_coloured": 10000, "force_lod": true },
+
+    { "op": "camera_move", "wheel": 4, "back": 4, "settle": 3 },
+    { "op": "check", "title": "Total Porosity", "settle": 12 },
+    { "op": "interactive_frame_probe", "min_coloured": 10000, "force_lod": true }
+  ]
+}

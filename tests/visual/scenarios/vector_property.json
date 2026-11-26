@@ -1,0 +1,12 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/vector_props.epc", "settle": 6 },
+    { "op": "check", "title": "velocity", "settle": 6 },
+    { "op": "check", "title": "poro", "settle": 4 },
+    { "op": "array_probe" },
+    { "op": "array_probe", "pick": { "title": "velocity", "component": 0 } },
+    { "op": "array_probe", "pick": { "title": "velocity", "component": "magnitude" } },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "vector_property" }
+  ]
+}

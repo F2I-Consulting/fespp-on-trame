@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 40 },
+    { "op": "check", "title": "region", "settle": 25 },
+    { "op": "activate", "title": "region", "settle": 3 },
+    { "op": "dump", "vars": ["ui_tool_target__view_1"] },
+    { "op": "expect", "var": "ui_tool_target__{vid}", "key": ["thresholds"], "truthy": true },
+    { "op": "expect", "var": "ui_tool_target__{vid}", "key": ["slicers"], "equals": "Simulation Grid" }
+  ]
+}

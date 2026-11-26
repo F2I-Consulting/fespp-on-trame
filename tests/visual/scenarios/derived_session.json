@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 20 },
+    { "op": "check", "title": "Porosity", "settle": 15 },
+    { "op": "activate", "title": "Porosity", "settle": 3 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "set", "var": "ui_calc_rep_p1", "value": "/data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1" },
+    { "op": "set", "var": "ui_calc_name_p1", "value": "PhiSquared" },
+    { "op": "set", "var": "ui_calc_expr_p1", "value": "Porosity * Porosity" },
+    { "op": "call", "method": "calc_create", "args": ["p1"], "settle": 4 },
+    { "op": "derived_eye", "grid": "Porosity", "name": "PhiSquared", "expect_colour": true, "settle": 6 },
+    { "op": "session_roundtrip" },
+    { "op": "derived_eye", "grid": "Porosity", "name": "PhiSquared", "toggle": false, "expect_colour": true }
+  ]
+}

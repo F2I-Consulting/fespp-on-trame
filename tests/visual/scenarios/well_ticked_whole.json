@@ -1,0 +1,54 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-A-4"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "contains": "Read"
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "scene_blocks_probe",
+   "no_kinds": [
+    "Wellbore",
+    "WellboreLogsFolder",
+    "WellboreMarkersFolder",
+    "WellboreCompletionsFolder"
+   ]
+  },
+  {
+   "op": "reset_camera",
+   "settle": 2
+  },
+  {
+   "op": "camera",
+   "elevation": -70,
+   "azimuth": 30,
+   "settle": 2
+  },
+  {
+   "op": "shot",
+   "name": "well_whole"
+  }
+ ]
+}

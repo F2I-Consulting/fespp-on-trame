@@ -1,0 +1,61 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "check", "title": "Drilled trajectory", "settle": 10 },
+    { "op": "check", "title": "Stratigraphic Marker Set", "settle": 8 },
+    { "op": "reset_camera", "settle": 2 },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1", "ui_tool_target__view_1"] },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["target"], "equals": "@scene" },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["card", "subjects"], "equals": ["x", "y", "z"] },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["targets", 0, "value"], "equals": "@scene" },
+    { "op": "expect", "var": "ui_tool_target__view_1", "key": ["slicers"], "equals": "Whole scene" },
+    { "op": "scene_crop_probe", "pieces": 0 },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "box_mode", "id": "b1", "mode": "slice"}, "view_1"], "settle": 3 },
+    { "op": "scene_crop_probe", "pieces": 0 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b1", "subject": "x"}, "view_1"], "settle": 5 },
+    { "op": "scene_crop_probe", "pieces": 1, "fewer": true },
+    { "op": "shot", "name": "scene_cut_plane" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c5", "cmp": "below"}, "view_1"], "settle": 5 },
+    { "op": "scene_crop_probe", "pieces": 1, "fewer": true },
+    { "op": "shot", "name": "scene_cut_below" },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b1", "subject": "z"}, "view_1"], "settle": 5 },
+    { "op": "scene_crop_probe", "pieces": 1, "fewer": true },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c6", "cmp": "below"}, "view_1"], "settle": 5 },
+    { "op": "scene_crop_probe", "pieces": 1, "fewer": true, "wells_cut": true },
+    { "op": "shot", "name": "scene_cut_two_pieces" },
+
+    { "op": "expect", "var": "ui_geometry_player__view_1", "key": ["loop"], "equals": true },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "player", "id": "c5", "action": "loop", "value": false}, "view_1"], "settle": 1 },
+    { "op": "expect", "var": "ui_geometry_player__view_1", "key": ["loop"], "equals": false },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "player", "id": "c5", "action": "play", "value": true}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "player", "id": "c5", "action": "play", "value": false}, "view_1"], "settle": 2 },
+    { "op": "dump", "vars": ["ui_geometry_player__view_1"] },
+    { "op": "scene_crop_probe", "pieces": 1 },
+
+    { "op": "call", "method": "toggle_tool", "args": ["pick", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[500, 350, 500, 350, 1000, 700], "view_1", "surface"], "settle": 4 },
+    { "op": "dump", "vars": ["ui_sel_counts__view_1", "ui_pick_info__view_1"] },
+    { "op": "call", "method": "toggle_tool", "args": ["pick", "view_1"], "settle": 2 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "target", "path": "@scene"}, "view_1"], "settle": 3 },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["target"], "equals": "@scene" },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": false}, "view_1"], "settle": 3 },
+    { "op": "scene_crop_probe", "pieces": 0 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 4 },
+    { "op": "scene_crop_probe", "pieces": 1 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "box_mode", "id": "b1", "mode": "range"}, "view_1"], "settle": 4 },
+    { "op": "scene_crop_probe", "pieces": 0 },
+
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["target"], "contains": "_gridfolder_2c6de928" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "target", "path": ""}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "expect", "var": "ui_geometry_card__view_1", "key": ["card", "subjects"], "equals": ["i", "j", "k"] }
+  ]
+}

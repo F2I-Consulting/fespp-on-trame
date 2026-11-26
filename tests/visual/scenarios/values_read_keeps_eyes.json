@@ -1,0 +1,94 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc",
+   "settle": 25
+  },
+  {
+   "op": "check",
+   "title": "GR",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "settle": 15
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "GR"
+   ]
+  },
+  {
+   "op": "scene_entries",
+   "title": "GR"
+  },
+  {
+   "op": "activate",
+   "title": "TWTIME",
+   "under": "well_feature_NO_15_9-19_A_B5088C",
+   "tab": "well",
+   "settle": 3
+  },
+  {
+   "op": "call",
+   "method": "node_values",
+   "args": [
+    {
+     "offset": 0
+    },
+    "view_1"
+   ],
+   "settle": 3
+  },
+  {
+   "op": "expect",
+   "var": "ui_node_values_by_view",
+   "key": [
+    "view_1",
+    "read_title"
+   ],
+   "equals": "TWTIME"
+  },
+  {
+   "op": "call",
+   "method": "values_read",
+   "args": [
+    {
+     "title": "TWTIME",
+     "under": "well_feature_NO_15_9-19_A_B5088C"
+    },
+    "view_1"
+   ],
+   "settle": 20
+  },
+  {
+   "op": "eyes_expect",
+   "open": [
+    "GR"
+   ],
+   "closed": [
+    "TWTIME"
+   ]
+  },
+  {
+   "op": "expect",
+   "var": "ui_node_values_by_view",
+   "key": [
+    "view_1",
+    "columns"
+   ],
+   "contains": "MD"
+  },
+  {
+   "op": "scene_entries",
+   "title": "GR"
+  },
+  {
+   "op": "scene_entries",
+   "title": "TWTIME"
+  },
+  {
+   "op": "log_track_probe",
+   "count": 1
+  }
+ ]
+}

@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 40 },
+    { "op": "dump_tree", "limit": 14 },
+    { "op": "check", "title": "region", "settle": 25 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "unstructured_threshold_probe" }
+  ]
+}

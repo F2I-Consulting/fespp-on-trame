@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 25 },
+    { "op": "check", "type": "Sub", "settle": 15 },
+    { "op": "subrep_eye_probe", "visible": true },
+    { "op": "eye", "type": "Sub", "settle": 5 },
+    { "op": "subrep_eye_probe", "visible": false },
+    { "op": "check", "type": "ContinuousProperty", "settle": 15 },
+    { "op": "stats_support_probe", "type": "Sub", "property": "ContinuousProperty" }
+  ]
+}

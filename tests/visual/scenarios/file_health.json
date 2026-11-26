@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "health_probe" },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "welllog_probe" },
+    { "op": "health_probe" },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "health" }
+  ]
+}

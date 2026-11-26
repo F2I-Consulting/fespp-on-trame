@@ -1,0 +1,61 @@
+{"text": "peux-tu m'afficher les zones d'huile de la grille", "intent": "threshold", "category": "oil", "session": "volve"}
+{"text": "je ne peux pas répondre à ta question je ne la comprends pas. Et tu me sors que des Pick... (Depth) donc ca n'aide pas à comprendre", "intent": "complain", "session": "volve"}
+{"text": "affiche le faciès huilde de la grille", "intent": "threshold", "category": "oil", "session": "volve"}
+{"text": "affiche moi les zones où le fluides est de l'huile", "intent": "threshold", "category": "oil", "session": "volve"}
+{"text": "montre la porosite de la grille au dessus de 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2, "session": "volve"}
+{"text": "montre moi la lithology de la grille", "intent": "show", "kind": "facies", "session": "volve"}
+{"text": "affiche moi les zones d'eau de la grille", "intent": "threshold", "category": "water", "session": "volve"}
+{"text": "affiche moi l'eau de la grille", "intent": "threshold", "category": "water", "session": "volve"}
+{"text": "affiche moi l'eau de la grille", "intent": "threshold", "category": "water", "session": "volve"}
+{"text": "qffiche moi l'eau de la grille", "intent": "threshold", "category": "water", "session": "volve"}
+{"text": "maintenant masque moi les autres zones", "intent": "threshold", "category": "water", "exclude": false, "session": "volve", "context": {"intent": "highlight", "category": "water", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "montre moi les zones d'huile", "intent": "threshold", "category": "oil", "session": "volve"}
+{"text": "peux-tu masquer cette zone", "intent": "threshold", "category": "oil", "exclude": true, "session": "volve", "context": {"intent": "highlight", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "ta réponse ne me convint pas", "intent": "complain", "session": "volve", "context": {"intent": "hide", "category": null, "kind": null, "targets": ["/v/sub_GasZone", "/v/sub_OilZone", "/v/sub_WaterZone"]}}
+{"text": "ta réponse précédente ne me convenait pas je voulais que tu masque la zone huile que je t'avais demandé de surligner auparaavant", "intent": "threshold", "category": "oil", "exclude": true, "session": "volve", "context": {"intent": "hide", "category": null, "kind": null, "targets": ["/v/sub_GasZone", "/v/sub_OilZone", "/v/sub_WaterZone"]}}
+{"text": "k", "intent": null, "session": "volve", "context": {"intent": "hide", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "l", "intent": null, "session": "volve", "context": {"intent": "hide", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "la réponse du masquage ne me satisfait pas.", "intent": "complain", "session": "volve", "context": {"intent": "hide", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "affiche moi les zone eau et surligne moi l'huile", "intent": "threshold", "category": "water", "then": [{"intent": "highlight", "category": "oil"}], "session": "volve"}
+{"text": "peux-tu me dire où trouver du pétrole ?", "intent": "threshold", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "water", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "peux-tu me surligner où il existe des puits sur ces zones ?", "intent": "well_cells", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "je veux les block wellbore de la zone huile", "intent": "well_cells", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "oui mais je veux que tu surligne les endroit où lses wellbores les intersecte", "intent": "well_cells", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "c'est une intersection de trajectoire de puit et la zone huile je ne veux pas donner des valeurs je ne comprends même pas valeurs de quoi", "intent": "well_cells", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "peux tu me montrer les zones d'huile", "intent": "threshold", "category": "oil", "session": "volve"}
+{"text": "je ne vois rien du tout", "intent": "complain", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "non il n'y a rien du tout sur la vue.\nJ'ai fait un load state je n'avais déjà rien et là avec la demande je n'ai toujours rien", "intent": "complain", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "peux-tu m'afficher les zones d'huile ?", "intent": "threshold", "category": "oil", "session": "volve"}
+{"text": "peux tu me montrer tous les blocks des wellbores qui traversent uniqument cette zone", "intent": "well_cells", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "valeur de quoi ?", "intent": "complain", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "je ne comprends pas ta demande d'une valeur. J'ai demander les intersection entre les wellbore trajectory et le maillage lié à l'huile", "intent": "well_cells", "category": "oil", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "tu peux enlever les puits qui n(ont pas ce block lié à l'huile N", "intent": "well_cells", "category": "oil", "well_filter": "keep_crossing", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "les trajectoires de puits qui ne passent pas par une zone d'huile tu peux les enlever ?", "intent": "well_cells", "category": "oil", "well_filter": "keep_crossing", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "j'ai encore des wells qui ne copent pas la zone d'huile", "intent": "well_cells", "category": "oil", "well_filter": "keep_crossing", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "montre moi uniquement les block wellbore se situant dans une zone d'huile de la grille", "intent": "well_cells", "category": "oil", "well_filter": "keep_crossing", "session": "volve"}
+{"text": "enlèves les zones autre que huile", "intent": "threshold", "category": "oil", "exclude": false, "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "enleves sur la grille les zones eau et gaz", "intent": "threshold", "category": "water", "categories": ["water", "gas"], "exclude": true, "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "J'avais dit eau et gaz", "intent": "threshold", "category": "water", "categories": ["water", "gas"], "exclude": true, "session": "volve", "context": {"intent": "threshold", "category": "water", "kind": null, "targets": ["/v/grid/fluids"], "exclude": true}}
+{"text": "non garde uniquement l'huile", "intent": "threshold", "category": "oil", "exclude": false, "session": "volve", "context": {"intent": "threshold", "category": "water", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "montres moi uniquement les puits qui intersectent des zones d'huile de la grille", "intent": "well_cells", "category": "oil", "well_filter": "keep_crossing", "session": "volve"}
+{"text": "montre moi uniquement l'huile de la grille", "intent": "threshold", "category": "oil", "exclude": false, "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "montre moi uniquement les block wellbores", "intent": "well_cells", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "uniquement ceux de la zone huile", "intent": "well_cells", "category": "oil", "well_filter": "keep_crossing", "session": "volve", "context": {"intent": "well_cells", "category": null, "kind": null, "targets": ["/v/w0", "/v/w1", "/v/w2", "/v/w3", "/v/w4", "/v/w5", "/v/w6", "/v/w7", "/v/w8", "/v/w9"]}}
+{"text": "pourquoi ce puit surligné est afficher il n'y avait pas de blockwellbore dans l'huile à priori", "intent": "ask", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "montre moi les block wellbore qui intersecte la zone d'huile de la grille", "intent": "well_cells", "category": "oil", "session": "volve"}
+{"text": "montre moi que l'huile sur la grille", "intent": "threshold", "category": "oil", "exclude": false, "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "tu t'es trompé", "intent": "complain", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}}
+{"text": "surligne les mailles où la saturation en eau dépasse 0,9", "intent": "highlight", "kind": "water saturation", "min": 0.9, "session": "volve"}
+{"text": "sélectionner moi tous les pilliers de la grille qui correspondent à une faille", "intent": null, "session": "volve", "context": {"intent": "highlight", "category": null, "kind": "water saturation", "targets": ["/v/grid/watsat", "/v/w0/sw", "/v/w1/sw", "/v/w2/sw", "/v/w3/sw", "/v/w4/sw", "/v/w5/sw", "/v/w6/sw", "/v/w7/sw", "/v/w8/sw", "/v/w9/sw", "/v/w10/sw", "/v/w11/sw", "/v/w12/sw", "/v/w0/swat", "/v/w3/swat", "/v/w6/swat", "/v/w9/swat", "/v/w12/swat"]}}
+{"text": "est-ce que tu vois des chenaux dans la grille", "intent": "ask", "session": "volve", "context": {"intent": "highlight", "category": null, "kind": "water saturation", "targets": ["/v/grid/watsat", "/v/w0/sw", "/v/w1/sw", "/v/w2/sw", "/v/w3/sw", "/v/w4/sw", "/v/w5/sw", "/v/w6/sw", "/v/w7/sw", "/v/w8/sw", "/v/w9/sw", "/v/w10/sw", "/v/w11/sw", "/v/w12/sw", "/v/w0/swat", "/v/w3/swat", "/v/w6/swat", "/v/w9/swat", "/v/w12/swat"]}}
+{"text": "est-ce que tu vois des chenaux dans la grille", "intent": "ask", "session": "volve", "context": {"intent": "highlight", "category": null, "kind": "water saturation", "targets": ["/v/grid/watsat", "/v/w0/sw", "/v/w1/sw", "/v/w2/sw", "/v/w3/sw", "/v/w4/sw", "/v/w5/sw", "/v/w6/sw", "/v/w7/sw", "/v/w8/sw", "/v/w9/sw", "/v/w10/sw", "/v/w11/sw", "/v/w12/sw", "/v/w0/swat", "/v/w3/swat", "/v/w6/swat", "/v/w9/swat", "/v/w12/swat"]}}
+{"text": "donne moi la recette de la tarte au pomme", "intent": null, "session": "volve"}
+{"text": "sonne moi l", "intent": null, "session": "volve"}
+{"text": "tu connais une recette de tarte aux pommes ?", "intent": null, "session": "volve"}
+{"text": "c'est qu'oi un pilar ?", "intent": "ask", "session": "volve"}
+{"text": "peux-tu me donner les piliers de la grille", "intent": null, "session": "volve"}
+{"text": "les piliers ca veut dire quoi ?", "intent": "ask", "session": "volve", "context": {"intent": "describe", "category": null, "kind": null, "targets": ["/v/grid"]}}
+{"text": "les piliers ca veut dire quoi ?", "intent": "ask", "session": "volve", "context": {"intent": "describe", "category": null, "kind": null, "targets": ["/v/grid"]}}
+{"text": "les piliers ca veut dire quoi ?", "intent": "ask", "session": "volve", "context": {"intent": "describe", "category": null, "kind": null, "targets": ["/v/grid"]}}
+{"text": "peux tu afficher seulement la zone water de la grille ?", "intent": "threshold", "category": "water", "session": "volve", "context": {"intent": "describe", "category": null, "kind": null, "targets": ["/v/grid"]}}
+{"text": "est-ce qu'il y a des puits qui passent par la zone water de la grille ?", "intent": "well_cells", "category": "water", "session": "volve", "context": {"intent": "threshold", "category": "water", "kind": null, "targets": ["/v/grid/fluids"]}}

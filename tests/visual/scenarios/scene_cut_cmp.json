@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 2 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_box", "mode": "slice"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "del_box", "id": "b1"}, "view_1"], "settle": 2 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b5", "subject": "z"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "scene_cut_faces_check" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c5", "cmp": "below"}, "view_1"], "settle": 3 },
+    { "op": "scene_cut_faces_check" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c5", "cmp": "above"}, "view_1"], "settle": 3 },
+    { "op": "scene_cut_faces_check" },
+    { "op": "scene_crop_probe", "pieces": 1 }
+  ]
+}

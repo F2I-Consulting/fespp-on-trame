@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "set", "var": "ui_cursor_mode__view_1", "value": true, "settle": 1 },
+    { "op": "profile_call", "set": { "pos_ev__view_1": [200, 200, 400, 400, 0] }, "top": 16, "settle": 2 },
+    { "op": "profile_call", "set": { "pos_ev__view_1": [210, 205, 400, 400, 1] }, "top": 16, "settle": 2 },
+    { "op": "profile_call", "set": { "pos_ev__view_1": [220, 210, 400, 400, 0] }, "top": 16, "settle": 2 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25 },
+    { "op": "tree_tick", "title": "55/33-1" },
+    { "op": "wait", "s": 20 },
+    { "op": "eye", "title": "Facies", "under": "55/33-1", "settle": 8 },
+    { "op": "camera", "from": "south", "settle": 3 },
+    { "op": "log_track_probe", "count": 1, "curtain": true },
+    { "op": "peek", "name": "plumb_from_the_south" },
+    { "op": "camera", "from": "east", "settle": 3 },
+    { "op": "log_track_probe", "count": 1, "curtain": true },
+    { "op": "peek", "name": "plumb_from_the_east" }
+  ]
+}

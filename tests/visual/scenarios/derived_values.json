@@ -1,0 +1,22 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 20 },
+    { "op": "check", "title": "Porosity", "settle": 15 },
+    { "op": "activate", "title": "Porosity", "settle": 3 },
+    { "op": "set", "var": "ui_calc_rep_p1", "value": "/data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1" },
+    { "op": "set", "var": "ui_calc_name_p1", "value": "PhiSquared" },
+    { "op": "set", "var": "ui_calc_expr_p1", "value": "Porosity * Porosity" },
+    { "op": "call", "method": "calc_create", "args": ["p1"], "settle": 4 },
+    { "op": "call", "method": "session_row_eye", "args": [{"path": "derived:///data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1#PhiSquared"}, "view_1"], "settle": 6 },
+    { "op": "expect", "var": "ui_session_rows__view_1", "truthy": true },
+    { "op": "set", "var": "active_path__view_1", "value": "derived:///data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1#PhiSquared", "settle": 2 },
+    { "op": "call", "method": "node_values", "args": [{"offset": 0}, "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": "view_1", "missing": "error" },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "columns"], "equals": ["cell id", "I", "J", "K", "ƒ PhiSquared"] },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "rows"], "truthy": true },
+    { "op": "call", "method": "node_values", "args": [{"offset": 0, "only": true}, "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "count"], "equals": 0 },
+    { "op": "eye", "title": "Porosity", "settle": 6 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": "view_1", "missing": "error" }
+  ]
+}

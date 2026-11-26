@@ -1,0 +1,12 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "globe_probe", "expect": true, "mode": true, "settle": 8 },
+    { "op": "check", "title": "Total Porosity", "settle": 12 },
+    { "op": "dump", "vars": ["visible_paths__view_2"] },
+    { "op": "colorbar_probe", "expect": "Total Porosity" },
+    { "op": "globe_probe", "expect": true, "mode": false, "settle": 6 },
+    { "op": "colorbar_probe", "expect": "Facies" }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/vector_props.epc", "settle": 6 },
+    { "op": "check", "title": "velocity", "settle": 6 },
+    { "op": "check", "title": "stress", "settle": 6 },
+    { "op": "activate", "title": "velocity", "settle": 2 },
+    { "op": "vector_component_probe", "prop": "velocity", "name": "twice",
+      "expr": "2 * velocity", "components": ["magnitude", 0, 1, 2] },
+    { "op": "activate", "title": "stress", "settle": 2 },
+    { "op": "vector_component_probe", "prop": "stress", "name": "half",
+      "expr": "stress / 2", "components": [0, 3, 5, "magnitude"] },
+    { "op": "value_action_guard_probe", "title": "velocity", "rep": true },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "vector_component" }
+  ]
+}

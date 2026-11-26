@@ -1,11 +1,9 @@
-"""
-conftest.py — stubs des dépendances runtime (trame, paraview) pour les tests unitaires.
+"""Stub the runtime dependencies (trame, ParaView) for the unit tests.
 
-Tous les modules de fespp_on_trame importent `trame` et parfois `paraview.simple`
-au niveau module, ce qui empêche leur import dans un test ordinaire.
-Ce fichier installe des stubs minimaux dans sys.modules AVANT que pytest
-ne commence à collecter les tests, de sorte que les imports réels soient
-interceptés sans lever ImportError.
+The fespp_on_trame modules import `trame`, and some import
+`paraview.simple`, at module level, so they cannot be imported in a plain
+Python test run. This file installs minimal stubs in sys.modules before
+pytest starts collecting, so those imports resolve without ImportError.
 """
 import sys
 import types
@@ -19,8 +17,8 @@ def _make_stub(name: str) -> types.ModuleType:
 
 
 def _install_trame_stubs():
-    """Stub trame et ses sous-modules."""
-    # State/controller simulés
+    """Stub trame and its submodules."""
+    # Fake server state and controller.
     state_mock = MagicMock()
     state_mock.setdefault = lambda k, v: None
 
@@ -44,6 +42,11 @@ def _install_trame_stubs():
         "trame.assets",
         "trame.assets.local",
         "trame_server",
+        # Vendored widgets: the panel builders (app/views/**) import them at
+        # module level, and they are not installed for the unit tests.
+        "trame_fespp_tree",
+        "trame_fespp_tree.widgets",
+        "trame_fespp_tree.widgets.tree",
     ]:
         sys.modules.setdefault(sub, MagicMock())
 
@@ -52,9 +55,22 @@ def _install_trame_stubs():
 
 
 def _install_paraview_stubs():
-    """Stub paraview et ses sous-modules."""
-    for name in ["paraview", "paraview.simple", "vtk", "ptc"]:
+    """Stub paraview and its submodules.
+
+    `paraview` must be a real module, not a MagicMock: otherwise
+    `from paraview.servermanager import X` raises "'paraview' is not a
+    package", because Python resolves a dotted submodule name only through
+    a real package."""
+    pv = _make_stub("paraview")
+    pv.__path__ = []                      # a __path__ makes it a package
+    sys.modules.setdefault("paraview", pv)
+    for name in ["paraview.simple", "paraview.servermanager",
+                 "paraview.util", "paraview.util.vtkAlgorithm",
+                 "vtk", "ptc"]:
         sys.modules.setdefault(name, MagicMock())
+    # The submodules must also be attributes of the package.
+    for name in ["simple", "servermanager", "util"]:
+        setattr(pv, name, sys.modules.get("paraview." + name, MagicMock()))
 
 
 _install_trame_stubs()

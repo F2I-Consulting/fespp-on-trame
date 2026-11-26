@@ -1,13 +1,13 @@
-"""Tests unitaires pour fespp_on_trame.app.core.element_type.
+"""Unit tests for fespp_on_trame.engine.element_type.
 
-Garde-fou du contrat ElementType : la résolution kind→classe et les
-valeurs déclaratives (tree_role, eye, bucket, policies) doivent rester en
-phase avec TYPES_PARTICULARITES — c'est ce contrat auquel les couches
-tracking / œil / visibilité / coloration délèguent (Steps 1-3, 5)."""
+Guard of the ElementType contract: the kind → class resolution and the
+declarative values (tree_role, eye, bucket, policies) must stay in step with
+the per-type spec (doc/EN/TYPES_PARTICULARITES.md). The tracking, eye,
+visibility and colouring layers all delegate to this contract."""
 import pytest
 
-from fespp_on_trame.app.core import element_type as et
-from fespp_on_trame.app.core.element_type import (
+from fespp_on_trame.engine import element_type as et
+from fespp_on_trame.engine.element_type import (
     TreeRole, VisibilityPolicy, ColorPolicy, EyeKind,
     ElementType, Representation,
     Grouping, PartialType, GridRep, IjkGridRep, SurfaceRep,
@@ -73,7 +73,6 @@ class TestContract:
         assert e.visibility_policy() == VP.IJK_MODAL
         assert e.color_policy() == CP.COLORABLE
         assert e.tracking_bucket() == et.BUCKET_REP
-        assert e.primary_hidden() is False
         assert e.eye_descriptor().kind == EK.REP
 
     @pytest.mark.parametrize("kind", ["UnstructuredGrid", "Sub", "Grid2d",
@@ -115,14 +114,12 @@ class TestContract:
         assert e.eye_descriptor() is None
         assert e.tracking_bucket() is None
         assert e.visibility_policy() == VP.ONE_AT_A_TIME
-        assert e.primary_hidden() is True
 
     def test_marker_frame(self):
         e = et.for_kind("MarkerFrame")
         assert isinstance(e, FrameRep)
         assert e.tree_role() == TR.FOLDER
         assert e.visibility_policy() == VP.MULTI
-        assert e.primary_hidden() is True
 
     @pytest.mark.parametrize("kind", ["ContinuousProperty", "DiscreteProperty",
                                       "CategoricalProperty", "TimeSeries",
@@ -188,43 +185,6 @@ class TestEyeSingletons:
         assert e.eye_descriptor() is e.eye_descriptor()
 
 
-class TestChildBehaviour:
-    """Step 4.1 — the per-type child behaviour lives on the frame classes
-    (strategy pattern); RepInScene passes itself as `ris`."""
-
-    def test_frame_store_attrs(self):
-        ch = et.for_kind("Frame")
-        assert ch._child_store_attr == "_channel_extractors"
-        assert ch._reg_prefix == "chn"
-        mk = et.for_kind("MarkerFrame")
-        assert mk._child_store_attr == "_marker_extractors"
-        assert mk._reg_prefix == "mrk"
-
-    def test_base_child_methods_are_noops(self):
-        g = et.for_kind("IjkGrid")  # a non-frame rep
-        assert g.set_child_visible(None, "x", True) is None
-        assert g.child_source(None, "x") is None
-        assert g.visible_child_source(None) is None
-        assert g.visible_child_displays(None) == []
-        assert g.set_child_color(None, "x", "#fff") is None
-
-    def test_frame_child_source_reads_ris_store(self):
-        # child_source(create=False) just reads ris.<store>; an empty store
-        # returns None without touching paraview. Each frame type dispatches
-        # to its OWN store (channels vs markers).
-        class _Ris:
-            _channel_extractors = {}
-            _marker_extractors = {}
-        ris = _Ris()
-        assert et.for_kind("Frame").child_source(ris, "c", create=False) is None
-        ris._channel_extractors["c"] = "CHAN"
-        assert et.for_kind("Frame").child_source(ris, "c", create=False) == "CHAN"
-        ris._marker_extractors["m"] = "MARK"
-        assert et.for_kind("MarkerFrame").child_source(ris, "m", create=False) == "MARK"
-        # cross-store isolation: a channel frame doesn't see marker store.
-        assert et.for_kind("Frame").child_source(ris, "m", create=False) is None
-
-
 class TestFallback:
     def test_unknown_kind_is_standard_rep(self):
         e = et.for_kind("TotallyUnknownKind")
@@ -237,14 +197,13 @@ class TestFallback:
 
 
 class TestSyncWithCode:
-    # NOTE: the old `_DATA_ARRAY_KINDS == PropertyLeaf.KINDS` sync test was
-    # removed in Step 1 — data_load now DELEGATES the bucket decision to
+    # data_load delegates the bucket decision to
     # element_type.for_kind(...).tracking_bucket(), so there is no separate
-    # constant to drift. The invariant is covered by
-    # TestContract.test_property_leaves (every PropertyLeaf kind → array bucket).
+    # kind list to drift; TestContract.test_property_leaves covers that
+    # invariant (every PropertyLeaf kind → array bucket).
 
     def test_no_kind_claimed_twice(self):
-        # Import-time guard already raises on collision; assert the
-        # registry size matches the sum of distinct KINDS.
+        # The registry raises on a collision at import time; the size check
+        # also pins it: one entry per distinct kind of every concrete class.
         total = sum(len(set(c.KINDS)) for c in et._CONCRETE)
         assert len(et.registered_kinds()) == total

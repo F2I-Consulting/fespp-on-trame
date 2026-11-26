@@ -1,0 +1,21 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "GasSat", "under": "GasSat", "settle": 12 },
+    { "op": "activate", "title": "GasSat", "under": "GasSat", "settle": 3 },
+    { "op": "timereal_play", "on": true, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2 },
+    { "op": "timereal_play", "on": false, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2 },
+    { "op": "check", "title": "WatSat", "under": "WatSat", "settle": 12 },
+    { "op": "timereal_play", "on": true, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2 },
+    { "op": "timereal_play", "on": false, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2 },
+    { "op": "check", "title": "OilSat", "under": "OilSat", "settle": 12 },
+    { "op": "timereal_play", "on": true, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2 },
+    { "op": "timereal_play", "on": false, "settle": 1 },
+    { "op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2 }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "activate", "title": "Fluids", "settle": 3 },
+    { "op": "reset_camera", "settle": 3 },
+
+    { "op": "call", "method": "toggle_tool", "args": ["frustum", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[300, 200, 700, 500, 1000, 700], "view_1", "frustum"], "settle": 20 },
+
+    { "op": "call", "method": "set_zscale", "args": [5], "settle": 6 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "call", "method": "view_pick", "args": [[300, 200, 700, 500, 1000, 700], "view_1", "frustum"], "settle": 20 },
+
+    { "op": "call", "method": "threshold_add", "args": [["Fluids", null], "view_1"], "settle": 12 },
+    { "op": "call", "method": "view_pick", "args": [[300, 200, 700, 500, 1000, 700], "view_1", "frustum"], "settle": 20 }
+  ]
+}

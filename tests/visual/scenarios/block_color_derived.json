@@ -1,0 +1,21 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "check_raw", "title": "55/33-A-4", "answer": true, "settle": 20 },
+    { "op": "activate", "title": "Geogrid", "settle": 3 },
+    { "op": "camera", "elevation": -55, "azimuth": 25, "settle": 2 },
+    { "op": "block_color_probe", "min_coloured": 46000, "bars": 1, "legend": 2 },
+    { "op": "colorbar_probe", "expect": "Facies", "legend_min": 2 },
+    { "op": "call", "method": "slicer_mode", "args": ["slice", "view_1"], "settle": 6 },
+    { "op": "slicer_probe" },
+    { "op": "block_color_probe", "bars": 1, "legend": 2 },
+    { "op": "shot", "name": "slice_with_well" },
+    { "op": "call", "method": "slicer_mode", "args": ["full", "view_1"], "settle": 4 },
+    { "op": "activate", "title": "Facies", "settle": 2 },
+    { "op": "call", "method": "threshold_add", "args": ["Facies", "view_1"], "settle": 6 },
+    { "op": "slicer_probe" },
+    { "op": "block_color_probe", "bars": 1, "legend": 2 },
+    { "op": "shot", "name": "threshold_with_well" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Horizons_Depth.epc", "settle": 20 },
+    { "op": "check", "title": "HOD", "settle": 15 },
+    { "op": "check", "title": "resampled_HOD_ts", "settle": 15 },
+    { "op": "xyz_crop_bench", "repeat": 3 }
+  ]
+}

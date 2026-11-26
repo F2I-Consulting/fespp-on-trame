@@ -1,0 +1,33 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 25 },
+    { "op": "tree_tick", "title": "well_feature_NO_15_9-19_A_B5088C" },
+    { "op": "wait", "s": 6 },
+    { "op": "expect", "var": "ui_tick_confirm", "key": "title", "contains": "Read" },
+    { "op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 40 },
+    { "op": "call", "method": "add_to_welllog",
+      "args": [{ "title": "WIRE_GM", "under": "well_feature_NO_15_9-19_A_B5088C" }, true], "settle": 15 },
+    { "op": "welllog_expect", "curves": ["GR"], "absent": ["PROBA", "EFAC", "TWTIME", "RHOB_NEW"] },
+    { "op": "call", "method": "add_to_welllog",
+      "args": [{ "title": "TWTIME", "under": "well_feature_NO_15_9-19_A_B5088C" }], "settle": 15 },
+    { "op": "welllog_expect", "curves": ["GR", "TWTIME"], "absent": ["PROBA", "EFAC", "RHOB_NEW"] },
+    { "op": "activate", "title": "GR", "under": "well_feature_NO_15_9-19_A_B5088C", "tab": "well", "settle": 3 },
+    { "op": "call", "method": "node_values", "args": [{ "offset": 0 }, "view_1"], "settle": 3 },
+    { "op": "values_cursor", "well": "well_feature_NO_15_9-19_A_B5088C", "md": 2500, "curves": ["GR"] },
+    { "op": "values_cursor", "well": "well_feature_NO_15_9-19_A_B5088C", "md": 3300, "curves": ["GR"] },
+    { "op": "values_cursor", "well": "well_feature_NO_15_9-19_A_B5088C", "md": 3000, "curves": ["TWTIME"], "none": true },
+    { "op": "eye", "title": "GR", "under": "well_feature_NO_15_9-19_A_B5088C", "settle": 10 },
+    { "op": "values_cursor", "well": "well_feature_NO_15_9-19_A_B5088C", "md": 2600, "curves": ["GR"], "settle": 3 },
+    { "op": "log_track_probe", "count": 1, "lit": 1 },
+    { "op": "log_as", "title": "GR", "under": "well_feature_NO_15_9-19_A_B5088C", "mode": "tube", "settle": 6 },
+    { "op": "log_track_probe", "count": 0, "tube": true, "lit": 0, "lit_rings": 1 },
+    { "op": "call", "method": "add_to_welllog",
+      "args": [{ "title": "well_feature_NO_15_9-19_A_B5088C" }], "settle": 15 },
+    { "op": "welllog_expect", "curves": ["GR", "TWTIME", "PROBA", "EFAC"] },
+    { "op": "call", "method": "add_to_welllog",
+      "args": [{ "title": "WIRE_GM", "under": "well_feature_NO_15_9-19_A_B5088C" }], "settle": 25 },
+    { "op": "wait", "s": 4 },
+    { "op": "welllog_expect", "curves": ["GR", "TWTIME"],
+      "all_under": { "title": "WIRE_GM", "under": "well_feature_NO_15_9-19_A_B5088C" } }
+  ]
+}

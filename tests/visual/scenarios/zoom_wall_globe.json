@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "globe_probe", "expect": true, "mode": true, "settle": 10 },
+    { "op": "zoom_wall_probe", "notches": 220 },
+    { "op": "call", "method": "nav_zoom_step", "args": ["view_2", 4.0], "settle": 1 },
+    { "op": "call", "method": "nav_zoom_step", "args": ["view_2", 4.0], "settle": 1 },
+    { "op": "zoom_wall_probe", "notches": 120, "via": "button" }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "steps": [
+    {
+      "op": "load",
+      "path": "/tmp/testdata/Volve_Demo_Fault_Horizon_TIME.epc",
+      "settle": 20
+    },
+    {
+      "op": "load",
+      "path": "/tmp/testdata/Volve_Demo_Horizons_Depth.epc",
+      "settle": 20
+    },
+    {
+      "op": "call",
+      "method": "open_time_depth",
+      "args": [],
+      "settle": 8
+    },
+    {
+      "op": "expect",
+      "var": "ui_vdomain__{vid}",
+      "equals": "time"
+    },
+    {
+      "op": "expect",
+      "var": "ui_time_depth_law",
+      "key": "generated",
+      "equals": false
+    },
+    {
+      "op": "expect",
+      "var": "ui_time_depth_law",
+      "key": "columns",
+      "size_ge": 1
+    },
+    {
+      "op": "time_depth_pins_probe",
+      "shown": [
+        "box",
+        "halo",
+        "lines",
+        "points"
+      ]
+    },
+    {
+      "op": "shot",
+      "name": "preview_time"
+    },
+    {
+      "op": "call",
+      "method": "view_domain",
+      "args": [
+        "view_1",
+        "depth"
+      ],
+      "settle": 4
+    },
+    {
+      "op": "expect",
+      "var": "ui_vdomain__{vid}",
+      "equals": "depth"
+    },
+    {
+      "op": "time_depth_pins_probe",
+      "shown": []
+    },
+    {
+      "op": "shot",
+      "name": "preview_depth"
+    },
+    {
+      "op": "call",
+      "method": "view_domain",
+      "args": [
+        "view_1",
+        "time"
+      ],
+      "settle": 4
+    },
+    {
+      "op": "time_depth_pins_probe",
+      "shown": [
+        "box",
+        "halo",
+        "lines",
+        "points"
+      ]
+    },
+    {
+      "op": "expect",
+      "var": "ui_active_model_row",
+      "equals": ""
+    },
+    {
+      "op": "call",
+      "method": "time_depth_law_edit",
+      "args": [
+        {
+          "op": "generate"
+        }
+      ],
+      "settle": 12
+    },
+    {
+      "op": "expect",
+      "var": "ui_time_depth_law",
+      "key": "generated",
+      "equals": true
+    },
+    {
+      "op": "expect",
+      "var": "ui_cube_tree",
+      "key": "row",
+      "truthy": true
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "ui_active_model_row",
+        "ui_cube_tree"
+      ]
+    },
+    {
+      "op": "expect",
+      "var": "ui_active_model_row",
+      "contains": "_gridfolder_"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Total Porosity", "settle": 12 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "pick_probe", "expect_label": "Total Porosity = ", "settle": 2 }
+  ]
+}

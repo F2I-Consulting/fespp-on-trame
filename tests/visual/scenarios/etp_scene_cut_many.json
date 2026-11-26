@@ -1,0 +1,27 @@
+{
+  "steps": [
+    { "op": "etp_open", "url": "wss://admeinterop.energy.azure.com/api/reservoir-ddms-etp/v2/",
+      "partition": "opendes", "dataspace": "eml:///dataspace('demo/drogon')", "settle": 30 },
+    { "op": "tree_tick", "title": "Geogrid" },
+    { "op": "wait", "s": 40 },
+    { "op": "tree_tick_all", "type": "Trajectory" },
+    { "op": "wait", "s": 60 },
+    { "op": "tree_tick_all", "type": "Grid2d", "vdomain": "depth" },
+    { "op": "wait", "s": 60 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "render_timing", "label": "ADME grid, 18 trajectories, 6 horizons", "frames": 3 },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 3 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.6 },
+    { "op": "render_timing", "label": "ADME many objects, one box narrowed on its 3 axes", "frames": 5 },
+    { "op": "scene_cut_step_timing", "steps": 3 },
+    { "op": "scene_crop_probe", "pieces": 1 },
+
+    { "op": "stack_dump", "every": 60 },
+    { "op": "tick_log" },
+    { "op": "wait", "s": 30 },
+    { "op": "render_timing", "label": "ADME many objects, a log ticked on the cut", "frames": 3 },
+    { "op": "scene_cut_step_timing", "steps": 3 },
+    { "op": "scene_crop_probe", "pieces": 1 }
+  ]
+}

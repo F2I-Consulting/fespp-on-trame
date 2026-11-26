@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "globe_probe", "expect": true, "mode": true, "settle": 10 },
+    { "op": "cursor_probe", "globe": true, "expect": ["lat", "lon"], "settle": 3 }
+  ]
+}

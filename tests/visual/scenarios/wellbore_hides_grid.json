@@ -1,0 +1,18 @@
+{
+  "steps": [
+    { "op": "stack_dump", "every": 30 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 20 },
+    { "op": "check", "title": "Fluids", "settle": 20 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "interactive_frame_probe", "min_coloured": 40000 },
+    { "op": "block_vis_probe", "limit": 4 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 20 },
+    { "op": "bounds_probe", "limit": 2, "expect_partitions": 1, "unique_links": true },
+    { "op": "check_raw", "title": "well_feature_NO_15_9-F-1_A_84B691", "answer": true, "settle": 30 },
+    { "op": "block_vis_probe", "limit": 6, "expect_visible": ["/data/_gridfolder"] },
+    { "op": "colorbar_probe", "expect": "Fluids", "legend_min": 30 },
+    { "op": "shot", "name": "after_wellbore" },
+    { "op": "cursor_sweep", "n": 7 },
+    { "op": "interactive_frame_probe", "min_coloured": 30000 }
+  ]
+}

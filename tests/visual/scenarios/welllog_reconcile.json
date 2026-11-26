@@ -1,0 +1,12 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "welllog_probe" },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "Lithology1", "settle": 12 },
+    { "op": "check", "title": "WatSat", "under": "WatSat", "settle": 12 },
+    { "op": "reconcile_probe", "step": 1.0, "list_grid_props": true, "expect_rows": 8 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "reconcile" }
+  ]
+}

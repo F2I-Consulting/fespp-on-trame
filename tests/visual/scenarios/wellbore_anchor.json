@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 20 },
+    { "op": "check", "title": "Fluids", "settle": 20 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "lut_probe", "detail": ["/data/_gridfolder"], "expect_anchor": ["CELLS", "Fluids"], "expect_painted": true },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 20 },
+    { "op": "check_raw", "title": "well_feature_NO_15_9-F-1_A_84B691", "answer": true, "settle": 30 },
+    { "op": "lut_probe", "mapper": true, "mapper_limit": 0, "expect_painted": true }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "op": "etp_open", "url": "wss://admeinterop.energy.azure.com/api/reservoir-ddms-etp/v2/",
+      "partition": "opendes", "dataspace": "eml:///dataspace('demo/drogon')", "settle": 30 },
+    { "op": "tree_tick", "title": "Geogrid" },
+    { "op": "wait", "s": 40 },
+    { "op": "tree_tick_all", "type": "Trajectory" },
+    { "op": "wait", "s": 60 },
+    { "op": "tree_tick_all", "type": "Grid2d", "vdomain": "depth" },
+    { "op": "wait", "s": 60 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "render_timing", "label": "ADME grid, 18 trajectories, 6 horizons, no cut", "frames": 2 },
+
+    { "op": "stack_dump", "every": 45 },
+    { "op": "tick_log" },
+    { "op": "wait", "s": 30 },
+    { "op": "render_timing", "label": "ADME many objects, a log ticked, no cut", "frames": 2 },
+    { "op": "dump", "vars": ["ui_loaded_array_paths"] }
+  ]
+}

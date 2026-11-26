@@ -1,0 +1,22 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Geogrid", "settle": 3 },
+    { "op": "camera", "elevation": -55, "azimuth": 25, "settle": 2 },
+    { "op": "call", "method": "slicer_mode", "args": ["slice", "view_1"], "settle": 6 },
+    { "op": "call", "method": "slicer_positions", "args": [["k", [3, 9]], "view_1"], "settle": 4 },
+    { "op": "call", "method": "threshold_add", "args": [["Facies", null], "view_1"], "settle": 8 },
+    { "op": "call", "method": "threshold_range", "args": [[{"chain_entry": 0}, [2.0, 6.0]], "view_1"], "settle": 6 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "call", "method": "cmap_nan", "args": [["#ff00ff", 1.0], "view_1"], "settle": 2 },
+    { "op": "call", "method": "cmap_bar", "args": [false, "view_1"], "settle": 2 },
+    { "op": "call", "method": "toggle_tool", "args": ["colormap", "view_1"], "settle": 2 },
+    { "op": "call", "method": "add_view", "args": [], "settle": 6 },
+    { "op": "check", "title": "Temperature", "settle": 10 },
+    { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "call", "method": "cmap_range", "args": [[0.05, 0.15], "view_2"], "settle": 2 },
+    { "op": "call", "method": "open_globe", "args": [], "settle": 10 },
+    { "op": "session_roundtrip" }
+  ]
+}

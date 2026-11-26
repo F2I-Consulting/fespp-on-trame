@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 40 },
+    { "op": "check", "title": "region", "settle": 25 },
+    { "op": "activate", "title": "region", "settle": 3 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "block_color_probe", "min_coloured": 1, "bars": 1 },
+
+    { "op": "call", "method": "threshold_add", "args": [["region", null], "view_1"], "settle": 12 },
+    { "op": "threshold_colour_probe", "expect": "region", "expect_tool": true },
+    { "op": "block_color_probe", "min_coloured": 1, "bars": 1 }
+  ]
+}

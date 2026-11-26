@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "welllog_probe", "cutoff_p50": true, "cutoff_missing": true },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "welllog_zones" }
+  ]
+}

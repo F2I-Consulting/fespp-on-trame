@@ -1,0 +1,26 @@
+{
+ "steps": [
+  {"op": "load", "path": "/tmp/testdata/dynamicDiscreteProp.epc", "settle": 15},
+  {"op": "check", "title": "Pressure (PRESSURE)", "settle": 15},
+  {"op": "activate", "title": "Pressure (PRESSURE)", "settle": 3},
+  {"op": "timereal_play", "on": true, "settle": 1},
+  {"op": "timereal_player_expect", "playing": true, "moving": true, "time_steps": 21, "settle": 2},
+  {"op": "check", "title": "PVT region (PVTNUM)", "settle": 8},
+  {"op": "check", "title": "Transmissibility K (TRANZ)", "settle": 8},
+  {"op": "dump", "vars": ["ui_active_array_by_view", "ui_timereal_player__view_1"]},
+  {"op": "timereal_player_expect", "playing": false, "moving": false, "time_steps": 1, "view_step": 0, "settle": 2},
+  {"op": "timereal_play", "on": true, "settle": 1},
+  {"op": "timereal_player_expect", "playing": false, "moving": false, "time_steps": 1, "view_step": 0, "settle": 2},
+  {"op": "uncheck", "title": "Transmissibility K (TRANZ)", "settle": 8},
+  {"op": "uncheck", "title": "PVT region (PVTNUM)", "settle": 8},
+  {"op": "uncheck", "title": "Pressure (PRESSURE)", "settle": 8},
+  {"op": "check", "title": "Pressure (PRESSURE)", "settle": 15},
+  {"op": "activate", "title": "Pressure (PRESSURE)", "settle": 3},
+  {"op": "dump", "vars": ["ui_active_array_by_view"]},
+  {"op": "timereal_player_expect", "time_steps": 21, "settle": 1},
+  {"op": "timereal_play", "on": true, "settle": 1},
+  {"op": "timereal_player_expect", "playing": true, "moving": true, "settle": 2},
+  {"op": "timereal_play", "on": false, "settle": 1},
+  {"op": "timereal_player_expect", "playing": false, "moving": false, "settle": 2}
+ ]
+}

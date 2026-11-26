@@ -1,0 +1,27 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "camera", "elevation": -55, "azimuth": 25, "settle": 2 },
+    { "op": "call", "method": "cmap_hide_nan", "args": [true, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_isolated": true, "expect_drawn": true },
+    { "op": "activate", "title": "Geogrid", "settle": 3 },
+    { "op": "call", "method": "slicer_mode", "args": ["slice", "view_1"], "settle": 6 },
+    { "op": "slicer_probe" },
+    { "op": "shot", "name": "masked_slices" },
+    { "op": "call", "method": "threshold_add", "args": [["Facies", null], "view_1"], "settle": 8 },
+    { "op": "call", "method": "threshold_range", "args": [[{"chain_entry": 0}, [2.0, 6.0]], "view_1"], "settle": 6 },
+    { "op": "slicer_probe", "expect_thresholded": true },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "call", "method": "cmap_hide_nan", "args": [false, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": false, "expect_isolated": true },
+    { "op": "activate", "title": "Geogrid", "settle": 3 },
+    { "op": "slicer_probe", "expect_thresholded": true },
+    { "op": "shot", "name": "unmasked_thresholded_slices" },
+    { "op": "eye", "title": "Geogrid", "settle": 6 },
+    { "op": "slicer_probe", "expect_nothing_shown": true },
+    { "op": "eye", "title": "Geogrid", "settle": 6 },
+    { "op": "slicer_probe", "expect_thresholded": true }
+  ]
+}

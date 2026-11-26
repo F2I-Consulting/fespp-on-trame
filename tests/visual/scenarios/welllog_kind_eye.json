@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25 },
+    { "op": "tree_tick", "type": "Wellbore", "every": true },
+    { "op": "wait", "s": 8 },
+    { "op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 60 },
+    { "op": "call", "method": "add_to_welllog",
+      "args": [{ "title": "Total Porosity", "under": "55/33-2" }], "settle": 15 },
+    { "op": "welllog_expect", "curves": ["Total Porosity"] },
+    { "op": "welllog_kind_eye", "kind": "Rock Impedance", "settle": 15 },
+    { "op": "welllog_expect", "curves": ["Total Porosity", "Acoustic Impedance", "Shear Impedance"],
+      "absent": ["P-Wave Velocity", "Facies", "Water Saturation"] }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "profile_call", "method": "load_epc_file", "args": ["/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc"], "top": 28, "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "activate", "title": "Fluids", "settle": 3 },
+    { "op": "profile_call", "method": "threshold_add", "args": [["Fluids", null], "view_1"], "top": 28, "settle": 6 },
+    { "op": "profile_call", "method": "threshold_range", "args": [[{"chain_entry": 0}, [0.5, 1.5]], "view_1"], "top": 20, "settle": 6 }
+  ]
+}

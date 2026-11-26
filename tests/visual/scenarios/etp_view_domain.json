@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "op": "etp_open", "url": "wss://admeinterop.energy.azure.com/api/reservoir-ddms-etp/v2/",
+      "partition": "opendes", "dataspace": "eml:///dataspace('brian/volve_velocity')", "settle": 40 },
+    { "op": "dump_tree", "type": "Grid", "limit": 20 },
+    { "op": "expect", "var": "assembly_xml", "contains": "vdomain=" },
+    { "op": "expect", "var": "ui_vdomains", "size_ge": 1 },
+
+    { "op": "tree_tick", "title": "VOLVE_temporal" },
+    { "op": "wait", "s": 60 },
+    { "op": "dump_tree", "type": "Grid", "limit": 20 },
+    { "op": "expect", "var": "ui_vdomain__{vid}", "equals": "depth" },
+    { "op": "block_vis_probe", "limit": 3, "expect_visible": ["/data/_gridfolder_"] },
+
+    { "op": "call", "method": "view_domain", "args": ["view_1", "time"] },
+    { "op": "wait", "s": 3 },
+    { "op": "expect", "var": "ui_vdomain__{vid}", "equals": "time" },
+    { "op": "block_vis_probe", "limit": 3 },
+
+    { "op": "call", "method": "view_domain", "args": ["view_1", "depth"] },
+    { "op": "wait", "s": 3 },
+    { "op": "expect", "var": "ui_vdomain__{vid}", "equals": "depth" },
+    { "op": "block_vis_probe", "limit": 3, "expect_visible": ["/data/_gridfolder_"] }
+  ]
+}

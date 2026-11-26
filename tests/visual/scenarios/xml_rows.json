@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "xml_row_probe", "title": "GasSat", "under": "GasSat", "expect": "series" },
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "xml_row_probe", "title": "Geogrid", "expect": "object" },
+    { "op": "xml_row_probe", "title": "SolidColor", "under": "Geogrid", "expect": "object", "tab": "Geogrid" },
+    { "op": "xml_row_probe", "title": "properties", "under": "Geogrid", "expect": "object", "tab": "Geogrid" },
+    { "op": "xml_row_probe", "title": "nothing", "path": "", "expect": "none" },
+    { "op": "xml_find_probe", "text": "facies", "title": "Facies", "min_hits": 1 },
+    { "op": "xml_find_probe", "text": "wellborefeature 55/33", "min_hits": 5, "title": "55/33-A-4", "pick": 0 }
+  ]
+}

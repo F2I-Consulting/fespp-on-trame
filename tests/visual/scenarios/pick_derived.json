@@ -1,0 +1,165 @@
+{
+  "steps": [
+    {
+      "op": "load",
+      "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc",
+      "settle": 20
+    },
+    {
+      "op": "check",
+      "title": "Porosity",
+      "settle": 15
+    },
+    {
+      "op": "activate",
+      "title": "Porosity",
+      "settle": 3
+    },
+    {
+      "op": "reset_camera",
+      "settle": 3
+    },
+    {
+      "op": "call",
+      "method": "toggle_tool",
+      "args": [
+        "pick",
+        "view_1"
+      ],
+      "settle": 2
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          480,
+          330,
+          520,
+          370,
+          1000,
+          700
+        ],
+        "view_1",
+        "surface"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "call",
+      "method": "toggle_tool",
+      "args": [
+        "slicers",
+        "view_1"
+      ],
+      "settle": 8
+    },
+    {
+      "op": "call",
+      "method": "slicer_mode",
+      "args": [
+        "slice",
+        "view_1"
+      ],
+      "settle": 8
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          400,
+          200,
+          600,
+          500,
+          1000,
+          700
+        ],
+        "view_1",
+        "surface"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "call",
+      "method": "slicer_mode",
+      "args": [
+        "range",
+        "view_1"
+      ],
+      "settle": 8
+    },
+    {
+      "op": "call",
+      "method": "threshold_add",
+      "args": [
+        [
+          "Porosity",
+          null
+        ],
+        "view_1"
+      ],
+      "settle": 10
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          480,
+          330,
+          520,
+          370,
+          1000,
+          700
+        ],
+        "view_1",
+        "surface"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          500,
+          350,
+          500,
+          350,
+          1000,
+          700
+        ],
+        "view_1",
+        "surface"
+      ],
+      "settle": 6
+    },
+    {
+      "op": "call",
+      "method": "toggle_tool",
+      "args": [
+        "frustum",
+        "view_1"
+      ],
+      "settle": 2
+    },
+    {
+      "op": "call",
+      "method": "view_pick",
+      "args": [
+        [
+          450,
+          250,
+          550,
+          450,
+          1000,
+          700
+        ],
+        "view_1",
+        "frustum"
+      ],
+      "settle": 8
+    }
+  ]
+}

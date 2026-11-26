@@ -1,0 +1,27 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "check", "title": "SOIL", "settle": 12 },
+    { "op": "activate", "title": "SOIL", "settle": 3 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "peek", "name": "1_whole" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "target", "path": "@scene"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_box", "mode": "slice"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "del_box", "id": "b1"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b5", "subject": "z"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c5", "cmp": "below"}, "view_1"], "settle": 3 },
+    { "op": "scene_blocks_probe" },
+    { "op": "peek", "name": "2_scene_below" },
+
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "SOIL"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "box_mode", "id": "b1", "mode": "slice"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_cut", "box": "b1", "subject": "SOIL"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "set_cut", "id": "c3", "at": 0.45}, "view_1"], "settle": 4 },
+    { "op": "isolate_probe" },
+    { "op": "isolate_cut_probe" },
+    { "op": "scene_blocks_probe" },
+    { "op": "peek", "name": "3_scene_below_soil" },
+    { "op": "render_timing", "label": "ALK: the scene cut below, SOIL cut at 0.45", "frames": 1 }
+  ]
+}

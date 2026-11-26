@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "colorbar_probe", "expect": "Facies" },
+    { "op": "categorical_probe", "expect": true },
+    { "op": "shot", "name": "facies_by_code" },
+    { "op": "call", "method": "cmap_preset", "args": ["KAAMS", "view_1"], "settle": 3 },
+    { "op": "categorical_probe", "expect": true },
+    { "op": "check", "title": "Temperature", "settle": 12 },
+    { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "categorical_probe", "expect": false },
+    { "op": "shot", "name": "temperature_ramp" }
+  ]
+}

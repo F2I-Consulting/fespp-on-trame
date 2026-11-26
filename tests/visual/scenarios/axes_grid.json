@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Temperature", "settle": 12 },
+    { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "axes_grid_probe", "expect": false },
+    { "op": "call", "method": "nav_axes_grid", "args": [true, "view_1"], "settle": 3 },
+    { "op": "axes_grid_probe", "expect": true, "zscale": 1 },
+    { "op": "shot", "name": "axes_grid_on" },
+    { "op": "call", "method": "set_zscale", "args": [3], "settle": 4 },
+    { "op": "axes_grid_probe", "expect": true, "zscale": 3 },
+    { "op": "shot", "name": "axes_grid_zscale_3" },
+    { "op": "call", "method": "nav_axes_grid", "args": [false, "view_1"], "settle": 3 },
+    { "op": "axes_grid_probe", "expect": false }
+  ]
+}

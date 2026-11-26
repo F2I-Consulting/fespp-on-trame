@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 20 },
+    { "op": "check", "title": "Porosity", "settle": 15 },
+    { "op": "activate", "title": "Porosity", "settle": 3 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "call", "method": "toggle_tool", "args": ["frustum", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[450, 150, 550, 400, 1000, 700], "view_1", "frustum"], "settle": 6 },
+    { "op": "call", "method": "selection_extract", "args": [{"path": "/data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1", "mode": "keep"}, "view_1"], "settle": 6 },
+    { "op": "dump", "vars": ["ui_session_rows__view_1"] },
+    { "op": "expect", "var": "ui_session_rows__{vid}", "size_ge": 1 },
+    { "op": "session_roundtrip" },
+    { "op": "expect", "var": "ui_session_rows__{vid}", "size_ge": 1 },
+    { "op": "shot", "name": "extract_restored" }
+  ]
+}

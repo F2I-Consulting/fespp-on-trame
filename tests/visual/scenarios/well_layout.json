@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "well_layout_probe", "well": "55/33-A-4", "completions": 0 },
+    { "op": "check", "title": "Drilled trajectory", "settle": 6 },
+    { "op": "check", "title": "Stratigraphic Marker Set", "settle": 8 },
+    { "op": "welllog_probe" },
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusWell.epc", "settle": 6 },
+    { "op": "well_layout_probe", "well": "DEV", "logs": 0, "markers": 0, "completions": 1 },
+    { "op": "flush" },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "well_layout" }
+  ]
+}

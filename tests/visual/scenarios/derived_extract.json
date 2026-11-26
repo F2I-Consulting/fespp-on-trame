@@ -1,0 +1,21 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 20 },
+    { "op": "check", "title": "Porosity", "settle": 15 },
+    { "op": "activate", "title": "Porosity", "settle": 3 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "set", "var": "ui_calc_rep_p1", "value": "/data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1" },
+    { "op": "set", "var": "ui_calc_name_p1", "value": "PhiSquared" },
+    { "op": "set", "var": "ui_calc_expr_p1", "value": "Porosity * Porosity" },
+    { "op": "call", "method": "calc_create", "args": ["p1"], "settle": 4 },
+    { "op": "call", "method": "session_row_eye", "args": [{"path": "derived:///data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1#PhiSquared"}, "view_1"], "settle": 6 },
+    { "op": "call", "method": "toggle_tool", "args": ["frustum", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[450, 150, 550, 400, 1000, 700], "view_1", "frustum"], "settle": 6 },
+    { "op": "call", "method": "selection_extract", "args": [{"path": "/data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1", "mode": "keep"}, "view_1"], "settle": 6 },
+    { "op": "shot", "name": "extract_with_derived" },
+    { "op": "call", "method": "session_row_eye", "args": [{"path": "derived:///data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1#PhiSquared"}, "view_1"], "settle": 6 },
+    { "op": "shot", "name": "extract_derived_off" },
+    { "op": "call", "method": "session_row_eye", "args": [{"path": "derived:///data/_gridfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_propsfolder_43338d80-4db2-54a6-9a3e-7be39e1310d1/_43338d80-4db2-54a6-9a3e-7be39e1310d1#PhiSquared"}, "view_1"], "settle": 6 },
+    { "op": "shot", "name": "derived_after_extract" }
+  ]
+}

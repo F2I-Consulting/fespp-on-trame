@@ -1,0 +1,209 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "memory",
+   "label": "loaded"
+  },
+  {
+   "op": "tree_tick",
+   "title": "Time Surface - Interpreted"
+  },
+  {
+   "op": "wait",
+   "s": 10
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "equals": "No active velocity model"
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 10
+  },
+  {
+   "op": "expect",
+   "var": "ui_vdomain__{vid}",
+   "equals": "time"
+  },
+  {
+   "op": "call",
+   "method": "time_depth_law_edit",
+   "args": [
+    {
+     "op": "prefill",
+     "what": "sonic"
+    }
+   ],
+   "settle": 4
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_tick_confirm"
+   ]
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_time_depth_law"
+   ]
+  },
+  {
+   "op": "call",
+   "method": "time_depth_law_edit",
+   "args": [
+    {
+     "op": "generate"
+    }
+   ],
+   "settle": 15
+  },
+  {
+   "op": "expect",
+   "var": "ui_time_depth_law",
+   "key": "generated",
+   "equals": true
+  },
+  {
+   "op": "memory",
+   "label": "model generated"
+  },
+  {
+   "op": "render_timing",
+   "label": "model in time",
+   "frames": 3
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "depth"
+   ],
+   "settle": 6
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "time"
+   ],
+   "settle": 4
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "depth"
+   ],
+   "settle": 6
+  },
+  {
+   "op": "memory",
+   "label": "in depth, converted"
+  },
+  {
+   "op": "render_timing",
+   "label": "in depth, converted",
+   "frames": 3
+  },
+  {
+   "op": "tree_tick",
+   "title": "Geogrid"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "memory",
+   "label": "grid"
+  },
+  {
+   "op": "render_timing",
+   "label": "grid",
+   "frames": 3
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-1"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_tick_confirm"
+   ]
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "memory",
+   "label": "well 55/33-1 whole"
+  },
+  {
+   "op": "render_timing",
+   "label": "well 55/33-1 whole",
+   "frames": 3
+  },
+  {
+   "op": "camera_move",
+   "drag": [
+    80,
+    40
+   ],
+   "settle": 4
+  },
+  {
+   "op": "memory",
+   "label": "after a rotation"
+  },
+  {
+   "op": "scene_blocks_probe"
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_loaded_rep_paths"
+   ]
+  }
+ ]
+}

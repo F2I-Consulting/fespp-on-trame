@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "check_kinds", "kinds": ["DiscreteProperty"], "raw": true, "settle": 20 },
+    { "op": "wait", "s": 60 },
+    { "op": "dump", "vars": ["ui_load_progress"] }
+  ]
+}

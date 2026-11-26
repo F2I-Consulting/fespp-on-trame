@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "tree_owners_probe",
+      "nodes": [ { "title": "Depth Surface - Interpreted", "feature": true },
+                 { "title": "Geogrid", "owned": false } ] },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "back_to_flat_facies" }
+  ]
+}

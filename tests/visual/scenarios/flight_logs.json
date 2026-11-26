@@ -1,0 +1,25 @@
+{
+ "steps": [
+  {"op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25},
+  {"op": "tree_tick", "title": "55/33-1"},
+  {"op": "wait", "s": 6},
+  {"op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 25},
+  {"op": "tree_tick", "title": "55/33-A-1"},
+  {"op": "wait", "s": 6},
+  {"op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 25},
+  {"op": "tree_tick", "title": "55/33-A-4"},
+  {"op": "wait", "s": 6},
+  {"op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 25},
+  {"op": "eye", "title": "Relative AI Near (Depth, 2018)", "under": "55/33-A-4", "settle": 10},
+  {"op": "eye", "title": "Coal Facies Indicator", "under": "55/33-1", "settle": 8},
+  {"op": "eye", "title": "Shear Impedance", "under": "55/33-A-1", "settle": 8},
+  {"op": "reset_camera", "settle": 2},
+  {"op": "camera", "elevation": -60, "azimuth": 25, "settle": 3},
+  {"op": "render_load"},
+  {"op": "flight_time", "title": "Relative AI Near (Depth, 2018)", "under": "55/33-A-4", "zoom": false},
+  {"op": "flight_time", "title": "Relative AI Near (Depth, 2018)", "under": "55/33-A-4", "zoom": true},
+  {"op": "reset_camera", "settle": 2},
+  {"op": "flight_time", "title": "Coal Facies Indicator", "under": "55/33-1", "zoom": true},
+  {"op": "peek", "name": "after_flights"}
+ ]
+}

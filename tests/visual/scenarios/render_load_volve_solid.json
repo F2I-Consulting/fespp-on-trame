@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "SolidColor", "under": "Volve_SGrid", "settle": 25 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "render_load" },
+    { "op": "check", "title": "Lithology1", "settle": 25 },
+    { "op": "render_load", "try_opaque": true, "try_translucent": true }
+  ]
+}

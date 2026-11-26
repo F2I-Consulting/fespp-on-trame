@@ -1,0 +1,28 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "categorical_probe", "expect": true },
+    { "op": "categorical_opacity_probe", "phase": "set", "alpha": 0, "settle": 3 },
+    { "op": "categorical_opacity_probe", "phase": "check", "alpha": 0 },
+    { "op": "eye", "title": "Facies", "settle": 4 },
+    { "op": "eye", "title": "Facies", "settle": 4 },
+    { "op": "categorical_opacity_probe", "phase": "check", "alpha": 0 },
+    { "op": "categorical_opacity_probe", "phase": "set", "alpha": 1, "settle": 3 },
+    { "op": "categorical_opacity_probe", "phase": "check", "alpha": 1 },
+    { "op": "categorical_opacity_probe", "phase": "set_code", "index": 0, "alpha": 0, "settle": 3 },
+    { "op": "categorical_opacity_probe", "phase": "check", "index": 0, "alpha": 0 },
+    { "op": "categorical_opacity_probe", "phase": "check", "index": 1, "alpha": 1 },
+    { "op": "categorical_opacity_probe", "phase": "mask", "hidden": [0] },
+    { "op": "eye", "title": "Facies", "settle": 4 },
+    { "op": "eye", "title": "Facies", "settle": 4 },
+    { "op": "categorical_opacity_probe", "phase": "check", "index": 0, "alpha": 0 },
+    { "op": "categorical_opacity_probe", "phase": "mask", "hidden": [0] },
+    { "op": "categorical_opacity_probe", "phase": "set_code", "alpha": 0.5, "settle": 3 },
+    { "op": "categorical_opacity_probe", "phase": "check", "alpha": 0.5 },
+    { "op": "categorical_opacity_probe", "phase": "mask", "hidden": [] },
+    { "op": "categorical_opacity_probe", "phase": "set_code", "alpha": 1, "settle": 3 },
+    { "op": "categorical_opacity_probe", "phase": "check", "alpha": 1 }
+  ]
+}

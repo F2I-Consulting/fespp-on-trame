@@ -1,0 +1,57 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-A-4"
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "contains": "Read"
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 25
+  },
+  {
+   "op": "call",
+   "method": "set_zscale_now",
+   "args": [
+    25
+   ],
+   "settle": 4
+  },
+  {
+   "op": "reset_camera",
+   "settle": 2
+  },
+  {
+   "op": "camera",
+   "elevation": -70,
+   "azimuth": 30,
+   "settle": 2
+  },
+  {
+   "op": "cursor_sweep",
+   "n": 61,
+   "selection": false,
+   "titles": [
+    "Drilled trajectory"
+   ]
+  }
+ ]
+}

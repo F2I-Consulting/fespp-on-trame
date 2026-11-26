@@ -1,0 +1,34 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "check", "title": "region", "settle": 8 },
+    { "op": "check", "title": "PORV", "settle": 12 },
+    { "op": "activate", "title": "region", "settle": 3 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "region"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "PORV"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_box", "mode": "range"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "isolate_probe" },
+
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_box", "mode": "slice"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "del_box", "id": "b1"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "add_cut", "box": "b5", "subject": "z"}, "view_1"], "settle": 3 },
+    { "op": "isolate_cut_probe" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c5", "cmp": "below"}, "view_1"], "settle": 3 },
+    { "op": "isolate_cut_probe" },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "cut_cmp", "id": "c5", "cmp": "above"}, "view_1"], "settle": 3 },
+    { "op": "isolate_cut_probe" },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "target", "path": "@scene"}, "view_1"], "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 2 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.5 },
+    { "op": "isolate_cut_probe" },
+    { "op": "scene_crop_probe", "pieces": 1 },
+    { "op": "render_timing", "label": "ALK: the scene cut on the isolated grid", "frames": 3 }
+  ]
+}

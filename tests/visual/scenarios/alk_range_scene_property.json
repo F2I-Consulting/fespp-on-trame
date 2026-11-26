@@ -1,0 +1,29 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "check", "title": "SOIL", "settle": 12 },
+    { "op": "activate", "title": "SOIL", "settle": 3 },
+    { "op": "reset_camera", "settle": 2 },
+
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.7, "settle": 3 },
+    { "op": "visible_reps_probe" },
+    { "op": "peek", "name": "1_grid_range" },
+
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "target", "path": "@scene"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_geometry_card__view_1"] },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.5, "settle": 3 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "set_range", "id": "r4", "low": -9381.7, "high": -8540.0}, "view_1"], "settle": 3 },
+    { "op": "visible_reps_probe" },
+    { "op": "isolate_cut_probe" },
+    { "op": "peek", "name": "2_scene_cut" },
+
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "SOIL"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "set_range", "id": "r2", "low": 0.344, "high": 0.487}, "view_1"], "settle": 4 },
+    { "op": "visible_reps_probe" },
+    { "op": "isolate_cut_probe" },
+    { "op": "peek", "name": "3_soil_range" },
+    { "op": "render_timing", "label": "ALK: a range on the grid, the scene cut, a SOIL range", "frames": 1 }
+  ]
+}

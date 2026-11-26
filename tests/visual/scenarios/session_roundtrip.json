@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 10 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "camera", "elevation": -40, "azimuth": 30, "settle": 2 },
+    { "op": "call", "method": "add_view", "args": [], "settle": 6 },
+    { "op": "check", "title": "Temperature", "settle": 10 },
+    { "op": "session_roundtrip" }
+  ]
+}

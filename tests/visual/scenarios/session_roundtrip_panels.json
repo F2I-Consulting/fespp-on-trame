@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Total Porosity", "settle": 10 },
+    { "op": "check", "title": "Net-to-Gross Ratio (PEM)", "settle": 6 },
+    { "op": "check", "title": "Water Saturation", "settle": 6 },
+    { "op": "check", "title": "Facies", "settle": 6 },
+    { "op": "call", "method": "add_to_stats", "args": [{ "title": "Total Porosity" }], "settle": 6 },
+    { "op": "compare_probe", "grid": "Geogrid",
+      "props": ["Total Porosity", "Net-to-Gross Ratio (PEM)", "Water Saturation"],
+      "baseline": "Total Porosity", "settle": 4 },
+    { "op": "xml_probe", "title": "Temperature", "under": "Geogrid", "settle": 3 },
+    { "op": "call", "method": "open_calculator", "args": [], "settle": 3 },
+    { "op": "session_roundtrip_panels", "settle": 8 }
+  ]
+}

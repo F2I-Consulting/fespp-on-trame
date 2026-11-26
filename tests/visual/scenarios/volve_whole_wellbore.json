@@ -1,0 +1,28 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Faults_Depth.epc", "settle": 8 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Horizons_Depth.epc", "settle": 8 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 8 },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "check_raw", "title": "well_feature_NO_15_9-19_A_B5088C", "answer": true, "settle": 25 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "bounds_probe", "limit": 3, "expect_max_extent": 50000 },
+    { "op": "check", "title": "Lithology1", "settle": 15 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "bounds_probe", "limit": 3, "expect_max_extent": 50000 },
+    { "op": "lut_probe" },
+    { "op": "activate", "title": "Lithology1", "settle": 3 },
+    { "op": "colorbar_probe", "expect": "Lithology1", "legend_min": 2 },
+    { "op": "colorbar_probe", "pick": "GR", "expect": "GR", "legend_min": 2 },
+    { "op": "call", "method": "cmap_bar", "args": [false, "view_1"], "settle": 2 },
+    { "op": "colorbar_probe", "none": true, "expect": "GR" },
+    { "op": "call", "method": "cmap_bar", "args": [true, "view_1"], "settle": 2 },
+    { "op": "colorbar_probe", "expect": "GR", "legend_min": 2 },
+    { "op": "activate", "title": "EFAC", "under": "well_feature_NO_15_9-19_A_B5088C", "tab": "well", "settle": 3 },
+    { "op": "colorbar_probe", "expect": "EFAC" },
+    { "op": "activate", "title": "ELECTROFACIES_14_CLUST_3", "under": "well_feature_NO_15_9-19_A_B5088C", "tab": "well", "settle": 3 },
+    { "op": "colorbar_probe", "expect": "EFAC" },
+    { "op": "eye", "title": "PROBA", "under": "well_feature_NO_15_9-19_A_B5088C", "settle": 6 },
+    { "op": "colorbar_probe", "expect": "PROBA", "legend_min": 2 }
+  ]
+}

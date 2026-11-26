@@ -3,7 +3,8 @@
     { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
     { "op": "check", "title": "Facies", "settle": 12 },
     { "op": "shot", "name": "facies_colored" },
-    { "op": "uncheck", "title": "SolidColor", "settle": 6 },
+    { "op": "uncheck", "title": "SolidColor", "under": "Geogrid", "settle": 6 },
+    { "op": "dump", "vars": ["selected_paths", "empty_color_snackbar_text", "ui_tick_confirm"] },
     { "op": "shot", "name": "geometry_and_properties_unloaded" }
   ]
 }

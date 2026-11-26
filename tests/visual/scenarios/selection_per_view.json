@@ -1,0 +1,27 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "check", "title": "Drilled trajectory", "settle": 10 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "call", "method": "open_render_view", "args": ["view_1"], "settle": 8 },
+    { "op": "call", "method": "toggle_tool", "args": ["frustum", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[0, 0, 1000, 700, 1000, 700], "view_1", "frustum"], "settle": 6 },
+    { "op": "expect", "var": "ui_sel_counts__view_1", "size_ge": 1 },
+    { "op": "selection_probe", "shown_in": "view_1" },
+    { "op": "call", "method": "toggle_tool", "args": ["pick", "view_2"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[3, 3, 3, 3, 1000, 700], "view_2", "surface"], "settle": 3 },
+    { "op": "expect", "var": "ui_sel_counts__view_1", "size_ge": 1 },
+    { "op": "selection_probe", "shown_in": "view_1" },
+    { "op": "call", "method": "view_pick", "args": [[500, 350, 500, 350, 1000, 700], "view_2", "surface"], "settle": 4 },
+    { "op": "dump", "vars": ["ui_sel_counts__view_1", "ui_sel_counts__view_2"] },
+    { "op": "expect", "var": "ui_sel_counts__view_2", "size_ge": 1 },
+    { "op": "expect", "var": "ui_sel_counts__view_1", "equals": {} },
+    { "op": "selection_probe", "shown_in": "view_2" },
+    { "op": "call", "method": "highlight_rep", "args": [{"title": "Geogrid"}, "view_1"], "settle": 4 },
+    { "op": "dump", "vars": ["ui_highlighted_row_by_view", "ui_sel_counts__view_2"] },
+    { "op": "expect", "var": "ui_highlighted_row_by_view", "key": ["view_1"], "truthy": true },
+    { "op": "expect", "var": "ui_sel_counts__view_2", "equals": {} },
+    { "op": "selection_probe", "shown_in": "view_1" }
+  ]
+}

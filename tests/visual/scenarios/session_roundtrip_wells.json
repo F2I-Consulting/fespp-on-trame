@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "welllog_probe" },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "Lithology1", "settle": 12 },
+    { "op": "check", "title": "WatSat", "under": "WatSat", "settle": 12 },
+    { "op": "reconcile_probe", "step": 1.0, "expect_rows": 8 },
+    { "op": "call", "method": "open_reconcile", "args": [], "settle": 4 },
+    { "op": "call", "method": "reconcile_compute", "args": [2.0], "settle": 6 },
+    { "op": "strati_probe", "min_columns": 1, "settle": 4 },
+    { "op": "check", "title": "OilSat", "under": "OilSat", "settle": 12 },
+    { "op": "derived_probe", "prop": "OilSat", "under": "OilSat", "name": "dOilSat 5-0", "expr": "OilSat__t5 - OilSat__t0" },
+    { "op": "session_roundtrip_panels", "settle": 8 }
+  ]
+}

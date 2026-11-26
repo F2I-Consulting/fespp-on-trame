@@ -1,0 +1,22 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Temperature", "settle": 12 },
+    { "op": "check", "title": "Total Porosity", "settle": 12 },
+    { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "call", "method": "cmap_preset", "args": ["Viridis (matplotlib)", "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "preset", "equals": "Viridis" },
+    { "op": "expect", "var": "ui_active_colormap_by_view", "key": "view_1", "equals": "Viridis" },
+    { "op": "activate", "title": "Total Porosity", "settle": 3 },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "array", "truthy": true },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "preset", "equals": "" },
+    { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "preset", "equals": "Viridis" },
+    { "op": "call", "method": "cmap_preset", "args": ["No Such Table", "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "preset", "equals": "Viridis" },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "note", "truthy": true },
+    { "op": "call", "method": "node_values", "args": [{"offset": 0}, "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": "view_1", "missing": "error" },
+    { "op": "expect", "var": "ui_node_values_by_view", "key": ["view_1", "rows"], "truthy": true }
+  ]
+}

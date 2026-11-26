@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "check", "title": "K", "settle": 8 },
+    { "op": "check", "title": "region", "settle": 8 },
+    { "op": "check", "title": "SOIL", "settle": 12 },
+    { "op": "activate", "title": "region", "settle": 3 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "K"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "set_range", "id": "r2", "low": 13, "high": 14}, "view_1"], "settle": 3 },
+    { "op": "isolate_probe" },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_box", "mode": "range"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "isolate_probe" },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "add_subject", "subject": "SOIL", "box": "b3"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "isolate_probe" },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "del_box", "id": "b3"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] },
+    { "op": "call", "method": "property_slicer", "args": [{"op": "del_box", "id": "b1"}, "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_property_card__view_1"] }
+  ]
+}

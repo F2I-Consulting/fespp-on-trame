@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusOnlyProp.epc", "settle": 6 },
+    { "op": "grid_layout_probe", "grid": "Sector", "partial": true, "properties": 4 },
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusWell.epc", "settle": 6 },
+    { "op": "grid_layout_probe", "grid": "Sector", "partial": true, "properties": 4 },
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 8 },
+    { "op": "grid_layout_probe", "grid": "Sector", "properties": 9 }
+  ]
+}

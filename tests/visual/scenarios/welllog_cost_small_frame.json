@@ -1,0 +1,25 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "time_until",
+   "label": "all logs, 4 647-4 865 MDs",
+   "method": "add_to_welllog",
+   "args": [
+    {
+     "title": "Well Log Frame",
+     "under": "55/33-1"
+    }
+   ],
+   "prefix": "welllog_data__",
+   "key": "wells",
+   "curves_ge": 5,
+   "timeout": 400,
+   "asks": false
+  }
+ ]
+}

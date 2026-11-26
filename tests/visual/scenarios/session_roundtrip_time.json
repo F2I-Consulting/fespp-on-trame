@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "GasSat", "settle": 15 },
+    { "op": "activate", "title": "GasSat", "settle": 3 },
+    { "op": "call", "method": "time_index", "args": [2, "view_1"], "settle": 6 },
+    { "op": "call", "method": "cmap_scale", "args": ["exp", "view_1"], "settle": 3 },
+    { "op": "session_roundtrip" }
+  ]
+}

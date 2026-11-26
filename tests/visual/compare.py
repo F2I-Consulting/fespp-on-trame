@@ -47,10 +47,10 @@ def main():
     frac_thr = float(sys.argv[4]) if len(sys.argv) > 4 else 0.005
 
     results, ok = [], True
-    names = sorted(
-        n for n in os.listdir(baseline_dir)
-        if n.endswith(".png") and not n.endswith("_diff.png")
-    )
+    # Every PNG of the baseline dir, unfiltered: the diff masks are written
+    # next to the candidates, never here, and a shot may itself be named
+    # "..._diff" (the calc_diff scenario's), which a mask filter would drop.
+    names = sorted(n for n in os.listdir(baseline_dir) if n.endswith(".png"))
     if not names:
         print(json.dumps({"pass": False, "error": "no baselines"}))
         sys.exit(1)

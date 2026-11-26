@@ -1,0 +1,19 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "bounds_probe", "unique_links": true, "expect_partitions": 3 },
+    { "op": "uncheck", "title": "4x3x2 grid cellIndex", "settle": 6 },
+    { "op": "uncheck", "title": "Four by Three by Two Left Handed", "settle": 6 },
+    { "op": "bounds_probe", "unique_links": true, "expect_partitions": 3 },
+    { "op": "uncheck", "title": "My blocked well", "settle": 6 },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "bounds_probe", "unique_links": true, "expect_partitions": 3 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "uncheck", "title": "My blocked well", "settle": 6 },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "bounds_probe", "unique_links": true, "expect_partitions": 3 },
+    { "op": "block_vis_probe" }
+  ]
+}

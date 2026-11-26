@@ -1,0 +1,65 @@
+{
+  "steps": [
+    {
+      "op": "memory",
+      "label": "empty"
+    },
+    {
+      "op": "load",
+      "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc",
+      "settle": 25
+    },
+    {
+      "op": "memory",
+      "label": "file read"
+    },
+    {
+      "op": "tree_tick",
+      "type": "Trajectory",
+      "every": true
+    },
+    {
+      "op": "wait",
+      "s": 20
+    },
+    {
+      "op": "memory",
+      "label": "13 trajectories"
+    },
+    {
+      "op": "tree_tick",
+      "type": "Wellbore",
+      "every": true
+    },
+    {
+      "op": "wait",
+      "s": 8
+    },
+    {
+      "op": "call",
+      "method": "tick_confirm_answer",
+      "args": [
+        true
+      ],
+      "settle": 120
+    },
+    {
+      "op": "memory",
+      "label": "every log",
+      "objects": true
+    },
+    {
+      "op": "render_timing",
+      "label": "every log",
+      "frames": 2
+    },
+    {
+      "op": "memory",
+      "label": "every log, drawn"
+    },
+    {
+      "op": "memory_sources",
+      "top": 15
+    }
+  ]
+}

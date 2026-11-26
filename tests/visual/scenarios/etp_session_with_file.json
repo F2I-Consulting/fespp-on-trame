@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "etp_open", "url": "wss://admeinterop.energy.azure.com/api/reservoir-ddms-etp/v2/",
+      "partition": "opendes", "dataspace": "eml:///dataspace('maap/drogon')", "settle": 40 },
+    { "op": "load", "path": "/tmp/testdata/vector_props.epc", "settle": 12 },
+    { "op": "tree_tick", "title": "Geogrid" },
+    { "op": "wait", "s": 60 },
+    { "op": "check", "title": "poro", "under": "unknown", "settle": 10 },
+    { "op": "expect", "var": "ui_loaded_rep_paths", "size_ge": 2 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "scene_blocks_probe", "drawn": true },
+    { "op": "session_roundtrip" },
+    { "op": "scene_blocks_probe", "drawn": true },
+    { "op": "peek", "name": "session_back" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 25 },
+    { "op": "tree_tick", "title": "well_feature_NO_15_9-19_A_B5088C" },
+    { "op": "wait", "s": 6 },
+    { "op": "expect", "var": "ui_tick_confirm", "key": "title", "contains": "Read" },
+    { "op": "call", "method": "tick_confirm_answer", "args": [true], "settle": 40 },
+    { "op": "call", "method": "add_to_welllog", "args": [{ "title": "TWTIME", "under": "well_feature_NO_15_9-19_A_B5088C" }], "settle": 12 },
+    { "op": "call", "method": "add_to_welllog", "args": [{ "title": "EFAC", "under": "well_feature_NO_15_9-19_A_B5088C" }], "settle": 12 },
+    { "op": "call", "method": "add_to_welllog", "args": [{ "title": "PROBA", "under": "well_feature_NO_15_9-19_A_B5088C" }], "settle": 12 },
+    { "op": "welllog_expect", "curves": ["TWTIME", "EFAC", "PROBA"] },
+    { "op": "welllog_mdtvd", "tol": 5 }
+  ]
+}

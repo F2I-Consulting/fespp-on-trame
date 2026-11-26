@@ -1,0 +1,92 @@
+{"text": "zoom on 9-19 A", "session": "traps", "intent": "reset_camera", "min": null, "max": null, "targets": ["15/9-19 A"], "sure": true}
+{"text": "highlight porosity 0.25 on Top Reservoir", "session": "traps", "intent": "highlight", "kind": "porosity", "min": 0.25, "max": null}
+{"text": "set the colour range of PHIT min = 0 max = 0.3", "intent": "color_range", "min": 0.0, "max": 0.3, "sure": true}
+{"text": "keep porosity min = 0.1 and max = 0.25", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": 0.25}
+{"text": "colormap max = 0.3", "intent": "color_range", "min": null, "max": 0.3, "sure": true}
+{"text": "slice the porosity at layer 20", "intent": "slice", "axis": "k", "min": 20.0, "max": 20.0, "sure": true}
+{"text": "slice PHIT along k from 10 to 40", "intent": "slice", "axis": "k", "min": 10.0, "max": 40.0, "sure": true}
+{"text": "keep the cells where porosity equals 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null}
+{"text": "Thanks, now on I think we should hide the wells", "session": "objects", "intent": "hide", "kind": null, "targets": ["15/9-F-11 A", "15/9-F-4"]}
+{"text": "Hide the wells, then in I want a slice", "session": "objects", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-4"], "sure": true, "then": [{"intent": "slice", "axis": null, "sure": false}]}
+{"text": "show PHIT by I mean the porosity", "session": "objects", "intent": "show", "axis": null, "targets": ["PHIT"], "sure": true}
+{"text": "don't show the wells", "session": "objects", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-4"]}
+{"text": "shwo the porosity", "session": "objects", "intent": "show", "targets": ["PHIT"], "sure": true}
+{"text": "show layers 10-20 of PHIT", "intent": "slice", "axis": "k", "min": 10.0, "max": 20.0, "sure": true}
+{"text": "slice NTG at k 30", "intent": "slice", "axis": "k", "min": 30.0, "max": 30.0, "sure": true}
+{"text": "keep the top 10 layers of porosity", "intent": "slice", "axis": "k", "min": 1.0, "max": 10.0, "sure": true}
+{"text": "colour range min=0 max=0.35", "intent": "color_range", "min": 0.0, "max": 0.35}
+{"text": "legend min = 50", "intent": "color_range", "min": 50.0, "max": null, "sure": true}
+{"text": "highlight cells on Top Hugin with porosity 0.25", "intent": "highlight", "kind": "porosity", "min": 0.25, "max": null, "sure": true}
+{"text": "show the top of Volantis", "session": "drogon", "intent": "show", "targets": ["TopVolantis"]}
+{"text": "I think the porosity looks wrong", "intent": "complain"}
+{"text": "hide the wells I think", "intent": "hide", "kind": null, "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"], "sure": true}
+{"text": "filter porosity above 0.2, I think that is enough", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null, "sure": true}
+{"text": "don't display the wells", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "do not show Draupne fine", "intent": "hide", "targets": ["Draupne fine"]}
+{"text": "poro", "intent": "show", "targets": ["Poro"], "sure": true}
+{"text": "NTG", "intent": "show", "targets": ["NTG"], "sure": true}
+{"text": "GR", "intent": "show", "targets": ["GR"], "sure": true}
+{"text": "water saturation", "intent": "show", "targets": ["SW"], "sure": true}
+{"text": "porosity", "intent": "show", "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "hmm", "intent": null}
+{"text": "what's the weather like", "intent": null}
+{"text": "tell me a joke", "intent": null}
+{"text": "who are you?", "intent": null, "sure": false}
+{"text": "show me the porosity and the wells", "intent": "show", "targets": ["PHIT", "Poro"], "sure": true, "then": [{"intent": "show", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}]}
+{"text": "why don't you hide the wells", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"], "sure": true}
+{"text": "why is the grid empty?", "intent": "complain"}
+{"text": "what is Hugin's porosity?", "intent": "value", "targets": ["PHIT"]}
+{"text": "hide the missing values, I don't want to see them", "intent": "hide_nan", "on": true, "sure": true}
+{"text": "hide the cells with porosity below 0.1 and keep the others", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null}
+{"text": "remove the cells where NTG is under 0.3 but leave the other cells", "intent": "threshold", "kind": "net to gross", "min": 0.3, "max": null}
+{"text": "I told you to hide the wells", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"], "sure": true}
+{"text": "as I said, hide the wells", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "I said hide the wells", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "I told you to zoom on F-4", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "reset_camera", "targets": ["15/9-F-4"], "sure": true}
+{"text": "it's wrong, the porosity is still above 0.2", "intent": "threshold", "sure": false}
+{"text": "show me SO", "session": "little", "intent": "show", "targets": ["SO"], "sure": true}
+{"text": "slice at k 1", "session": "little", "intent": "slice", "axis": "k", "min": 1.0, "max": 1.0, "sure": true}
+{"text": "I'm thinking of hiding the wells", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "I think we need the porosity above 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null, "targets": ["PHIT", "Poro"]}
+{"text": "go deeper in the grid", "intent": "value", "sure": false}
+{"text": "porosity cutoff = 0.08", "intent": "threshold", "kind": "porosity", "min": 0.08, "max": null, "sure": true}
+{"text": "NTG cutoff equals 0.5", "intent": "threshold", "kind": "net to gross", "min": 0.5, "max": null, "sure": true}
+{"text": "stop", "intent": null}
+{"text": "highlight their cells in the grid", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "show them on the grid", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"], "sure": true}
+{"text": "hide the wells other than F-12", "session": "volve", "intent": "hide", "targets": ["well_feature_NO_15_9-19_A_B5088C", "well_feature_NO_15_9-19_BT2_25E8AC", "well_feature_NO_15_9-19_SR_EBECD2", "well_feature_NO_15_9-F-11_T2_4BEC81", "well_feature_NO_15_9-F-14_B6CE15", "well_feature_NO_15_9-F-15_0320E3", "well_feature_NO_15_9-F-15_A_1739B7", "well_feature_NO_15_9-F-1_A3EF7D", "well_feature_NO_15_9-F-1_A_84B691", "well_feature_NO_15_9-F-4_5DA715", "well_feature_NO_15_9-F-5_B75BED", "well_feature_NO_15_9-F-9_44FD2F"], "sure": true}
+{"text": "hide the cells with NTG below 0.3, not the other ones", "intent": "threshold", "kind": "net to gross", "min": 0.3, "max": null}
+{"text": "why not show the porosity?", "intent": "show", "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "highlight them in the grid", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"], "sure": true}
+{"text": "keep porosity 0.15 at the top of the reservoir", "intent": "threshold", "kind": "porosity", "min": 0.15, "max": null}
+{"text": "highlight NTG 0.5 near the top of the model", "intent": "highlight", "kind": "net to gross", "min": 0.5, "max": null, "targets": ["NTG"]}
+{"text": "set the lower limit of the porosity colour scale to 0.02", "intent": "color_range", "min": 0.02, "max": null, "targets": ["PHIT", "Poro"]}
+{"text": "filter permeability with a lower limit of 50", "intent": "threshold", "kind": "permeability", "min": 50.0, "max": null}
+{"text": "colour range: lower limit 0.1", "intent": "color_range", "min": 0.1, "max": null}
+{"text": "the NaN, I don't want them hidden anymore", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "NaN cells shouldn't be hidden anymore", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "why not the viridis colour map?", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "why not a slice along i?", "session": "objects", "intent": "slice", "axis": "i", "min": null, "max": null}
+{"text": "why not a J slice at 40?", "session": "objects", "intent": "slice", "axis": "j", "min": 40.0, "max": 40.0}
+{"text": "why not a vertical exaggeration of 3?", "intent": "z_scale", "factor": 3.0}
+{"text": "compute PHIT times NTG", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "create a new property from porosity and NTG", "intent": "open_panel", "panel": "calculator"}
+{"text": "build a new property", "intent": "open_panel", "panel": "calculator"}
+{"text": "derive a new property: NTG times porosity", "intent": "open_panel", "panel": "calculator"}
+{"text": "make a property from PHIT and SW", "intent": "open_panel", "panel": "calculator"}
+{"text": "hide the other lithologies", "session": "fluids", "context": {"intent": "highlight", "category": "shale", "kind": null, "targets": ["/data/_gridfolder_v/_propsfolder_v/_v/_l"]}, "intent": "threshold", "category": "shale", "exclude": false, "targets": ["Lithology1"], "sure": true}
+{"text": "wrong, filter porosity above 0.25 instead", "intent": "threshold", "kind": "porosity", "min": 0.25, "max": null, "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "that's wrong, set the colour range to 0 - 0.3", "intent": "color_range", "min": 0.0, "max": 0.3, "sure": true}
+{"text": "show SO and SW", "session": "little", "intent": "show", "targets": ["SO", "SW"], "sure": true}
+{"text": "hide every well but F-11 A", "session": "objects", "intent": "hide", "targets": ["15/9-F-4"], "sure": true}
+{"text": "hide all wells but F-4", "session": "objects", "intent": "hide", "targets": ["15/9-F-11 A"], "sure": true}
+{"text": "slice the grid 5-15 along k", "session": "objects", "intent": "slice", "axis": "k", "min": 5.0, "max": 15.0, "targets": ["Hugin"]}
+{"text": "slice layers 5-15 along k", "session": "objects", "intent": "slice", "axis": "k", "min": 5.0, "max": 15.0}
+{"text": "I don't want flat colours anymore", "intent": "flat_colors", "on": false, "sure": true}
+{"text": "don't show the permeability in grey, use jet instead", "intent": "colormap", "preset": "Jet", "targets": ["PERMX"]}
+{"text": "show layer 12 counting from the top", "intent": "slice", "axis": "k", "min": 12.0, "max": 12.0}
+{"text": "slice k 5 just below Top Hugin", "intent": "slice", "axis": "k", "min": 5.0, "max": 5.0}
+{"text": "isolate the porosity and the wells", "intent": "isolate", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4", "PHIT", "Poro"], "sure": true}
+{"text": "slice where k equals 12", "session": "objects", "intent": "slice", "axis": "k", "min": 12.0, "max": 12.0}
+{"text": "don't show only the wells, the grid too", "session": "objects", "intent": "show", "targets": ["15/9-F-11 A", "15/9-F-4", "Hugin"]}
+{"text": "show me what I asked for", "session": "objects", "intent": "complain"}

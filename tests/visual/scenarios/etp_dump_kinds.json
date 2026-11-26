@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "op": "etp_open", "url": "wss://admeinterop.energy.azure.com/api/reservoir-ddms-etp/v2/",
+      "partition": "opendes", "dataspace": "eml:///dataspace('demo/drogon')", "settle": 30 },
+    { "op": "dump_tree", "type": "Trajectory", "limit": 40 },
+    { "op": "dump_tree", "type": "Grid2d", "limit": 40 },
+    { "op": "dump_tree", "type": "Triangulated", "limit": 40 },
+    { "op": "dump_tree", "type": "Polyline", "limit": 40 },
+    { "op": "dump_tree", "type": "Marker", "limit": 40 },
+    { "op": "dump_tree", "type": "Frame", "limit": 40 },
+    { "op": "dump_tree", "type": "Grid", "limit": 40 },
+    { "op": "dump_tree", "type": "SubRep", "limit": 40 },
+    { "op": "dump_tree", "type": "folder", "limit": 40 }
+  ]
+}

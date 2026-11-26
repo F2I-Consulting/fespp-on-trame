@@ -1,0 +1,129 @@
+{
+  "steps": [
+    {
+      "op": "load",
+      "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc",
+      "settle": 20
+    },
+    {
+      "op": "load",
+      "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc",
+      "settle": 15
+    },
+    {
+      "op": "check",
+      "title": "SolidColor",
+      "under": "Volve_SGrid",
+      "settle": 15
+    },
+    {
+      "op": "check",
+      "title": "active_cell",
+      "under": "Volve_SGrid",
+      "settle": 10
+    },
+    {
+      "op": "eyes_expect",
+      "open": [
+        "active_cell"
+      ]
+    },
+    {
+      "op": "check",
+      "title": "Fluids",
+      "settle": 10,
+      "under": "Volve_SGrid"
+    },
+    {
+      "op": "eyes_expect",
+      "open": [
+        "Fluids"
+      ]
+    },
+    {
+      "op": "check",
+      "title": "GEOLOGIC_K",
+      "settle": 10,
+      "under": "Volve_SGrid"
+    },
+    {
+      "op": "eyes_expect",
+      "open": [
+        "GEOLOGIC_K"
+      ]
+    },
+    {
+      "op": "call",
+      "method": "card_in_use",
+      "args": [
+        "well",
+        "view_1"
+      ],
+      "settle": 3
+    },
+    {
+      "op": "check",
+      "title": "well_trajectory_NO_15_9-F-1_A3EF7D",
+      "settle": 6
+    },
+    {
+      "op": "check",
+      "title": "well_trajectory_NO_15_9-F-4_5DA715",
+      "settle": 6
+    },
+    {
+      "op": "check",
+      "title": "well_trajectory_NO_15_9-19_A_B5088C",
+      "settle": 6
+    },
+    {
+      "op": "eyes_expect",
+      "open": [
+        "GEOLOGIC_K"
+      ]
+    },
+    {
+      "op": "tree_tick",
+      "title": "well_feature_NO_15_9-19_A_B5088C"
+    },
+    {
+      "op": "wait",
+      "s": 6
+    },
+    {
+      "op": "call",
+      "method": "tick_confirm_answer",
+      "args": [
+        true
+      ],
+      "settle": 25
+    },
+    {
+      "op": "eyes_expect",
+      "open": [
+        "GEOLOGIC_K"
+      ]
+    },
+    {
+      "op": "call",
+      "method": "card_in_use",
+      "args": [
+        "reservoir",
+        "view_1"
+      ],
+      "settle": 3
+    },
+    {
+      "op": "dump",
+      "vars": [
+        "active_path__view_1"
+      ]
+    },
+    {
+      "op": "eyes_expect",
+      "open": [
+        "GEOLOGIC_K"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 25 },
+    { "op": "expect", "var": "ui_vdomains", "equals": ["depth", "time"] },
+    { "op": "tree_tick", "title": "Depth Surface - Interpreted" },
+    { "op": "wait", "s": 10 },
+    { "op": "tree_tick", "title": "Time Surface - Interpreted" },
+    { "op": "wait", "s": 10 },
+    { "op": "expect", "var": "ui_tick_confirm", "key": "title", "equals": "No active velocity model" },
+    { "op": "call", "method": "tick_confirm_answer", "args": ["third"], "settle": 4 },
+    { "op": "expect", "var": "ui_vdomain__{vid}", "equals": "time" },
+    { "op": "dump", "vars": ["selected_paths", "visible_paths__view_1", "undrawn_paths__view_1", "ui_loaded_rep_paths"] },
+    { "op": "scene_blocks_probe", "drawn": true },
+    { "op": "call", "method": "view_domain", "args": ["view_1", "depth"], "settle": 3 },
+    { "op": "call", "method": "view_domain", "args": ["view_1", "time"], "settle": 3 },
+    { "op": "call", "method": "view_domain", "args": ["view_1", "depth"], "settle": 3 },
+    { "op": "call", "method": "view_domain", "args": ["view_1", "time"], "settle": 3 },
+    { "op": "scene_blocks_probe", "drawn": true },
+    { "op": "tree_tick", "title": "Time Surface - Interpreted", "geometry": true, "untick": true },
+    { "op": "wait", "s": 8 },
+    { "op": "dump", "vars": ["selected_paths", "visible_paths__view_1", "undrawn_paths__view_1", "ui_loaded_rep_paths"] },
+    { "op": "tree_tick", "title": "Time Surface - Interpreted", "geometry": true },
+    { "op": "wait", "s": 10 },
+    { "op": "expect", "var": "ui_tick_confirm", "key": "title", "equals": null },
+    { "op": "dump", "vars": ["selected_paths", "visible_paths__view_1", "undrawn_paths__view_1", "ui_loaded_rep_paths"] },
+    { "op": "scene_blocks_probe", "drawn": true },
+    { "op": "shot", "name": "retick_time" }
+  ]
+}

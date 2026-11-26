@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "eye_passes", "reset": true },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "eye_passes" },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "eye_passes", "reset": true },
+    { "op": "eye", "title": "Geogrid", "settle": 4 },
+    { "op": "eye_passes", "expect": { "view_1": 1 } },
+    { "op": "eye", "title": "Geogrid", "settle": 4 },
+    { "op": "eye_passes", "expect": { "view_1": 2 } }
+  ]
+}

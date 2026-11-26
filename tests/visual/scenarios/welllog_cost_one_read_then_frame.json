@@ -1,0 +1,41 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "time_until",
+   "label": "one log, 15 556 MDs",
+   "method": "add_to_welllog",
+   "args": [
+    {
+     "title": "P-Wave Velocity",
+     "under": "55/33-A-4"
+    }
+   ],
+   "prefix": "welllog_data__",
+   "key": "wells",
+   "curves_ge": 1,
+   "timeout": 400,
+   "asks": false
+  },
+  {
+   "op": "time_until",
+   "label": "then its frame: 20 logs of 15 556 MDs left",
+   "method": "add_to_welllog",
+   "args": [
+    {
+     "title": "Well Log Frame",
+     "under": "55/33-A-4"
+    }
+   ],
+   "prefix": "welllog_data__",
+   "key": "wells",
+   "curves_ge": 20,
+   "timeout": 400,
+   "asks": true
+  }
+ ]
+}

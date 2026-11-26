@@ -3,9 +3,16 @@
     { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
     { "op": "check", "title": "Temperature", "settle": 12 },
     { "op": "activate", "title": "Temperature", "settle": 3 },
+    { "op": "colorbar_probe", "expect": "Temperature" },
     { "op": "shot", "name": "continuous_default" },
-    { "op": "set", "var": "below_range_color", "value": "#0000FF", "settle": 2 },
-    { "op": "set", "var": "above_range_color", "value": "#FF00FF", "settle": 2 },
+    { "op": "call", "method": "cmap_bar", "args": [false, "view_1"], "settle": 2 },
+    { "op": "colorbar_probe", "none": true, "expect": "Temperature" },
+    { "op": "call", "method": "cmap_bar", "args": [true, "view_1"], "settle": 2 },
+    { "op": "colorbar_probe", "expect": "Temperature" },
+    { "op": "call", "method": "cmap_below", "args": [["#0000FF", 1.0], "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "below", "equals": "#0000ff" },
+    { "op": "call", "method": "cmap_above", "args": [["#FF00FF", 1.0], "view_1"], "settle": 2 },
+    { "op": "expect", "var": "ui_colormap__view_1", "key": "above", "equals": "#ff00ff" },
     { "op": "narrow_color_range", "fraction": [0.3, 0.7], "settle": 4 },
     { "op": "shot", "name": "narrowed_below_above" }
   ]

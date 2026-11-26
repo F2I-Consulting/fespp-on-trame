@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "GasSat", "settle": 15 },
+    { "op": "activate", "title": "GasSat", "settle": 4 },
+    { "op": "cmap_graph_probe", "expect": "GasSat" },
+    { "op": "check", "title": "WatSat", "settle": 15 },
+    { "op": "activate", "title": "WatSat", "settle": 4 },
+    { "op": "cmap_graph_probe", "expect": "WatSat" }
+  ]
+}

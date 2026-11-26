@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "welllog_probe", "synth": true },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "welllog_synth" }
+  ]
+}

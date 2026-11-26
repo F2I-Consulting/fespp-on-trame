@@ -1,8 +1,8 @@
 """
-FakeDataAssembly — implémentation Python minimaliste de vtkDataAssembly.
+FakeDataAssembly: a minimal pure-Python stand-in for vtkDataAssembly.
 
-Remplace l'objet VTK réel dans les tests unitaires.
-Supporte les opérations utilisées par fespp_tree.py :
+It replaces the real VTK object in the unit tests and supports the
+operations engine/tree.py uses:
   - AddNode / RemoveNode
   - GetChild / GetParent / GetNumberOfChildren / GetChildNodes
   - GetAttributeOrDefault / SetAttribute / GetAttribute
@@ -24,12 +24,12 @@ class _Node:
 
 
 class FakeDataAssembly:
-    """Assembly hiérarchique pilotable depuis les tests."""
+    """A node hierarchy the tests build and inspect directly."""
 
     def __init__(self, root_name: str = "data"):
         self._nodes: dict[int, _Node] = {}
         self._next_id: int = 0
-        # nœud racine
+        # the root node, id 0
         root = _Node(node_id=0, name=root_name, parent_id=-1)
         self._nodes[0] = root
         self._next_id = 1
@@ -48,11 +48,11 @@ class FakeDataAssembly:
         if node_id not in self._nodes:
             return
         node = self._nodes[node_id]
-        # retire des enfants du parent
+        # detach from the parent's children
         parent = self._nodes.get(node.parent_id)
         if parent and node_id in parent.children:
             parent.children.remove(node_id)
-        # supprime récursivement les enfants
+        # remove the children recursively
         for child_id in list(node.children):
             self.RemoveNode(child_id)
         del self._nodes[node_id]
@@ -87,7 +87,7 @@ class FakeDataAssembly:
         return self._nodes[node_id].name if node_id in self._nodes else ""
 
     def GetNodePath(self, node_id: int) -> str:
-        """Reconstruit le chemin depuis la racine."""
+        """Return the node's path from the root, e.g. "/data/_grid/_prop"."""
         parts = []
         current = node_id
         while current > 0:
@@ -103,7 +103,7 @@ class FakeDataAssembly:
         return -1
 
     def GetFirstNodeByPath(self, path: str) -> int:
-        """Cherche un nœud dont GetNodePath() == path."""
+        """Return the id of the node whose GetNodePath() equals `path`, or -1."""
         for node_id in self._nodes:
             if self.GetNodePath(node_id) == path:
                 return node_id
@@ -112,7 +112,7 @@ class FakeDataAssembly:
     # ---------------------------------------------------------------- helpers
 
     def add_node_with_attrs(self, name: str, parent_id: int, **attrs) -> int:
-        """Raccourci : AddNode + plusieurs SetAttribute."""
+        """Add a node and set each keyword as one of its attributes."""
         node_id = self.AddNode(name, parent_id)
         for k, v in attrs.items():
             self.SetAttribute(node_id, k, v)

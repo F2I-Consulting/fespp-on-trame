@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "activate", "title": "Facies", "settle": 3 },
+    { "op": "derived_probe", "grid": "Geogrid", "name": "Fx2", "expr": "Facies * 2" },
+    { "op": "derived_eye", "grid": "Geogrid", "name": "Fx2", "expect_colour": true, "settle": 6 },
+    { "op": "globe_probe", "expect": true, "mode": true, "settle": 8 },
+    { "op": "derived_eye", "grid": "Geogrid", "name": "Fx2", "toggle": false, "expect_colour": true },
+    { "op": "shot", "name": "formula_on_earth" },
+    { "op": "globe_probe", "expect": true, "mode": false, "settle": 6 },
+    { "op": "derived_eye", "grid": "Geogrid", "name": "Fx2", "toggle": false, "expect_colour": true },
+    { "op": "eye", "title": "Facies", "settle": 6 },
+    { "op": "derived_eye", "grid": "Geogrid", "name": "Fx2", "toggle": false, "expect_colour": false }
+  ]
+}

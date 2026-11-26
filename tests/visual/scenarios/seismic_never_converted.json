@@ -1,0 +1,386 @@
+{
+ "steps": [
+  {
+   "op": "load",
+   "path": "/tmp/testdata/drogon.epc",
+   "settle": 25
+  },
+  {
+   "op": "call",
+   "method": "open_time_depth",
+   "args": [],
+   "settle": 10
+  },
+  {
+   "op": "expect",
+   "var": "ui_vdomain__{vid}",
+   "equals": "time"
+  },
+  {
+   "op": "time_depth_pins_probe",
+   "shown": [
+    "box",
+    "halo",
+    "lines",
+    "points"
+   ],
+   "bar": true
+  },
+  {
+   "op": "peek",
+   "name": "preview_with_its_bar"
+  },
+  {
+   "op": "call",
+   "method": "time_depth_law_edit",
+   "args": [
+    {
+     "op": "generate"
+    }
+   ],
+   "settle": 14
+  },
+  {
+   "op": "expect",
+   "var": "ui_time_depth_law",
+   "key": "model",
+   "equals": "m1"
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_cube_tree",
+    "selected_paths",
+    "visible_paths__view_1",
+    "ui_active_model_row"
+   ]
+  },
+  {
+   "op": "model_shown_probe"
+  },
+  {
+   "op": "time_depth_pins_probe",
+   "shown": [
+    "halo",
+    "lines",
+    "points"
+   ],
+   "bar": false
+  },
+  {
+   "op": "scene_blocks_probe",
+   "label": "model 1 in time",
+   "count": 1
+  },
+  {
+   "op": "peek",
+   "name": "model_drawn_1"
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "depth"
+   ],
+   "settle": 5
+  },
+  {
+   "op": "expect",
+   "var": "converted_paths__{vid}",
+   "equals": []
+  },
+  {
+   "op": "expect",
+   "var": "undrawn_paths__{vid}",
+   "size_ge": 1
+  },
+  {
+   "op": "expect",
+   "var": "fixed_paths__{vid}",
+   "size_ge": 1
+  },
+  {
+   "op": "scene_blocks_probe",
+   "count": 0
+  },
+  {
+   "op": "time_depth_pins_probe",
+   "shown": [],
+   "bar": false
+  },
+  {
+   "op": "shot",
+   "name": "model_in_depth_view"
+  },
+  {
+   "op": "tree_tick",
+   "title": "Velocity model 1",
+   "untick": true
+  },
+  {
+   "op": "wait",
+   "s": 3
+  },
+  {
+   "op": "expect",
+   "var": "empty_color_snackbar_text",
+   "contains": "Velocity model 1 stays checked"
+  },
+  {
+   "op": "expect",
+   "var": "selected_paths",
+   "size": 3
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "time"
+   ],
+   "settle": 5
+  },
+  {
+   "op": "scene_blocks_probe",
+   "count": 1
+  },
+  {
+   "op": "peek",
+   "name": "model_drawn_2"
+  },
+  {
+   "op": "call",
+   "method": "time_depth_law_edit",
+   "args": [
+    {
+     "op": "model_activate",
+     "value": "new"
+    }
+   ],
+   "settle": 5
+  },
+  {
+   "op": "expect",
+   "var": "ui_active_model_row",
+   "contains": "_gridfolder_"
+  },
+  {
+   "op": "time_depth_pins_probe",
+   "shown": [
+    "box",
+    "halo",
+    "lines",
+    "points"
+   ],
+   "bar": true
+  },
+  {
+   "op": "scene_blocks_probe",
+   "count": 0
+  },
+  {
+   "op": "call",
+   "method": "time_depth_law_edit",
+   "args": [
+    {
+     "op": "generate"
+    }
+   ],
+   "settle": 14
+  },
+  {
+   "op": "expect",
+   "var": "ui_time_depth_law",
+   "key": "model",
+   "equals": "m2"
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "ui_cube_tree",
+    "selected_paths",
+    "visible_paths__view_1",
+    "ui_active_model_row"
+   ]
+  },
+  {
+   "op": "model_shown_probe"
+  },
+  {
+   "op": "expect",
+   "var": "selected_paths",
+   "size": 3
+  },
+  {
+   "op": "tree_tick",
+   "title": "Velocity model 2",
+   "untick": true
+  },
+  {
+   "op": "wait",
+   "s": 3
+  },
+  {
+   "op": "expect",
+   "var": "selected_paths",
+   "size": 3
+  },
+  {
+   "op": "expect",
+   "var": "empty_color_snackbar_text",
+   "contains": "Velocity model 2 stays checked"
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "depth"
+   ],
+   "settle": 5
+  },
+  {
+   "op": "tree_tick",
+   "title": "Velocity model 1"
+  },
+  {
+   "op": "wait",
+   "s": 8
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "equals": "View in depth"
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "ok",
+   "equals": "Switch the view to time"
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "third",
+   "equals": null
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    true
+   ],
+   "settle": 5
+  },
+  {
+   "op": "expect",
+   "var": "ui_vdomain__{vid}",
+   "equals": "time"
+  },
+  {
+   "op": "tree_tick",
+   "title": "Velocity model 1",
+   "untick": true
+  },
+  {
+   "op": "wait",
+   "s": 6
+  },
+  {
+   "op": "expect",
+   "var": "selected_paths",
+   "size": 3
+  },
+  {
+   "op": "dump",
+   "vars": [
+    "selected_paths",
+    "ui_active_model_row",
+    "ui_cube_tree"
+   ]
+  },
+  {
+   "op": "time_depth_pins_probe",
+   "shown": [
+    "halo",
+    "lines",
+    "points"
+   ],
+   "bar": false
+  },
+  {
+   "op": "scene_blocks_probe",
+   "label": "model 2 in time",
+   "count": 1
+  },
+  {
+   "op": "peek",
+   "name": "model_drawn_3"
+  },
+  {
+   "op": "tree_tick",
+   "title": "55/33-1"
+  },
+  {
+   "op": "wait",
+   "s": 8
+  },
+  {
+   "op": "expect",
+   "var": "ui_tick_confirm",
+   "key": "title",
+   "equals": "View in time"
+  },
+  {
+   "op": "call",
+   "method": "tick_confirm_answer",
+   "args": [
+    false
+   ],
+   "settle": 15
+  },
+  {
+   "op": "expect",
+   "var": "ui_vdomain__{vid}",
+   "equals": "time"
+  },
+  {
+   "op": "scene_blocks_probe",
+   "count": 1
+  },
+  {
+   "op": "peek",
+   "name": "model_drawn_4"
+  },
+  {
+   "op": "wellheads_probe",
+   "shown": 0
+  },
+  {
+   "op": "shot",
+   "name": "well_in_time_view"
+  },
+  {
+   "op": "call",
+   "method": "view_domain",
+   "args": [
+    "view_1",
+    "depth"
+   ],
+   "settle": 6
+  },
+  {
+   "op": "wellheads_probe",
+   "shown": 1
+  },
+  {
+   "op": "scene_blocks_probe"
+  },
+  {
+   "op": "shot",
+   "name": "well_in_depth_view"
+  }
+ ]
+}

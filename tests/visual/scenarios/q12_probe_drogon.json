@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Total Porosity", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "derived_filter_probe", "grid": "Geogrid", "prop": "Total Porosity", "settle": 3 }
+  ]
+}

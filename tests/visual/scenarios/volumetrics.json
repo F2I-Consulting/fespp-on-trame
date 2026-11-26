@@ -1,0 +1,17 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "volumetrics_probe", "grid": "Geogrid", "settle": 14,
+      "bo": 1.25, "bg": 0.005, "rf_oil": 0.35, "rf_gas": 0.7 },
+    { "op": "weights_probe", "grid": "Geogrid", "prop": "Total Porosity",
+      "weighted_n": "card", "settle": 8 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "volumetrics" },
+    { "op": "contact_planes_probe", "expect": true, "zscale": 1 },
+    { "op": "call", "method": "set_zscale", "args": [3], "settle": 4 },
+    { "op": "contact_planes_probe", "expect": true, "zscale": 3 },
+    { "op": "call", "method": "set_zscale", "args": [1], "settle": 4 },
+    { "op": "call", "method": "select_paths", "args": [[]], "settle": 6 },
+    { "op": "contact_planes_probe", "expect": false }
+  ]
+}

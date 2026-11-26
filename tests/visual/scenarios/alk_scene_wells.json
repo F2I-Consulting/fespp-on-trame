@@ -1,0 +1,24 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 12 },
+    { "op": "dump_tree", "type": "Blocked", "limit": 6 },
+    { "op": "check", "title": "region", "settle": 8 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "target", "path": "@scene"}, "view_1"], "settle": 2 },
+    { "op": "call", "method": "geometry_slicer", "args": [{"op": "all_visible", "on": true}, "view_1"], "settle": 2 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.3 },
+    { "op": "scene_blocks_probe" },
+    { "op": "tree_tick", "type": "BlockedWellbore" },
+    { "op": "wait", "s": 8 },
+    { "op": "tree_tick_all", "type": "BlockedWellbore" },
+    { "op": "wait", "s": 20 },
+    { "op": "scene_blocks_probe" },
+    { "op": "render_timing", "label": "ALK: wells ticked outside the cut", "frames": 1 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 0.95 },
+    { "op": "scene_blocks_probe" },
+    { "op": "render_timing", "label": "ALK: the cut widened to 95 %", "frames": 1 },
+    { "op": "card_narrow", "card": "ui_geometry_card__view_1", "method": "geometry_slicer", "box": 0, "fraction": 1.0 },
+    { "op": "scene_blocks_probe" },
+    { "op": "render_timing", "label": "ALK: the cut widened to the whole", "frames": 1 }
+  ]
+}

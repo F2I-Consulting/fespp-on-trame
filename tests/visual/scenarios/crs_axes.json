@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 25 },
+    { "op": "crs_axes_probe" }
+  ]
+}

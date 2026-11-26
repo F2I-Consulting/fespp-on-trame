@@ -1,0 +1,187 @@
+{"text": "montre Volantis", "session": "drogon", "intent": "show", "targets": ["BaseVolantis", "TopVolantis"], "sure": true}
+{"text": "montre le puits 33-1", "session": "drogon", "intent": "show", "min": null, "max": null, "targets": ["55/33-1"]}
+{"text": "montre le puits 11-15", "session": "traps", "intent": "show", "targets": ["25/11-15"]}
+{"text": "seuil à 0.2 sur la porosité de Top Hugin", "session": "traps", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null}
+{"text": "filtre la porosité 0.2 dans le Top Hugin", "session": "traps", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null}
+{"text": "palette min = 0.1 max = 0.3", "intent": "color_range", "min": 0.1, "max": 0.3, "sure": true}
+{"text": "règle la légende de la porosité min=0.05 max=0.35", "intent": "color_range", "min": 0.05, "max": 0.35}
+{"text": "filtre la porosité min=0.1 max=0.3", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": 0.3}
+{"text": "légende max = 300", "intent": "color_range", "min": null, "max": 300.0, "sure": true}
+{"text": "coupe la porosité à la couche 12", "intent": "slice", "axis": "k", "min": 12.0, "max": 12.0, "sure": true}
+{"text": "montre la couche 30 de la porosité", "intent": "slice", "axis": "k", "min": 30.0, "max": 30.0, "sure": true}
+{"text": "coupe en k = 15 sur la porosité", "intent": "slice", "axis": "k", "min": 15.0, "max": 15.0, "sure": true}
+{"text": "filtre la porosité ≠ 0", "intent": "threshold", "kind": "porosity", "min": 0.0, "max": null}
+{"text": "filtre la porosité qui vaut 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null}
+{"text": "filtre les mailles où la saturation en eau dépasse 50", "intent": "threshold", "kind": "water saturation", "min": 0.5, "max": null, "raw": {"min": 50.0}, "targets": ["SW"], "sure": true}
+{"text": "surligne les mailles avec une porosité supérieure à 25", "intent": "highlight", "kind": "porosity", "min": 0.25, "max": null, "raw": {"min": 25.0}, "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "je ne veux pas voir les puits", "session": "objects", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-4"]}
+{"text": "n'affiche pas Top Hugin", "session": "objects", "intent": "hide", "targets": ["Top Hugin"]}
+{"text": "ne surligne pas l'huile", "session": "fluids", "intent": "clear_highlight"}
+{"text": "POROSITÉ", "session": "objects", "intent": "show", "targets": ["PHIT"], "sure": true}
+{"text": "Perméabilité !", "session": "objects", "intent": "show", "targets": ["PERMX"], "sure": true}
+{"text": "garde les couches 5 à 15 de la porosité", "intent": "slice", "axis": "k", "min": 5.0, "max": 15.0, "sure": true}
+{"text": "coupe k de 10 à 20 sur le NTG", "intent": "slice", "axis": "k", "min": 10.0, "max": 20.0, "sure": true}
+{"text": "fais une coupe en j à 45 de la saturation en eau", "intent": "slice", "axis": "j", "min": 45.0, "max": 45.0, "sure": true}
+{"text": "montre la colonne 7 de la porosité", "intent": "slice", "axis": "i", "min": 7.0, "max": 7.0, "sure": true}
+{"text": "max=0.3 pour la palette", "intent": "color_range", "min": null, "max": 0.3}
+{"text": "mets le max de la légende = 0.25", "intent": "color_range", "min": null, "max": 0.25, "sure": true}
+{"text": "palette de la perméabilité : min = 10, max = 1000", "intent": "color_range", "min": 10.0, "max": 1000.0, "sure": true}
+{"text": "surligne la porosité 0.3 du Top Hugin", "intent": "highlight", "kind": "porosity", "min": 0.3, "max": null, "sure": true}
+{"text": "filtre Top Hugin à 2500", "intent": "threshold", "min": 2500.0, "max": null, "targets": ["Top Hugin"], "sure": true}
+{"text": "seuil 0.15 sur la porosité, horizon Top Hugin", "intent": "threshold", "kind": "porosity", "min": 0.15, "max": null}
+{"text": "zoome sur 9-19 A", "session": "volve", "intent": "reset_camera", "min": null, "max": null, "targets": ["well_feature_NO_15_9-19_A_B5088C"], "sure": true}
+{"text": "cache le puits 9-19 SR", "session": "volve", "intent": "hide", "targets": ["well_feature_NO_15_9-19_SR_EBECD2"], "sure": true}
+{"text": "montre le puits 19 A", "session": "volve", "intent": "show", "targets": ["well_feature_NO_15_9-19_A_B5088C"]}
+{"text": "montre les logs du 9-19 A", "session": "volve", "intent": "open_panel", "panel": "welllog", "min": null, "max": null, "targets": ["well_feature_NO_15_9-19_A_B5088C"], "sure": true}
+{"text": "isole Volantis", "session": "drogon", "intent": "isolate", "targets": ["BaseVolantis", "TopVolantis"], "sure": true}
+{"text": "n'affiche pas les puits", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "ne montre pas Hugin", "intent": "hide", "targets": ["Hugin"]}
+{"text": "n'affiche plus la grille", "intent": "hide", "targets": ["Draupne fine", "Hugin"], "sure": false}
+{"text": "je ne veux pas voir Top Hugin", "intent": "hide", "targets": ["Top Hugin"]}
+{"text": "n'affiche pas la porosité", "intent": "hide", "targets": ["PHIT", "Poro"]}
+{"text": "porosité", "intent": "show", "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "perméabilité", "intent": "show", "targets": ["PERMX"], "sure": true}
+{"text": "saturation en eau", "intent": "show", "targets": ["SW"], "sure": true}
+{"text": "merci", "intent": null}
+{"text": "raconte moi une blague", "intent": null}
+{"text": "c'est bon", "intent": null}
+{"text": "encore", "intent": null}
+{"text": "vas-y", "intent": null}
+{"text": "masque-les puis la grille", "intent": "hide", "sure": false, "then": [{"intent": "hide", "targets": ["Draupne fine", "Hugin"], "sure": false}]}
+{"text": "cache-les puis j'aimerais voir la porosité", "intent": "hide", "sure": false, "then": [{"intent": "show", "targets": ["PHIT", "Poro"]}]}
+{"text": "enlève le filtre et les puits", "intent": "clear_threshold", "sure": true, "then": [{"intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"], "sure": true}]}
+{"text": "cache les failles et les horizons", "intent": "hide", "targets": [], "then": [{"intent": "hide", "targets": ["Base Hugin", "Top Hugin"]}]}
+{"text": "affiche la porosité et la perméabilité", "intent": "show", "targets": ["PERMX", "PHIT", "Poro"], "sure": true}
+{"text": "colore la porosité en viridis et la perméabilité en jet", "intent": "colormap", "preset": "Viridis (matplotlib)", "targets": ["PHIT", "Poro"], "sure": true, "then": [{"intent": "colormap", "preset": "Jet", "targets": ["PERMX"], "sure": true}]}
+{"text": "pourquoi pas montrer la porosité ?", "intent": "show", "targets": ["PHIT", "Poro"]}
+{"text": "pourquoi il n'y a rien à l'écran ?", "intent": "complain"}
+{"text": "c'est quoi le GR ?", "intent": "describe", "targets": ["GR"]}
+{"text": "non surligne-les plutôt", "session": "fluids", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/data/_gridfolder_v/_propsfolder_v/_v/_f"]}, "intent": "highlight", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "je t'ai dit de cacher les puits", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"], "sure": true}
+{"text": "masque les NaN, je ne veux plus les voir", "intent": "hide_nan", "on": true, "sure": true}
+{"text": "je ne veux plus les NaN", "intent": "hide_nan", "on": true, "sure": true}
+{"text": "enlève les valeurs absentes, on ne doit plus les voir", "intent": "hide_nan", "on": true, "sure": true}
+{"text": "masque les mailles de porosité inférieure à 0,1 et garde les autres", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null, "sure": true}
+{"text": "masque les mailles dont la perméabilité est inférieure à 10, pas les autres", "intent": "threshold", "kind": "permeability", "min": 10.0, "max": null, "sure": true}
+{"text": "j'ai dit cache les puits", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"], "sure": true}
+{"text": "je t'avais dit de masquer Hugin", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/g/hugin"]}, "intent": "hide", "targets": ["Hugin"], "sure": true}
+{"text": "je t'ai dit d'isoler la porosité", "context": {"intent": "show", "category": null, "kind": "porosity", "targets": ["/g/hugin/phit"]}, "intent": "isolate", "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "j'ai dit de passer en viridis", "context": {"intent": "show", "category": null, "kind": "porosity", "targets": ["/g/hugin/phit"]}, "intent": "colormap", "preset": "Viridis (matplotlib)", "sure": true}
+{"text": "la porosité affichée dépasse 0.3, c'est une erreur", "intent": "threshold", "sure": false}
+{"text": "non, ça montre encore la perméabilité au-dessus de 100", "intent": "threshold", "sure": false}
+{"text": "montre SO", "session": "little", "intent": "show", "targets": ["SO"], "sure": true}
+{"text": "cache SO", "session": "little", "intent": "hide", "targets": ["SO"], "sure": true}
+{"text": "montre J", "session": "little", "intent": "show", "targets": ["J"], "sure": true}
+{"text": "cache J", "session": "little", "intent": "hide", "targets": ["J"], "sure": true}
+{"text": "coupe en k 1", "session": "little", "intent": "slice", "axis": "k", "min": 1.0, "max": 1.0, "sure": true}
+{"text": "masque la grille et pourquoi pas les puits", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "montre-le puis Hugin", "intent": "show", "sure": false, "then": [{"intent": "show", "targets": ["Hugin"]}]}
+{"text": "cache-le puis le GR", "intent": "hide", "sure": false, "then": [{"intent": "hide", "targets": ["GR"]}]}
+{"text": "affiche-les puis la porosité", "intent": "show", "sure": false, "then": [{"intent": "show", "targets": ["PHIT", "Poro"]}]}
+{"text": "fais-le puis le filtre", "intent": null, "sure": false, "then": [{"intent": "threshold", "sure": false}]}
+{"text": "seuil de porosité = 0.1", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null, "sure": true}
+{"text": "applique un cutoff = 0.1 sur la porosité", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null, "sure": true}
+{"text": "le seuil de porosité vaut 0.1", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null, "sure": true}
+{"text": "filtre avec porosité=0.12", "intent": "threshold", "kind": "porosity", "min": 0.12, "max": null}
+{"text": "je veux que l'huile soit surlignée", "session": "fluids", "intent": "highlight", "category": "oil", "targets": ["Fluids"]}
+{"text": "j'aimerais que l'eau ressorte", "session": "fluids", "intent": "highlight", "category": "water", "targets": ["Fluids"], "sure": true}
+{"text": "fais en sorte que l'huile soit visible", "session": "fluids", "intent": "threshold", "category": "oil", "targets": ["Fluids"], "sure": false}
+{"text": "affiche les blocs de faille", "session": "volve", "intent": "show", "targets": ["fault_blocks"], "sure": true}
+{"text": "montre les blocs de failles de la grille", "session": "volve", "intent": "show", "targets": ["fault_blocks"]}
+{"text": "surligne les chenaux", "session": "drogon", "intent": "highlight", "category": "channel", "min": 1.0, "max": 1.0, "targets": ["Facies"], "sure": true}
+{"text": "remets l'échelle verticale normale", "session": "drogon", "intent": "z_scale", "factor": 1.0}
+{"text": "calcule une nouvelle propriété", "session": "drogon", "intent": "open_panel", "panel": "calculator"}
+{"text": "montre-les sur la grille", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "surligne-les dans la grille", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "affiche leurs mailles dans la grille", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "non, surligne-la plutôt", "session": "volve", "context": {"intent": "threshold", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "highlight", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "garde que ça", "session": "volve", "context": {"intent": "highlight", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "threshold", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "garde tout sauf le gaz", "session": "volve", "intent": "threshold", "category": "gas", "exclude": true, "targets": ["Fluids"], "sure": true}
+{"text": "montre tout sauf l'eau", "session": "volve", "intent": "threshold", "category": "water", "exclude": true, "targets": ["Fluids"], "sure": true}
+{"text": "surligne tout sauf l'eau", "session": "volve", "intent": "highlight", "categories": ["oil", "gas"], "targets": ["Fluids"], "sure": true}
+{"text": "cache les mailles de porosité sous 0,1 mais pas les autres", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null, "sure": true}
+{"text": "enlève les mailles de perméabilité inférieure à 5 et laisse les autres", "intent": "threshold", "kind": "permeability", "min": 5.0, "max": null, "sure": true}
+{"text": "masque la porosité sous 0.05, les autres restent", "intent": "threshold", "kind": "porosity", "min": 0.05, "max": null, "sure": true}
+{"text": "pourquoi tu ne masques pas les puits ?", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12", "15/9-F-4"]}
+{"text": "pourquoi ne pas filtrer la porosité au-dessus de 0.2 ?", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null, "sure": true}
+{"text": "affiche-les sur la grille", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "surligne leurs mailles sur la grille", "session": "volve", "context": {"intent": "well_cells", "category": "oil", "kind": null, "targets": ["/v/grid/fluids"]}, "intent": "well_cells", "category": "oil", "min": 1.0, "max": 1.0, "targets": ["Fluids"]}
+{"text": "j'aimerais que le gaz ressorte", "session": "fluids", "intent": "highlight", "category": "gas", "targets": ["Fluids"]}
+{"text": "je voudrais que l'huile ressorte en rouge", "session": "fluids", "intent": "highlight", "category": "oil", "targets": ["Fluids"], "sure": true}
+{"text": "fais ressortir que l'eau", "session": "fluids", "intent": "highlight", "category": "water", "targets": ["Fluids"], "sure": true}
+{"text": "calcule une propriété à partir de la porosité", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "crée une nouvelle propriété", "intent": "open_panel", "panel": "calculator"}
+{"text": "filtre la porosité à 0,2 au top du réservoir", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null, "targets": ["PHIT", "Poro"]}
+{"text": "seuil de perméabilité à 100 vers le top de Hugin", "intent": "threshold", "kind": "permeability", "min": 100.0, "max": null, "targets": ["PERMX"]}
+{"text": "garde la porosité 0,18 au top de la grille", "intent": "threshold", "kind": "porosity", "min": 0.18, "max": null}
+{"text": "règle la limite inférieure de la légende à 10", "intent": "color_range", "min": 10.0, "max": null}
+{"text": "palette avec une limite basse de 0,05", "intent": "color_range", "min": 0.05, "max": null}
+{"text": "filtre la porosité avec 0,1 comme limite basse", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null}
+{"text": "fixe la limite basse de la légende du NTG à 0,2", "intent": "color_range", "min": 0.2, "max": null, "targets": ["NTG"]}
+{"text": "cache pas les NaN, je veux les voir", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "masque pas les valeurs manquantes, je veux les voir", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "je veux voir les NaN, pas les cacher", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "ne cache pas les NaN, je veux les voir", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "montre à nouveau les NaN, je ne veux plus qu'ils soient masqués", "intent": "hide_nan", "on": false, "sure": true}
+{"text": "cache les NaN mais je veux encore voir la grille", "intent": "hide_nan", "on": true, "sure": true}
+{"text": "pourquoi pas la palette jet ?", "intent": "colormap", "preset": "Jet"}
+{"text": "pourquoi pas en viridis ?", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "pourquoi pas une coupe en j à 15 ?", "session": "objects", "intent": "slice", "axis": "j", "min": 15.0, "max": 15.0}
+{"text": "pourquoi pas un filtre de porosité au-dessus de 0,2 ?", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null}
+{"text": "pourquoi pas les statistiques de la porosité ?", "intent": "open_panel", "panel": "stats"}
+{"text": "calcule PHIT * NTG", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "calcule NTG*PHIT", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "calcule PHIT fois NTG", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "calcule le volume de pores PHIT x NTG", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "calcule une porosité effective à partir de PHIT et du NTG", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "calculer le produit de la porosité et du NTG", "intent": "open_panel", "panel": "calculator", "sure": true}
+{"text": "la calculette", "intent": "open_panel", "panel": "calculator"}
+{"text": "calcule la moyenne de la porosité", "intent": "value", "kind": "porosity"}
+{"text": "et masque les autres lithologies", "session": "fluids", "context": {"intent": "highlight", "category": "sandstone", "kind": null, "targets": ["/data/_gridfolder_v/_propsfolder_v/_v/_l"]}, "intent": "threshold", "category": "sandstone", "exclude": false, "targets": ["Lithology1"], "sure": true}
+{"text": "masque les autres faciès", "session": "drogon", "context": {"intent": "highlight", "category": "channel", "kind": null, "targets": ["/data/_g/Facies"]}, "intent": "threshold", "category": "channel", "exclude": false, "targets": ["Facies"], "sure": true}
+{"text": "cache les autres fluides", "session": "fluids", "context": {"intent": "highlight", "category": "oil", "kind": null, "targets": ["/data/_gridfolder_v/_propsfolder_v/_v/_f"]}, "intent": "threshold", "category": "oil", "exclude": false, "targets": ["Fluids"], "sure": true}
+{"text": "c'est faux, garde la porosité au-dessus de 0,2", "intent": "threshold", "kind": "porosity", "min": 0.2, "max": null, "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "erreur : seuil de perméabilité à 50", "intent": "threshold", "kind": "permeability", "min": 50.0, "max": null, "targets": ["PERMX"], "sure": true}
+{"text": "non c'est faux, filtre la perméabilité au-dessus de 200", "intent": "threshold", "kind": "permeability", "min": 200.0, "max": null, "targets": ["PERMX"], "sure": true}
+{"text": "erreur, surligne plutôt le NTG au-dessus de 0,6", "intent": "highlight", "kind": "net to gross", "min": 0.6, "max": null, "targets": ["NTG"], "sure": true}
+{"text": "c'est faux, la porosité est encore au-dessus de 0,3", "intent": "threshold", "sure": false}
+{"text": "ne surligne que l'huile", "session": "fluids", "intent": "highlight", "category": "oil", "exclude": false, "targets": ["Fluids"]}
+{"text": "ne mets en évidence que le gaz", "session": "fluids", "intent": "highlight", "category": "gas", "exclude": false, "targets": ["Fluids"]}
+{"text": "affiche SW et SO", "session": "little", "intent": "show", "targets": ["SO", "SW"], "sure": true}
+{"text": "montre SO et SW", "session": "little", "intent": "show", "targets": ["SO", "SW"], "sure": true}
+{"text": "cache SO et SW", "session": "little", "intent": "hide", "targets": ["SO", "SW"], "sure": true}
+{"text": "cache tous les puits sauf F-4", "session": "objects", "intent": "hide", "targets": ["15/9-F-11 A"], "sure": true}
+{"text": "cache les puits sauf F-12", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-4"], "sure": true}
+{"text": "masque tous les puits à part F-4", "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12"], "sure": true}
+{"text": "masque les mailles de porosité au-dessus de 0,3, laisse le reste", "intent": "threshold", "kind": "porosity", "min": null, "max": 0.3, "targets": ["PHIT", "Poro"]}
+{"text": "le minimum de l'échelle vaut 0,05 pour la porosité", "intent": "color_range", "min": 0.05, "max": null, "targets": ["PHIT", "Poro"], "sure": true}
+{"text": "il faudrait que l'huile ressorte", "session": "fluids", "intent": "highlight", "category": "oil", "targets": ["Fluids"], "sure": true}
+{"text": "ne montre pas que la grille, affiche aussi les puits", "session": "objects", "intent": "show", "targets": ["15/9-F-11 A", "15/9-F-4", "Hugin"]}
+{"text": "coupe la grille 30-40 selon j", "session": "objects", "intent": "slice", "axis": "j", "min": 30.0, "max": 40.0, "targets": ["Hugin"]}
+{"text": "coupe la grille 10-20 en k", "intent": "slice", "axis": "k", "min": 10.0, "max": 20.0}
+{"text": "désactive les couleurs plates, je veux l'ombrage", "intent": "flat_colors", "on": false, "sure": true}
+{"text": "couleurs plates, je ne veux pas d'ombrage", "intent": "flat_colors", "on": true, "sure": true}
+{"text": "je ne veux pas voir la porosité en jet, mets-la en viridis", "intent": "colormap", "preset": "Viridis (matplotlib)", "targets": ["PHIT", "Poro"]}
+{"text": "montre la couche 3 sous Top Hugin", "intent": "slice", "axis": "k", "min": 3.0, "max": 3.0}
+{"text": "coupe la couche 8 en partant du top", "intent": "slice", "axis": "k", "min": 8.0, "max": 8.0}
+{"text": "isole la grille et les puits", "session": "objects", "intent": "isolate", "targets": ["15/9-F-11 A", "15/9-F-4", "Hugin"], "sure": true}
+{"text": "isole la grille Hugin et les horizons", "intent": "isolate", "targets": ["Base Hugin", "Hugin", "Top Hugin"], "sure": true}
+{"text": "zoome sur 19 A", "session": "traps", "intent": "reset_camera", "targets": ["15/9-19 A"], "sure": true}
+{"text": "logs du 19 A", "session": "traps", "intent": "open_panel", "panel": "welllog", "targets": ["15/9-19 A"]}
+{"text": "coupe où k vaut 12", "session": "objects", "intent": "slice", "axis": "k", "min": 12.0, "max": 12.0}
+{"text": "coupe à i égal à 30", "session": "objects", "intent": "slice", "axis": "i", "min": 30.0, "max": 30.0}
+{"text": "montre le puits F-4 et la porosité", "intent": "show", "targets": ["15/9-F-4", "PHIT", "Poro"], "sure": true}
+{"text": "seuil 0,1 sur la porosité, top réservoir", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": null}
+{"text": "n'affiche pas que les puits, montre aussi la grille", "session": "objects", "intent": "show", "targets": ["15/9-F-11 A", "15/9-F-4", "Hugin"]}
+{"text": "le top de la palette à 0,3", "intent": "color_range", "min": null, "max": 0.3}
+{"text": "cache tous les autres puits", "context": {"intent": "show", "category": null, "kind": null, "targets": ["/w/f4"]}, "intent": "hide", "targets": ["15/9-F-11 A", "15/9-F-12"], "sure": true}
+{"text": "cache le gaz mais garde l'huile", "session": "fluids", "intent": "threshold", "category": "gas", "exclude": true, "sure": true, "then": [{"intent": "threshold", "category": "oil", "sure": true}]}
+{"text": "je veux revoir l'eau mais masque le gaz", "session": "fluids", "intent": "threshold", "category": "water", "sure": true, "then": [{"intent": "threshold", "category": "gas", "exclude": true, "sure": true}]}
+{"text": "laisse l'eau", "session": "fluids", "intent": "threshold", "category": "water", "sure": true}
+{"text": "on ne voit plus l'huile, remets-la", "session": "fluids", "intent": "threshold", "category": "oil", "sure": true}
+{"text": "et en dessous de 0,1 ?", "session": "volve", "context": {"intent": "highlight", "kind": "porosity", "min": 0.2}, "intent": "highlight", "kind": "porosity", "max": 0.1, "sure": true}
+{"text": "ne cache pas F-4", "session": "volve", "intent": "show", "targets": ["well_feature_NO_15_9-F-4_5DA715"], "sure": true}
+{"text": "passe de jet à viridis", "session": "volve", "intent": "colormap", "preset": "Viridis (matplotlib)", "sure": true}
+{"text": "garde tous les puits sauf F-4", "session": "volve", "intent": "hide", "targets": ["well_feature_NO_15_9-F-4_5DA715"], "sure": true}
+{"text": "fixe la limite de la palette à 0,3", "session": "volve", "intent": "color_range", "max": 0.3, "sure": true}
+{"text": "montre la porosité mais cache les puits", "session": "volve", "intent": "show", "kind": "porosity", "then": [{"intent": "hide", "sure": true}]}

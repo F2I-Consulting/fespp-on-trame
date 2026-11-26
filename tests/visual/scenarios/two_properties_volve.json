@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 30 },
+    { "op": "check", "title": "Fluids", "settle": 25 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "block_color_probe", "min_coloured": 1, "bars": 1 },
+    { "op": "interactive_frame_probe", "min_coloured": 1, "force_lod": true },
+
+    { "op": "camera_move", "drag": [60, 40], "settle": 4 },
+    { "op": "interactive_frame_probe", "min_coloured": 1, "force_lod": true },
+
+    { "op": "check", "title": "active_cell", "settle": 25 },
+    { "op": "block_color_probe", "min_coloured": 1, "bars": 1 },
+    { "op": "interactive_frame_probe", "min_coloured": 1, "force_lod": true }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 10 },
+    { "op": "welllog_probe" },
+    { "op": "strati_probe", "min_columns": 1, "settle": 4 }
+  ]
+}

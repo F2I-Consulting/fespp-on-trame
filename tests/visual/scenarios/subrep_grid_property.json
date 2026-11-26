@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 25 },
+    { "op": "check", "title": "Volve_SGrid_GasZone", "settle": 30 },
+    { "op": "check", "title": "Lithology1", "settle": 25 },
+    { "op": "eye", "title": "SolidColor", "settle": 12 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "block_color_probe", "arrays_present": true, "coloured_blocks": 1 },
+    { "op": "shot", "name": "subrep_grid_property" }
+  ]
+}

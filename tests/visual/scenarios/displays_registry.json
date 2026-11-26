@@ -1,0 +1,26 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "threshold_add", "args": ["Facies", "view_1"], "settle": 6 },
+    { "op": "displays_probe", "view": "view_1", "kinds": {"isolate": 1, "wellhead": 1} },
+    { "op": "call", "method": "set_rep_style", "args": ["view_1", "Wireframe"], "settle": 3 },
+    { "op": "displays_probe", "view": "view_1", "style": "Wireframe" },
+    { "op": "call", "method": "set_rep_style", "args": ["view_1", "Surface"], "settle": 3 },
+    { "op": "call", "method": "set_zscale_now", "args": [3], "settle": 4 },
+    { "op": "displays_probe", "view": "view_1", "kinds": {"isolate": 1} },
+    { "op": "call", "method": "open_render_view", "args": ["view_1"], "settle": 8 },
+    { "op": "call", "method": "threshold_add", "args": ["Facies", "view_2"], "settle": 6 },
+    { "op": "displays_probe", "view": "view_2", "kinds": {"isolate": 1, "wellhead": 1} },
+    { "op": "close_view", "view": "view_2", "settle": 3 },
+    { "op": "displays_probe", "view": "view_2", "kinds": {"isolate": 0, "wellhead": 0} },
+    { "op": "call", "method": "set_zscale_now", "args": [1], "settle": 3 },
+    { "op": "displays_probe", "view": "view_1", "kinds": {"isolate": 1} },
+    { "op": "activate", "title": "Facies", "settle": 2 },
+    { "op": "globe_probe", "expect": true, "mode": true, "settle": 8 },
+    { "op": "displays_probe", "kinds": {"isolate": 0, "wellhead": 1} },
+    { "op": "globe_probe", "expect": true, "mode": false, "settle": 6 },
+    { "op": "displays_probe", "view": "view_1", "kinds": {"isolate": 1, "wellhead": 1} }
+  ]
+}

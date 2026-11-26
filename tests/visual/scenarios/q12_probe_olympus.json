@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/olympus/OlympusGridAndProp.epc", "settle": 20 },
+    { "op": "check", "title": "Porosity", "settle": 15 },
+    { "op": "reset_camera", "settle": 3 },
+    { "op": "derived_filter_probe", "grid": "Porosity", "prop": "Porosity", "settle": 3 }
+  ]
+}

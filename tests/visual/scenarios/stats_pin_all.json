@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "GasSat", "under": "GasSat", "settle": 12 },
+    { "op": "call", "method": "add_to_stats", "args": [{ "title": "GasSat", "under": "GasSat" }], "settle": 8 },
+    { "op": "stats_probe", "title": "GasSat", "under": "GasSat", "rows": 1 },
+    { "op": "call", "method": "compare_set", "args": ["pin_all", [{ "compare_item": { "title": "GasSat", "under": "GasSat" } }, "ts"]], "settle": 10 },
+    { "op": "stats_probe", "title": "GasSat", "under": "GasSat", "rows": 51 },
+    { "op": "call", "method": "compare_set", "args": ["unpin_all", { "compare_item": { "title": "GasSat", "under": "GasSat" } }], "settle": 6 },
+    { "op": "stats_probe", "title": "GasSat", "under": "GasSat", "rows": 1 },
+    { "op": "shot", "name": "stats_pin_all" }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 10 },
+    { "op": "check", "title": "GasSat", "under": "GasSat", "settle": 12 },
+    { "op": "activate", "title": "GasSat", "under": "GasSat", "settle": 3 },
+    { "op": "timereal_probe", "index": 5, "settle": 4 },
+    { "op": "timereal_probe", "index": 0, "settle": 4 },
+    { "op": "dump", "vars": ["ui_timereal_card__view_1", "ui_timereal_player__view_1"] },
+    { "op": "timereal_card_probe", "index": 3, "settle": 4 },
+    { "op": "timereal_card_probe", "index": 0, "settle": 4 }
+  ]
+}

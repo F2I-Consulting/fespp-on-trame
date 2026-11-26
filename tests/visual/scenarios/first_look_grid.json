@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "camera_expect", "looks": "down" },
+    { "op": "check", "title": "Drilled trajectory", "settle": 8 },
+    { "op": "camera_expect", "looks": "down" }
+  ]
+}

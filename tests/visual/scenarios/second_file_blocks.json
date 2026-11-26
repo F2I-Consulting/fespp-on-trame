@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Reservoir_Grid_Depth.epc", "settle": 20 },
+    { "op": "check", "title": "Fluids", "settle": 20 },
+    { "op": "bounds_probe", "limit": 2, "expect_partitions": 1, "unique_links": true },
+    { "op": "load", "path": "/tmp/testdata/Volve_Demo_Wells_Depth.epc", "settle": 20 },
+    { "op": "bounds_probe", "limit": 2, "expect_partitions": 1, "unique_links": true },
+    { "op": "uncheck", "title": "Fluids", "settle": 10 },
+    { "op": "check", "title": "Fluids", "settle": 20 },
+    { "op": "bounds_probe", "limit": 2, "expect_partitions": 1, "unique_links": true },
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 20 },
+    { "op": "bounds_probe", "limit": 2, "expect_partitions": 1, "unique_links": true }
+  ]
+}

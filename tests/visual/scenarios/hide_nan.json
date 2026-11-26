@@ -1,0 +1,39 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/ALK_14Layers.epc", "settle": 8 },
+    { "op": "check", "title": "SOIL", "settle": 12 },
+    { "op": "activate", "title": "SOIL", "settle": 3 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_auto": false, "expect_ok": true, "expect_isolated": true,
+      "expect_hidden_min": 1000, "expect_drawn": true },
+
+    { "op": "call", "method": "cmap_hide_nan", "args": [false, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": false, "expect_ok": true, "expect_isolated": false },
+    { "op": "shot", "name": "nan_drawn" },
+    { "op": "eye", "title": "SOIL", "settle": 6 },
+    { "op": "eye", "title": "SOIL", "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": false, "expect_isolated": false },
+
+    { "op": "call", "method": "cmap_nan", "args": [["#ff0000", 0], "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_auto": true, "expect_hidden_min": 1000,
+      "expect_isolated": true, "expect_drawn": true, "expect_faces_change": true },
+    { "op": "shot", "name": "nan_hidden_by_opacity" },
+
+    { "op": "call", "method": "cmap_nan", "args": [["#ff0000", 1], "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": false, "expect_isolated": false },
+
+    { "op": "call", "method": "cmap_hide_nan", "args": [true, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_auto": false, "expect_isolated": true },
+    { "op": "call", "method": "cmap_nan", "args": [["#00ff00", 0.5], "view_1"], "settle": 4 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_auto": false, "expect_drawn": true },
+
+    { "op": "eye", "title": "SOIL", "settle": 6 },
+    { "op": "hide_nan_probe", "expect_isolated": false },
+    { "op": "eye", "title": "SOIL", "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": true, "expect_isolated": true, "expect_drawn": true },
+
+    { "op": "call", "method": "cmap_hide_nan", "args": [false, "view_1"], "settle": 6 },
+    { "op": "hide_nan_probe", "expect_on": false, "expect_isolated": false },
+    { "op": "shot", "name": "nan_back" }
+  ]
+}

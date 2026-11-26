@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/testingPackageCpp_blockWellbore.epc", "settle": 8 },
+    { "op": "check", "title": "4x3x2 grid cellIndex", "settle": 8 },
+    { "op": "check", "title": "My blocked well", "settle": 8 },
+    { "op": "volumetrics_probe", "prop": "4x3x2 grid cellIndex", "settle": 4 },
+    { "op": "volumetrics_probe", "grid": "My blocked well", "settle": 4 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "shot", "name": "volumetrics_bw" }
+  ]
+}
