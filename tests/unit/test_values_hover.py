@@ -37,3 +37,15 @@ def test_a_column_of_values_says_its_unit_and_a_place_keeps_its_label():
 def test_no_unit_known_no_label():
     assert values_table.unit_labels(["Temperature"], {}) == {}
     assert values_table.unit_labels(["Temperature"], {"Temperature": "  "}) == {}
+
+
+def test_the_map_of_a_part_holds_its_cells_alone():
+    # a grid of 2 layers of 2 x 3 cells; the part holds cells 1 and 4 of layer 0 and cell 6 (layer 1)
+    keep0 = values_table.layer_in_part([1, 4, 6, -1, 99], (2, 2, 3), 0)
+    assert keep0.tolist() == [[False, True, False], [False, True, False]]
+    keep1 = values_table.layer_in_part([1, 4, 6], (2, 2, 3), 1)
+    assert keep1.tolist() == [[True, False, False], [False, False, False]]
+
+
+def test_a_part_with_no_cell_leaves_the_layer_blank():
+    assert not values_table.layer_in_part(None, (1, 2, 2), 0).any()

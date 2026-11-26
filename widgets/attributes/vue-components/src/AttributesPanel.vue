@@ -469,7 +469,8 @@ export default {
     },
     loadMap(k) {
       this.mapEditing = null;
-      this.$emit("load-map", { k: Math.max(0, Number(k) || 0) });
+      // the part read on goes with it: the Map shows its cells alone
+      this.$emit("load-map", { k: Math.max(0, Number(k) || 0), part: this.part || (this.values && this.values.part) || "" });
     },
     cellStyle(r, i) {
       const c = this.layerMap.colors && this.layerMap.colors[r] && this.layerMap.colors[r][i];
@@ -593,6 +594,7 @@ export default {
       this.part = value || "";
       this.only = false;
       this.resetFilters();
+      if (this.shown === "map") this.loadMap((this.layerMap && this.layerMap.k) || 0);
     },
     // a bound left at the column's range is no bound (a NaN row stays)
     setBound(i, which, v) {

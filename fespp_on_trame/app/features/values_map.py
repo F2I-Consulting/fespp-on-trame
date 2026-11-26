@@ -54,8 +54,10 @@ def register(core, *, _rep_path_of, _node_blocks):
             lut.RescaleTransferFunction(*ranges.widen_for_bar(float(finite.min()), float(finite.max())))
         return lut
 
-    def _layer(vid, k):
-        """The map of layer `k` of the active node's grid in `vid`."""
+    def _layer(vid, k, part=None):
+        """The map of layer `k` of the active node's grid in `vid`; `part`
+        the part of it the Values view reads on ("" the whole grid; None:
+        the one its page says)."""
         import numpy as np
         from vtkmodules.util.numpy_support import numpy_to_vtk, vtk_to_numpy
         path = core.activation.values_path(vid)
@@ -86,6 +88,15 @@ def register(core, *, _rep_path_of, _node_blocks):
         if vals.ndim > 1:
             vals = np.linalg.norm(vals, axis=1)
         layer = vals.reshape(nk, nj, ni)[k]
+        # read on a part (an extract, a subrepresentation): its cells alone, the others blank
+        if part is None:
+            part = ((getattr(state, "ui_node_values_by_view", None) or {}).get(vid) or {}).get("part")
+        part = str(part or "")
+        keep = None
+        if part:
+            from fespp_on_trame.engine import stats_supports, values_table
+            m = stats_supports.cell_map(source_registry, part, rep_path, tree)
+            keep = values_table.layer_in_part(m[0] if m is not None else None, (nk, nj, ni), k)
         lut = None if scene is None else (scene.scoped_lut(name) if name == painting
                                           else _table(scene, rep_path, path, name, vals))
         colors = None
@@ -93,8 +104,10 @@ def register(core, *, _rep_path_of, _node_blocks):
             flat = numpy_to_vtk(np.ascontiguousarray(layer.ravel()), deep=1)
             mapped = lut.GetClientSideObject().MapScalars(flat, 0, -1)
             rgba = vtk_to_numpy(mapped).reshape(nj, ni, -1)
-            colors = [[_hex(rgba[j, i]) for i in range(ni)] for j in range(nj - 1, -1, -1)]
-        rows = [[None if not np.isfinite(v) else round(float(v), 4) for v in layer[j]] for j in range(nj - 1, -1, -1)]
+            colors = [[None if keep is not None and not keep[j, i] else _hex(rgba[j, i]) for i in range(ni)]
+                      for j in range(nj - 1, -1, -1)]
+        rows = [[None if (keep is not None and not keep[j, i]) or not np.isfinite(v) else round(float(v), 4)
+                 for i, v in enumerate(layer[j])] for j in range(nj - 1, -1, -1)]
         return {"array": (entry.label if entry is not None and name == painting else "") or name,
                 "k": k, "nk": nk, "ni": ni, "nj": nj, "rows": rows, "colors": colors,
                 "editable": _model_grid(rep_path) and name in _velocity_titles()}
@@ -107,7 +120,7 @@ def register(core, *, _rep_path_of, _node_blocks):
     def node_values_map(req, view_id):
         vid = str(view_id or "")
         try:
-            _out(vid, _layer(vid, int((req or {}).get("k") or 0)))
+            _out(vid, _layer(vid, int((req or {}).get("k") or 0), (req or {}).get("part")))
         except Exception as exc:
             print(f"[fespp] values map error ({vid}):", exc, flush=True)
             _out(vid, {"error": f"Map unavailable: {exc}"})

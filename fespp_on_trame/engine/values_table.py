@@ -58,6 +58,18 @@ def nan_read(cols, fcol, conds=None):
     return sorted(c for c in read if cols[c].dtype.kind == "f")
 
 
+def layer_in_part(ids, shape, k):
+    """(nj, ni) booleans: the cells of layer `k` of a grid shaped `shape`
+    (nk, nj, ni) that a part holds — an extract, a subrepresentation —,
+    `ids` the grid cell each of its cells lies in (-1: none)."""
+    import numpy as np
+    nk, nj, ni = shape
+    inside = np.zeros(nk * nj * ni, dtype=bool)
+    ids = np.asarray(ids if ids is not None else (), dtype=np.int64)
+    inside[ids[(ids >= 0) & (ids < inside.size)]] = True
+    return inside.reshape(nk, nj, ni)[k]
+
+
 def unit_labels(columns, units, labelled=()):
     """{column: "column (unit)"} for the columns of values (a property, a
     log) whose unit of measure is known (`units` {column: uom}); the

@@ -88,6 +88,16 @@ try {
     return { label: b.innerText.trim(), w: Math.round(r.width), h: Math.round(r.height), top: top ? (top.className || top.tagName) : null, inside: !!top && b.contains(top) };
   }));
   log('over the buttons', JSON.stringify(out.over));
+  // the 3D view's right-click: one "Show … in tree" per object under the pointer
+  const img3d = page.locator('.dv-vue-part').filter({ has: page.locator('img') }).first().locator('img').first();
+  const ib = await img3d.boundingBox();
+  await page.mouse.click(ib.x + ib.width / 2, ib.y + ib.height / 2, { button: 'right' });
+  await page.waitForTimeout(2500);
+  out.menu_show = (await page.locator('.fp-menu-item').allInnerTexts()).map((t) => t.trim()).filter((t) => /in tree/.test(t));
+  log('3D menu:', JSON.stringify(out.menu_show));
+  await page.screenshot({ path: 'out/values_keep_menu.png' });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
   // Keep, with the mouse
   const keep = values.locator('.fap-hl', { hasText: /^Keep$/ }).first();
   if (await keep.count()) {
@@ -95,6 +105,10 @@ try {
     await page.waitForTimeout(4000);
     out.rows_after_keep = await tree.locator('.tn-title', { hasText: /^Kept #/ }).count();
     log('after Keep: Kept rows in the tree', out.rows_after_keep);
+    // the geometry the extract stands in for: its eye drawn closed (slashed)
+    const geoRow = tree.locator('.tn-row').filter({ has: page.locator('.tn-title', { hasText: /^geometry$/ }) }).first();
+    out.geometry_eye_slashed = await geoRow.evaluate((row) => !!row.querySelector('path[d^="M4.5 20.5"]')).catch(() => null);
+    log('the geometry eye slashed:', out.geometry_eye_slashed);
   }
   const clear = values.locator('.fap-hl', { hasText: /Clear/ }).first();
   if (await clear.count()) {
@@ -115,6 +129,22 @@ try {
       await part.selectOption({ index: ex });
       await page.waitForTimeout(3000);
       await values.locator('tbody tr').nth(0).click();
+      await page.waitForTimeout(2500);
+      out.part_in_page = ((await state('ui_node_values_by_view')) || {}).view_1?.part ?? null;
+      out.part_in_select = await part.inputValue().catch(() => null);
+      log('read on: page part', JSON.stringify(out.part_in_page), 'select', JSON.stringify(out.part_in_select));
+      // the Map read on the extract: its cells alone hold a value
+      await values.locator('.fap-assoc button, .fap-assoc .fp-seg-btn', { hasText: /^Map$/ }).first().click().catch(() => {});
+      await page.waitForTimeout(4000);
+      out.map_cells = await values.locator('.fap-mapc').count();
+      out.map_valued = await values.locator('.fap-mapc').evaluateAll((tds) => tds.filter((td) => td.innerText.trim() !== '').length);
+      log('Map on the extract:', out.map_valued, 'cells with a value of', out.map_cells);
+      const mp = ((await state('ui_node_map_by_view')) || {}).view_1 || {};
+      out.map_state = { k: mp.k, ni: mp.ni, nj: mp.nj, error: mp.error || null,
+                        valued: (mp.rows || []).flat().filter((v) => v !== null).length };
+      log('map state', JSON.stringify(out.map_state));
+      await page.screenshot({ path: 'out/values_keep_map.png' });
+      await values.locator('.fap-assoc button, .fap-assoc .fp-seg-btn', { hasText: /^Table$/ }).first().click().catch(() => {});
       await page.waitForTimeout(2500);
       out.extract_selected = await values.locator('tbody tr.fap-sel').count();
       out.extract_buttons = await values.locator('.fap-hl').allInnerTexts();
