@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-session"
+version = "0.1.0"
+description = "Decoupled Trame widget: save the application state to a .fespp.json file and open one to restore it (custom Vue)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_session/**/*.py",
+    "/trame_fespp_session/**/*.js",
+    "/trame_fespp_session/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_session"]
+artifacts = [
+    "trame_fespp_session/module/serve/*.js",
+    "trame_fespp_session/module/serve/*.css",
+]

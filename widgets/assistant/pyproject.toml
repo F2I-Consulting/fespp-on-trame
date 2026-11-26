@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-assistant"
+version = "0.1.0"
+description = "Decoupled Trame widget: a chat panel that turns a French or English sentence into one command of the host application (custom Vue)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_assistant/**/*.py",
+    "/trame_fespp_assistant/**/*.js",
+    "/trame_fespp_assistant/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_assistant"]
+artifacts = [
+    "trame_fespp_assistant/module/serve/*.js",
+    "trame_fespp_assistant/module/serve/*.css",
+]

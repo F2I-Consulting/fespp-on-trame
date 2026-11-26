@@ -1,0 +1,56 @@
+/* The buttons at the right end of a tab row (FpDockHeader): 24 px each, 4 px
+   either side, on the dark blue of the rows. */
+.fp-dock-actions {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 4px;
+  flex: none;
+}
+
+.fp-dock-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fp-chrome-ic, #8cc8f0);
+  cursor: pointer;
+}
+
+.fp-dock-act:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.fp-dock-act:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.fp-dock-act:focus-visible {
+  outline: 2px solid var(--fp-chrome-ic, #8cc8f0);
+  outline-offset: -2px;
+}
+
+.fp-dock-act-text {
+  font: 400 18px/1 system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.fp-dock-act > svg {
+  pointer-events: none;
+}
+
+/* A view in a background tab is hidden by `visibility: hidden` on its
+   overlay, and dockview shows an active tab's close button by `visibility:
+   visible`: without this, the close buttons of the docks inside that view
+   show through, over the view in front. */
+.dv-render-overlay[style*="visibility: hidden"] .dv-tab .dv-default-tab .dv-default-tab-action,
+.dv-render-overlay[style*="visibility:hidden"] .dv-tab .dv-default-tab .dv-default-tab-action {
+  visibility: hidden;
+}

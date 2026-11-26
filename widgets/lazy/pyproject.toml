@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-lazy"
+version = "0.1.0"
+description = "Decoupled Trame widget: the widget bundles the page loads on demand, at the first opening of their view"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_lazy/**/*.py",
+    "/trame_fespp_lazy/**/*.js",
+    "/trame_fespp_lazy/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_lazy"]
+artifacts = [
+    "trame_fespp_lazy/module/serve/*.js",
+    "trame_fespp_lazy/module/serve/*.css",
+]

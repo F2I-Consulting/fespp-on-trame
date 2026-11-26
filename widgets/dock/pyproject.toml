@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-dock"
+version = "0.1.0"
+description = "The application's dock (views, then a view's cards), from trame-dockview 1.4.0 on dockview-core 4.4.0"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_dock/**/*.py",
+    "/trame_fespp_dock/**/*.js",
+    "/trame_fespp_dock/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_dock"]
+artifacts = [
+    "trame_fespp_dock/module/serve/*.js",
+    "trame_fespp_dock/module/serve/*.css",
+]

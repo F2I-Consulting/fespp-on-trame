@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-embed"
+version = "0.1.0"
+description = "Decoupled Trame widget: what a page that embeds FesTrame says to it, and hears back (postMessage)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_embed/**/*.py",
+    "/trame_fespp_embed/**/*.js",
+    "/trame_fespp_embed/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_embed"]
+artifacts = [
+    "trame_fespp_embed/module/serve/*.js",
+    "trame_fespp_embed/module/serve/*.css",
+]
