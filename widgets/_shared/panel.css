@@ -1,10 +1,9 @@
 /*
  * The one look every panel of this application wears.
  *
- * The values below are those the file-health, reconcile and volumetrics panels
- * had already settled on. A widget imports the file from a PLAIN (unscoped)
- * style block — a scoped block would rewrite `:root` into a selector that
- * matches nothing and the custom properties would be lost:
+ * A widget imports the file from a PLAIN (unscoped) style block — a scoped
+ * block would rewrite `:root` into a selector that matches nothing and the
+ * custom properties would be lost:
  *
  *   <style>@import "../../../_shared/panel.css";</style>
  *   <style scoped> .fxx-thing { color: var(--fp-accent); } </style>
@@ -12,11 +11,14 @@
  * The palette lives next door in tokens.css, imported here: a widget that
  * needs the colours and none of the classes imports THAT one instead.
  *
- * vite inlines the imports into each widget's own style.css, so a bundle still
+ * vite inlines the imports into each widget's own style.css, so a bundle
  * stands alone. Class names are prefixed `fp-` and are global on purpose: they
  * are the shared vocabulary. A widget keeps its own prefixed class beside the
  * shared one whenever it needs a local tweak — or when a browser test holds the
  * element by that name.
+ *
+ * The "Charter Rn" references below are the UI rules listed in
+ * doc/wiki/UI-Drawer-Toolbar-Shared.md, section "The charter".
  */
 
 @import "./tokens.css";
@@ -84,11 +86,24 @@
   margin-left: auto;
 }
 
+/* a panel at work: its bar stays, what it shows is greyed and held still */
+.fp-panel[data-fp-dim] > :not(.fp-bar):not(.fp-progress) {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* what reads the panel's content (a legend), in the middle of the bar */
+.fp-center {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
 /* Where the class WRAPS the group instead of sitting on its first control —
    the shape <fp-panel> renders — it lays that group out with the bar's own
-   rhythm; the three panels that write their right group by hand already do
-   exactly this. A `.fp-right` that is itself a control has no element child
-   and is left alone. */
+   rhythm. A `.fp-right` that is itself a control has no element child and is
+   left alone. */
 .fp-right:has(> *) {
   display: flex;
   align-items: center;
@@ -101,15 +116,17 @@
   min-height: 0;
 }
 
-/* R9. An action that can run past a second says so where it happens: a 2 px
-   indeterminate bar under the header row, with the previous content kept
-   underneath — a table emptied while it recomputes tells the reader its
-   figures are gone. */
+/* Charter R9: an action that can run past a second says so where it happens,
+   with the kit's bar — a view's along its top edge (app/views/widgets/view_wait),
+   a card's or a row's FpProgress — and the previous content kept, greyed and
+   held still: a table emptied while it recomputes tells the reader its figures
+   are gone, a view left free does not answer and does not say why. */
 .fp-busy {
   flex: 0 0 auto;
-  height: 2px;
+  height: 3px;
+  border-radius: 2px;
   overflow: hidden;
-  background: var(--fp-accent-soft);
+  background: var(--fp-ic-f2i);
 }
 
 .fp-busy::after {
@@ -126,12 +143,74 @@
   to { transform: translateX(300%); }
 }
 
+/* a wait whose length is known fills instead of running */
+.fp-busy[data-fill]::after {
+  width: var(--fp-fill, 0%);
+  animation: none;
+  transition: width 0.3s linear;
+}
+
+.fp-busy[data-done]::after {
+  background: var(--fp-ok-ink);
+}
+
+/* a button on the dock's tab row */
+.fp-chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.fp-chrome-btn:hover { background: rgba(255, 255, 255, 0.16); }
+
+/* over the colour bar a 3D view draws, its labels and its title: a click there */
+.fp-bar-hit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 110px;
+  z-index: 4;
+  cursor: pointer;
+}
+
+/* What a wait holds: greyed, its previous content in sight, nothing reaches it */
+.fp-wait-scrim {
+  background: rgba(70, 80, 90, 0.3);
+  cursor: wait;
+}
+
+/* THE wait: what is waited for, the bar, what can be done about it */
+.fp-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fp-size-small);
+  color: var(--fp-ink-soft);
+}
+
+.fp-progress > .fp-busy {
+  flex: 1 1 40px;
+  min-width: 40px;
+}
+
+.fp-progress-label {
+  min-width: 0;
+}
+
 /* Movement is the only thing this bar says; where it is unwelcome the bar
    still says it, in full accent. */
 @media (prefers-reduced-motion: reduce) {
   .fp-busy::after {
     width: 100%;
     animation: none;
+  }
+
+  .fp-busy[data-fill]::after {
+    transition: none;
   }
 }
 
@@ -141,10 +220,10 @@
   padding: 16px;
 }
 
-/* A band, full width, UNDER the bar — never inside the row of controls,
-   which a growing note pushes about. It stays until its cause is gone or
-   the reader closes it: a note that evaporates on the next refresh is a
-   silence one gesture later. */
+/* Charter R10: a band, full width, UNDER the bar — never inside the row of
+   controls, which a growing note pushes about. It stays until its cause is
+   gone or the reader closes it: a note that evaporates on the next refresh
+   is a silence one gesture later. */
 .fp-note {
   display: flex;
   align-items: baseline;
@@ -179,7 +258,8 @@
   font-weight: 600;
 }
 
-/* Inert, not invisible: #bbb on white is 1.9:1 and the word disappears. */
+/* Inert, not invisible: #bbb on white is 1.9:1 and the word disappears;
+   #8a8a8a keeps it legible. */
 .fp-btn:disabled {
   color: #8a8a8a;
   border-color: var(--fp-line);
@@ -221,6 +301,8 @@
 }
 
 .fp-segbtn {
+  /* a choice's words on one line: wrapped, a button reads as two */
+  white-space: nowrap;
   border: 1px solid var(--fp-btn-line);
   background: var(--fp-bg);
   color: var(--fp-ink-soft);
@@ -258,6 +340,46 @@
   min-width: 0;
 }
 
+/* A list says it is one: its own chevron, whatever a page reset does to the
+   native arrow. */
+.fp-sel {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath d='M0 0h8L4 5z' fill='%23555'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 8px 5px;
+  cursor: pointer;
+}
+
+.fp-sel:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* an option whose result is already there (a Pre-fill read): its tick and
+   its words in green */
+.fp-sel option.fp-opt-done {
+  color: var(--fp-ok-ink);
+}
+
+/* the words of the one option there is to take, where a list would stand */
+.fp-sel-one {
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* The options of a histogram (<fp-hist-options>): each control stands in the
+   host's bar, wrapping with it. */
+.fp-hist-options {
+  display: contents;
+}
+
 /* --- chips ----------------------------------------------------------------- */
 
 .fp-chip {
@@ -273,7 +395,7 @@
   max-width: 100%;
 }
 
-/* A chip ellipses, and its whole text stays reachable in the `title` (R12).
+/* A chip ellipses, and its whole text stays reachable in the `title` (charter R12).
    An inline-flex box cannot ellipse its own anonymous text, so the words are
    a child of it. */
 .fp-chip-text {
@@ -297,7 +419,7 @@
   color: var(--fp-error-ink);
 }
 
-/* The smaller badge used to count or qualify a row. */
+/* The smaller badge that counts or qualifies a row. */
 .fp-chip-sm {
   border-radius: 8px;
   padding: 0 5px;
@@ -386,13 +508,12 @@
 /* --- the confirmation dialog ------------------------------------------------ */
 
 /*
- * ONE gesture whose cost is larger than what that gesture shows (ticking a
- * folder that stands for thirty unread properties) asks before acting, and
- * acts on nothing until the answer. The shape is the import dialog's, which
- * was the only modal of the application, promoted here so the second one
- * looks like the first: a scrim over everything, a 420 px card, the panel
- * title, and two buttons — stepping back first and focused, going on
- * accented. `Esc` and a click on the scrim step back.
+ * Charter R7: ONE gesture whose cost is larger than what that gesture shows
+ * (ticking a folder that stands for thirty unread properties) asks before
+ * acting, and acts on nothing until the answer. Every modal of the
+ * application wears this one shape: a scrim over everything, a 420 px card,
+ * the panel title, and two buttons — stepping back first and focused, going
+ * on accented. `Esc` and a click on the scrim step back.
  *
  * Teleport the scrim to `body`: a dockview panel clips and stacks its own
  * content, so a dialog rendered in place would be cut off by the panel edge.
@@ -445,4 +566,306 @@
   gap: 8px;
   padding: 8px 12px;
   border-top: 1px solid var(--fp-line);
+}
+
+/* ---- the one right-click menu: <fp-menu> --------------------------------
+ *
+ * A first line naming what it acts on, the entries, a separator where the
+ * host asks for one, a red entry for what removes something, and a disabled
+ * entry that keeps its tooltip (the reason, R16). Over the viewport, or with
+ * `inside` over the nearest positioned ancestor (a 3D view); it scrolls
+ * rather than run out of that frame.
+ */
+.fp-menu-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.fp-menu-root.fp-menu-inside {
+  position: absolute;
+}
+
+.fp-menu {
+  position: absolute;
+  max-height: 70vh;
+  overflow-y: auto;
+  min-width: 180px;
+  max-width: 360px;
+  max-height: 60%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 4px 0;
+  background: var(--fp-bg);
+  border: 1px solid var(--fp-btn-line);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  font-family: var(--fp-font);
+  font-size: var(--fp-size);
+}
+
+.fp-menu-title {
+  padding: 3px 12px 5px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--fp-line-soft);
+  color: var(--fp-accent);
+  font-size: var(--fp-size-small);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-menu-item {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--fp-ink);
+  font: inherit;
+  line-height: 1.3;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* an entry with an icon: the drawing in a column of its own, the words
+   aligned whether an entry has one or not */
+.fp-menu-iconed .fp-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fp-menu-ic {
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--fp-accent);
+}
+
+.fp-menu-item[aria-disabled="true"] .fp-menu-ic {
+  color: inherit;
+}
+
+.fp-menu-item:hover,
+.fp-menu-item:focus-visible {
+  background: var(--fp-accent-soft);
+  outline: none;
+}
+
+.fp-menu-item.fp-menu-danger {
+  color: var(--fp-error-ink);
+}
+
+.fp-menu-item.fp-menu-danger:hover {
+  background: var(--fp-error-bg);
+}
+
+.fp-menu-item[aria-disabled="true"] {
+  color: var(--fp-ink-faint);
+  white-space: normal;
+  cursor: default;
+}
+
+.fp-menu-item[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.fp-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--fp-line-soft);
+}
+
+/* ---- the one transport: <fp-transport> -----------------------------------
+ *
+ * first / previous / play or stop / next / last, the speed, what the host
+ * adds (a label, an index picker), the position "n / count"; the slider
+ * under the row (`slider="below"`) or in it before the count ("inline").
+ */
+.fp-transport {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fp-transport-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fp-transport-speed {
+  flex: 0 0 auto;
+  width: 62px;
+}
+
+.fp-transport-slider {
+  width: 100%;
+  min-width: 60px;
+  margin: 0;
+}
+
+.fp-transport-row .fp-transport-slider {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.fp-transport-count {
+  flex: 0 0 auto;
+  color: var(--fp-ink-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- the one double slider: <fp-range> ----------------------------------
+ *
+ * One track, two thumbs, the kept span filled; with `ticks`, one labelled
+ * tick per category under the track, lit inside the kept span.
+ */
+.fp-range {
+  position: relative;
+  min-width: 40px;
+  height: 18px;
+}
+
+.fp-range.fp-range-ticked {
+  height: 34px;
+}
+
+.fp-range-track {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 7px;
+  height: 4px;
+  background: #d5dbe3;
+  border-radius: 2px;
+}
+
+.fp-range-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--fp-accent);
+  border-radius: 2px;
+}
+
+.fp-range input[type="range"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* one thumb: nothing under the track to let through, a click on it counts */
+.fp-range-single input[type="range"] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.fp-range input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 18px;
+}
+
+.fp-range input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.fp-range input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: var(--fp-accent);
+  border: 1px solid #fff;
+  cursor: pointer;
+}
+
+.fp-range input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fp-accent);
+  border: 1px solid #fff;
+  cursor: pointer;
+}
+
+/* the kept span as a handle: the whole range slides (FpRange `band`) */
+.fp-range-band {
+  position: absolute;
+  top: 3px;
+  height: 12px;
+  z-index: 4;
+  cursor: grab;
+  border-radius: 6px;
+  touch-action: none;
+}
+
+.fp-range-band:hover {
+  background: rgba(0, 67, 109, 0.12);
+}
+
+.fp-range-band:active {
+  cursor: grabbing;
+}
+
+.fp-range-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 14px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.fp-range-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.fp-range-tick i {
+  display: block;
+  width: 1px;
+  height: 5px;
+  background: #9aa;
+}
+
+.fp-range-tick b {
+  font-weight: 500;
+  font-size: 9px;
+  color: #888;
+  white-space: nowrap;
+}
+
+.fp-range-tick.fp-range-kept i {
+  background: var(--fp-accent);
+}
+
+.fp-range-tick.fp-range-kept b {
+  color: var(--fp-accent);
+  font-weight: 600;
 }

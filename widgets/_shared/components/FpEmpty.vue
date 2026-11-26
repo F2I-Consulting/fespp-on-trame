@@ -12,11 +12,12 @@
 /*
  * What a panel would show, and the gesture that fills it.
  *
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
  * R8 — `shows` and `gesture` are BOTH required, in that order, so a mute
  *      empty state cannot be written; `why` comes third when the gesture
- *      cannot be made. The eight private classes (`fap-empty`, `fcm-empty`,
- *      `fsl-empty`, `ftr-empty`, `fth-empty`, `fst-empty`, `st-empty`,
- *      `fxv-empty`) go with it.
+ *      cannot be made. The eslint gate refuses a private class ending in
+ *      `-empty` in a widget, so every empty state goes through here.
  * R8 — the gesture must EXIST on screen: a control named in it is quoted
  *      with its exact words, and the browser harness reads the quoted words
  *      back off `data-fp-gesture` and looks for them in the same panel.

@@ -1,5 +1,10 @@
 <template>
-  <label v-if="label" class="fp-lab" :title="tooltip">
+  <label v-if="label && alone" class="fp-lab" :title="tooltip">
+    <span>{{ label }}</span>
+    <span class="fp-sel-one" v-bind="$attrs">{{ alone.label }}</span>
+  </label>
+  <span v-else-if="alone" class="fp-sel-one" :title="tooltip" v-bind="$attrs">{{ alone.label }}</span>
+  <label v-else-if="label" class="fp-lab" :title="tooltip">
     <span>{{ label }}</span>
     <select
       class="fp-sel"
@@ -15,7 +20,8 @@
         :value="o.value"
         :title="o.title"
         :disabled="o.disabled"
-      >{{ o.label }}</option>
+        :class="{ 'fp-opt-done': o.done }"
+      >{{ o.done ? "✓ " + o.label : o.label }}</option>
     </select>
   </label>
   <select
@@ -33,7 +39,8 @@
       :value="o.value"
       :title="o.title"
       :disabled="o.disabled"
-    >{{ o.label }}</option>
+      :class="{ 'fp-opt-done': o.done }"
+    >{{ o.done ? "✓ " + o.label : o.label }}</option>
   </select>
 </template>
 
@@ -41,8 +48,9 @@
 /*
  * The one field that picks one value out of a list.
  *
- * R18 - one shared field: 44 hand-written selects in five paddings become
- *       this one, and the eslint gate refuses a <select> in a widget.
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
+ * R18 - one shared field: the eslint gate refuses a raw <select> in a widget.
  * R1  - a control that sits in a bar is NAMED: `title` is required, and
  *       `label` writes the word in front of the field inside an `fp-lab`.
  * R11-style - a disabled control says WHY: `disabledWhy` is required as soon
@@ -50,13 +58,12 @@
  *       disabled too, and it is not mute either: its own `title` says why it
  *       cannot be chosen.
  *
- * ONE option shape for this component and for <fp-seg>: {value, label,
- * title?} - `label` is the word drawn, `title` the tooltip, defaulting to the
- * label. The two used to disagree (label drawn here, title drawn there), and
- * they sit side by side in the same sub-bar: an option array copied from one
- * to the other rendered a dropdown of blank rows and said nothing. The
- * validator now refuses that shape, and a label that is missing all the same
- * (a production build strips validators) draws the accusation in the row.
+ * ONE option shape for this component and for <fp-seg> (see options.js):
+ * {value, label, title?, done?} - `label` is the word drawn, `title` the
+ * tooltip, defaulting to the label, `done` an option whose result is already
+ * there (a Pre-fill read), drawn with a green tick and still taken again. The validator refuses any other shape, and a
+ * label that is missing all the same (a production build strips validators)
+ * draws the accusation in the row.
  *
  * The field is written twice on purpose: with a word in front it is a
  * `<label class="fp-lab">` the reader can click, without one it is the bare
@@ -65,6 +72,11 @@
  * `v-model` on the native select, also on purpose: Vue keeps the option's
  * real value on the element, so a Number option comes back a Number and not
  * the string the DOM would otherwise hand over.
+ *
+ * A list always shows its chevron (panel.css). With nothing to choose - one
+ * option a reader can take and it is already the value - the field is the
+ * option's words, no list: a greyed option still says why it cannot be
+ * taken, so a list holding one keeps its chevron.
  */
 import { optionsAreWritten } from "./options.js";
 
@@ -101,6 +113,7 @@ export default {
         label: o.label || NO_WORDS,
         title: o.title || o.label || NO_WORDS,
         disabled: !!o.disabled,
+        done: !!o.done,
       })));
     },
     inner: {
@@ -111,6 +124,13 @@ export default {
       set(v) {
         this.$emit("update:modelValue", v === "" ? null : v);
       },
+    },
+    alone() {
+      const opts = this.allOptions;
+      const open = opts.filter((o) => !o.disabled);
+      const shut = opts.filter((o) => o.disabled && !(this.placeholder && o.value === ""));
+      return open.length === 1 && !shut.length && String(open[0].value) === String(this.inner)
+        ? open[0] : null;
     },
     written() {
       return optionsAreWritten(this.options);

@@ -76,13 +76,3 @@ export async function handOver(text, filename, type, failHint = "select the tabl
     return "Export failed — " + failHint;
   }
 }
-
-/*
- * The same function, reachable from a panel written in Python (the
- * statistics cards): a Vuetify-in-Python click handler is a JS expression in
- * the page and cannot import an ES module, and the alternative is a second
- * copy of the clipboard / download rule that would drift from this one. The
- * side effect runs as soon as any widget bundle imports this file, which
- * every enabled table widget does.
- */
-if (typeof window !== "undefined") window.fpHandOver = handOver;

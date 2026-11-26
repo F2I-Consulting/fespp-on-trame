@@ -29,7 +29,9 @@
     // the locale bug, banned at the source
     "vue/no-restricted-static-attribute": ["error",
       { "element": "input", "key": "type", "value": "number",
-        "message": "<input type=number> is written AND read in the browser's locale (\"0,25\" in French) - <fp-num>." }],
+        "message": "<input type=number> is written AND read in the browser's locale (\"0,25\" in French) - <fp-num>." },
+      { "element": "input", "key": "type", "value": "range",
+        "message": "A widget does not draw its own slider - <fp-range>, `single` for one value." }],
 
     // R18 is about the SHAPE, not two tag names: a `<div class="fp-btn"
     // @click>` is a button with no required tooltip, an eighth private
@@ -46,9 +48,16 @@
       { "selector": "VAttribute[key.name='class'] > VLiteral[value=/(^| )f[a-z]{2,5}-(btn|header|head|bar|chip)( |$)/]",
         "message": "R18: a private copy of a shared class. The button is <fp-btn>, the header is <fp-panel>, the chip is <fp-chip>; a MODIFIER on one of them is named for what it changes (`fhl-zero`), not for the control it re-implements." },
       { "selector": "VElement[rawName='input'] > VStartTag > VAttribute[directive=true][key.argument.name='type']",
-        "message": "An input type written as a binding is the same locale bug with a colon: :type=\"numType\" reaches type=number - <fp-num>." }],
+        "message": "An input type written as a binding is the same locale bug with a colon: :type=\"numType\" reaches type=number - <fp-num>." },
+      { "selector": "VAttribute[key.name='class'] > VLiteral[value=/(^| )f[a-z]{2,5}-(ctxmenu|ctx-title|menu-title)( |$)/]",
+        "message": "R16: a right-click menu is <fp-menu :at :title :items>. Written by hand it closes on nothing but a click, runs off the edge of the screen and can leave a disabled entry mute." },
+      { "selector": "VAttribute[key.name='class'] > VLiteral[value=/(^| )f[a-z]{2,5}-(track|fill|busy-track|busy-run)( |$)/]",
+        "message": "A double slider is <fp-range>, an activity bar is the kit's `fp-busy`: a private track, fill or running bar is a copy that drifts (five bars of five heights, two sliders whose thumbs got stuck differently)." },
+      { "selector": "VExpressionContainer MemberExpression[property.name='cumulative']",
+        "message": "A histogram's options are <fp-hist-options>, `compact` in a bar that shares its width: a form written by hand is a second list of words that drifts from the first." }],
     "vue/no-restricted-class": ["error", "/-empty$/",
-      "fp-btn", "/^f[a-z]{2,5}-(btn|header|head|bar|chip)$/"],
+      "fp-btn", "/^f[a-z]{2,5}-(btn|header|head|bar|chip)$/",
+      "/^f[a-z]{2,5}-(ctxmenu|ctx-title|menu-title)$/"],
 
     // closes the loop: <fp-btn> written but never imported is caught here,
     // and again at runtime by the harness's unresolved-tag check. The
@@ -65,6 +74,7 @@
       "files": ["_shared/components/*.vue"],
       "rules": {
         "vue/no-restricted-html-elements": "off",
+        "vue/no-restricted-static-attribute": "off",
         "vue/no-restricted-syntax": "off",
         "vue/no-restricted-class": "off"
       }
@@ -75,8 +85,7 @@
       "files": [
         "view-card/vue-components/src/*.vue",   // the card FRAME chrome: the × and the dock tools, opacity .8
         "view-tools/vue-components/src/*.vue",  // a 30 px <v-icon> rail
-        "title3dview/vue-components/src/*.vue", // the TITLE BAR's own strip: chrome of the tab row, white ink on the F2I blue, no ground of its own
-        "navigation/vue-components/src/ViewContextMenu.vue"  // a right-click menu row
+        "title3dview/vue-components/src/*.vue"  // the TITLE BAR's own strip: chrome of the tab row, white ink on the F2I blue, no ground of its own
       ],
       "rules": { "vue/no-restricted-html-elements": "off" }
     },

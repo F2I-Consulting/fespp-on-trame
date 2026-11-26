@@ -1,3 +1,9 @@
+"""Trame module of the tree widget: serves the Vue bundle built into ``serve/``.
+
+The served directory name carries the package version: bumping the version
+keeps a browser from answering with a stale bundle from its cache.
+"""
+
 from pathlib import Path
 
 from trame_fespp_tree import __version__

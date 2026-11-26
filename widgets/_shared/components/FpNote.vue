@@ -22,12 +22,14 @@
 /*
  * A band, full width, under the bar.
  *
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
  * R10 — two severities and two only: something was held back (warning), or
- *       an action failed (error, and it names the suite à donner). A
+ *       an action failed (error, and it names the next step, `next`). A
  *       validator REFUSES "info": information goes to `fp-sum` or to a chip
  *       glued to its control, never to a band that pushes the controls about.
  * R10 — the cross is not optional: R10 gives a band the duration "until its
- *       cause disappears OR the user closes it", so every band carries one,
+ *       cause disappears OR the reader closes it", so every band carries one,
  *       and the harness fails a band that has none.
  * R10 — it does NOT evaporate on refresh. The component owns dismissal and
  *       keys it on its own TEXT, so a host never has to clear a note to make
@@ -47,7 +49,7 @@ export default {
       required: true,
       validator: (v) => v === "warning" || v === "error",
     },
-    // required when severity === "error"
+    // the next step, required when severity === "error"
     next: { type: String, default: "" },
   },
   emits: ["close"],

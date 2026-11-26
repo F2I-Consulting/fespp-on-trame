@@ -1,13 +1,13 @@
 """Trame demo for the autonomous DataExplorerTree widget.
 
-The widget takes ONE input — a vtkDataAssembly (serialized to XML) — owns its
-own interaction state, and writes its outputs to trame state variables. The host
+The widget is fed one vtkDataAssembly (serialized to XML), owns its own
+interaction state, and writes its outputs to trame state variables. The host
 just *watches* those variables with ``@state.change`` — no per-event wiring.
 
-The mock data is a real **Drogon** assembly (sample/drogon_assembly.xml): Grid2d
-surfaces, an IjkGrid with ~250 properties, 12 wellbores with trajectories /
-marker frames / log frames, plus Partial stubs — rich enough to exercise the
-tree (tabs, filter, bulk-select, colours) on realistic data.
+The sample data is a real **Drogon** assembly (sample/drogon_assembly.xml):
+Grid2d surfaces, an IjkGrid with ~250 properties, 12 wellbores with
+trajectories / marker frames / log frames, plus Partial stubs — rich enough to
+exercise the tree (tabs, filter, bulk-select, colours) on realistic data.
 
 Run::
 
@@ -32,9 +32,12 @@ SAMPLE = Path(__file__).parent / "sample"
 
 
 def load_assembly():
-    """Drogon (wells / surfaces / IjkGrid + properties + partials) merged with a
-    small MultiRealization / TimeSeries sample injected into the IjkGrid, so one
-    assembly exercises every node kind. Timestep labels live on the root."""
+    """Return the demo assembly as XML, one that exercises every node type.
+
+    Drogon (wells / surfaces / IjkGrid + properties + partials) merged with
+    the MultiRealization / TimeSeries leaves of a small second sample,
+    appended under the IjkGrid. The timestep labels live on the root.
+    """
     drog = ET.parse(SAMPLE / "drogon_assembly.xml").getroot()
     mrts = ET.parse(SAMPLE / "mr_ts_assembly.xml").getroot()
     for k, v in mrts.attrib.items():
@@ -52,12 +55,12 @@ def load_assembly():
 
 ASSEMBLY_XML = load_assembly()
 
-# Tabs are pure kind filters; a matching node brings its whole subtree, so the
+# Tabs filter by node type; a matching node brings its whole subtree, so the
 # IjkGrid pulls its properties and each Wellbore pulls its trajectory/markers/logs.
 TABS = [
-    {"name": "Reservoir", "kinds": ["IjkGrid", "UnstructuredGrid", "Sub"]},
-    {"name": "Surface", "kinds": ["Grid2d", "Grid2dRepresentation", "TriangulatedSet", "PolylineSet", "Polyline", "PointSet"]},
-    {"name": "Well", "kinds": ["Wellbore", "Trajectory", "Frame", "MarkerFrame"]},
+    {"name": "Reservoir", "types": ["IjkGrid", "UnstructuredGrid", "Sub"]},
+    {"name": "Surface", "types": ["Grid2d", "Grid2dRepresentation", "TriangulatedSet", "PolylineSet", "Polyline", "PointSet"]},
+    {"name": "Well", "types": ["Wellbore", "Trajectory", "Frame", "MarkerFrame"]},
 ]
 
 CONTEXT_ACTIONS = [
@@ -75,7 +78,7 @@ state.assembly_xml = ASSEMBLY_XML
 state.tabs_config = TABS
 state.ctx_actions = CONTEXT_ACTIONS
 
-# --- output state (the widget writes these; the host only watches them) -------
+# --- widget state: the outputs it writes, and visible_paths, which the host owns
 state.selected_paths = []
 state.visible_paths = []
 state.active_path = None

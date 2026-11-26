@@ -9,8 +9,8 @@ export default defineConfig({
       entry: "./src/main.js",
       name: "trame_fespp_tree",
       formats: ["umd"],
-      // Force .js (with "type":"module", vite would emit .umd.cjs otherwise,
-      // breaking the python module's script path).
+      // Force .js: with "type":"module", vite would emit .umd.cjs, which the
+      // `scripts` path of the python module (trame_fespp_tree/module) misses.
       fileName: (format) => `trame_fespp_tree.${format}.js`,
     },
     rollupOptions: {

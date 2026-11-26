@@ -59,14 +59,17 @@
  * keypad, the value is written by numfmt.fmtExact — every digit the value
  * has, a point, no grouping: a typed 1250.5 shown back as 1251 would be the
  * field lying about the value in force — and a typed comma is read as the
- * decimal point.
- * Three widgets had each written their own parseFloat/replace pair; four
- * number fields are still wrong today. The eslint gate refuses the type.
+ * decimal point. The eslint gate refuses an <input type="number"> in a
+ * widget, so every number field goes through here.
  *
  * Committed on `change` (blur or Enter), never on every keystroke: clamping a
  * half-typed "1" to a minimum of 10 fights the reader. The clamp, the
  * rounding of an integer field and the refusal of something that is not a
  * number are all VISIBLE — the field snaps back to the value still in force.
+ *
+ * `digits`: at most that many decimals shown (the slicer cards, the PO,
+ * 28/10: two are enough). Its host rounds what it sets to the same digits,
+ * so the field still shows the value in force.
  */
 import { fmtExact, parseNum } from "../numfmt.js";
 import FpBtn from "./FpBtn.vue";
@@ -88,6 +91,7 @@ export default {
     nullable: { type: Boolean, default: false },
     stepper: { type: Boolean, default: false },
     step: { type: Number, default: 1 },
+    digits: { type: Number, default: null },
     placeholder: { type: String, default: "" },
     disabled: { type: Boolean, default: false },
     size: {
@@ -120,7 +124,7 @@ export default {
     },
   },
   watch: {
-    // Number or null: a nullable field means "none", and none is not a Number
+    // a new value in force, from the host or from a commit, rewrites the field
     modelValue: { immediate: true, handler() { this.draft = this.written(); } },
   },
   methods: {
@@ -129,7 +133,11 @@ export default {
     },
     written() {
       return this.modelValue === null || this.modelValue === undefined
-        ? "" : fmtExact(this.modelValue);
+        ? "" : this.shown(this.modelValue);
+    },
+    shown(v) {
+      if (this.digits === null || typeof v !== "number") return fmtExact(v);
+      return fmtExact(Number(v.toFixed(Math.max(0, this.digits))));
     },
     bounded(n) {
       let v = this.integer ? Math.round(n) : n;
@@ -149,7 +157,7 @@ export default {
         return;
       }
       const v = this.bounded(typed);
-      this.draft = fmtExact(v);
+      this.draft = this.shown(v);
       if (v !== this.modelValue) this.$emit("update:modelValue", v);
     },
     bump(direction) {
@@ -157,7 +165,7 @@ export default {
         ? (this.min === null ? 0 : this.min)
         : this.modelValue;
       const v = this.bounded(from + direction * this.step);
-      this.draft = fmtExact(v);
+      this.draft = this.shown(v);
       if (v !== this.modelValue) this.$emit("update:modelValue", v);
     },
   },

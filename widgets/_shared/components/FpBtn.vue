@@ -16,9 +16,10 @@
 /*
  * The one button of the application.
  *
- * R18 — one button vocabulary: seven private copies (`fcalc-btn`, `ftr-btn`,
- * `fcm-btn`, `fxv-btn`, `fth-btn`, `fnav-btn`, `fsl-btn`) stop being
- * writable, because the eslint gate refuses a `<button>` in a widget.
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
+ * R18 — one button vocabulary: the eslint gate refuses a raw `<button>` and
+ *       any private `f…-btn` copy of the shared class in a widget.
  * R15 — Title case: the `label` validator refuses a word starting lower case.
  * R9  — busy: DISABLED while it works, and the LABEL UNCHANGED, so the word
  *       the reader clicked is still the word under the pointer.

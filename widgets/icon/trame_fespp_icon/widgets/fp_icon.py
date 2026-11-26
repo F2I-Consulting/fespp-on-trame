@@ -15,15 +15,18 @@ __all__ = ["FpIcon"]
 
 class FpIcon(HtmlElement):
     """One icon of the application's own set, for the layout the application
-    builds itself — a Vuetify button takes its icon as a PROP, which can
-    only be a name, so a button that must draw an object of the model nests
-    this instead.
+    builds itself.
+
+    A Vuetify button takes its icon as a prop, which can only be a name, so
+    a button that must draw an object of the model nests this element
+    instead.
 
     Props::
 
         icon       "fespp-<name>" | an SVG path      the drawing
         size       int                               px, 20 in a bar
         mono       bool                              one ink, as a bar wants
+        chrome     bool                              the same on a dark title bar
         declared   str                               the colour the data declares
         disabled   bool                              greyed by a filter
         title      str
@@ -35,4 +38,4 @@ class FpIcon(HtmlElement):
 
     def __init__(self, children=None, **kwargs):
         super().__init__("fp-icon", children, **kwargs)
-        self._attr_names += ["icon", "size", "mono", "declared", "disabled", "title"]
+        self._attr_names += ["icon", "size", "mono", "chrome", "declared", "disabled", "title"]

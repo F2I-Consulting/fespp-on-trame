@@ -2,12 +2,14 @@
   <div
     class="fp-panel"
     :data-fp-incomplete="incomplete ? '' : null"
+    :data-fp-dim="busy ? '' : null"
     v-bind="$attrs"
   >
     <div class="fp-bar">
       <span class="fp-title" :title="titleTip || null">{{ name }}</span>
       <fp-chip v-if="target" variant="accent" :title="target" :text="target" />
       <slot name="controls" />
+      <div v-if="$slots.center" class="fp-center"><slot name="center" /></div>
       <div v-if="hasRight" class="fp-right">
         <fp-chip
           v-if="summaryText && summaryDropped"
@@ -21,12 +23,7 @@
         <slot name="tree" />
       </div>
     </div>
-    <div
-      v-if="busy"
-      class="fp-busy"
-      role="progressbar"
-      title="Working — the panel keeps what it was showing until the new figures arrive"
-    ></div>
+    <fp-progress v-if="busy" title="Working — the panel keeps what it was showing until the new figures arrive" />
     <div v-if="$slots.subbar" class="fp-subbar"><slot name="subbar" /></div>
     <fp-note
       v-if="controlsHoldANote()"
@@ -47,19 +44,23 @@
  * summary, the action, the export and the tree button are slots INSIDE the
  * right group, in that order, so a host cannot put its actions before its
  * summary. What a slot cannot refuse is what is handed to it, so the
- * `controls` slot is READ: a note found in the row of controls — the
- * regression that moved Compare's Copy CSV from x=296 to x=1141 — is
- * accused in a band of its own, and the browser sweep fails on any .fp-note
- * inside an .fp-bar, which covers the panels written in Python too.
+ * `controls` slot is READ: a note found in the row of controls, where a
+ * growing band pushes the buttons about, is accused in a band of its own,
+ * and the browser sweep fails on any .fp-note inside an .fp-bar, which
+ * covers the panels written in Python too.
+ *
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
  *
  * R1  — the bar is ALWAYS rendered, never behind a `v-show` on having data,
- *       and its order is title, target, controls, then the right group.
+ *       and its order is title, target, controls, center, then the right group.
  * R2  — one title, the `label` of views_config.VIEW_KINDS, never a control's
  *       word.
  * R3  — the tree button is the LAST slot of the right group, at the far right.
- * R9  — `busy` draws the 2 px indeterminate bar UNDER the bar and adds
- *       "recomputing…" to the summary; the body keeps its content, because
- *       the frame never empties it.
+ * R9  — `busy`, for a panel whose work is not its view's (a view's is the bar
+ *       along its top edge, app/views/widgets/view_wait), draws the kit's
+ *       running bar (FpProgress) UNDER the bar and adds
+ *       "recomputing…" to the summary; the body keeps its content, greyed
+ *       and held still: the frame never empties it.
  * R10 — notes are a full-width band under the bar (and under the sub-bar),
  *       never inside the row of controls.
  * R12 — the target is written ONCE, here, as an accent chip right after the
@@ -67,12 +68,14 @@
  * R14 — the summary is the FIRST element of the right group, and wears the
  *       warning chip only when something was left out.
  *
- * The docked aside is deliberately not here: for Statistics, the well log and
- * Compare the 320 px column is built in Python (views/widgets/docked_tree),
- * and the widget receives only the BUTTON, into the `tree` slot.
+ * The docked aside is deliberately not here: for every panel that carries a
+ * docked tree (Statistics, the well log...) the 320 px column is
+ * built in Python (app/views/widgets/docked_tree.py), and the widget
+ * receives only the BUTTON, into the `tree` slot.
  */
 import FpChip from "./FpChip.vue";
 import FpNote from "./FpNote.vue";
+import FpProgress from "./FpProgress.vue";
 
 /* A note anywhere in what a host handed to the `controls` slot. */
 function holdsANote(nodes) {
@@ -89,7 +92,7 @@ function holdsANote(nodes) {
 export default {
   name: "FpPanel",
   inheritAttrs: false,
-  components: { FpChip, FpNote },
+  components: { FpChip, FpNote, FpProgress },
   props: {
     title: { type: String, required: true },
     titleTip: { type: String, default: "" },

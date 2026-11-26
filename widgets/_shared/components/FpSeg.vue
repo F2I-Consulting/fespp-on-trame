@@ -21,6 +21,8 @@
 /*
  * Two to four exclusive readings of the SAME data.
  *
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
  * R13 — the `options` validator refuses a strip of one (an inert single tab
  *       is a control that promises a choice it does not have) and a strip of
  *       five (that is a list, and it belongs in a select). A production

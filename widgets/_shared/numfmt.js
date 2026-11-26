@@ -14,7 +14,7 @@ export const NBSP = "\u00a0";
 // the power of the unit each descriptive statistic carries (0 = unitless)
 export const STAT_UNIT_POWER = {
   Cardinality: 0, NaN_count: 0,
-  Minimum: 1, Maximum: 1, Mean: 1, "Mean (V)": 1, "Mean (PV)": 1,
+  Minimum: 1, Maximum: 1, Mean: 1, "Mean (V)": 1, "Mean (PV)": 1, "Mean (L)": 1,
   "Standard Deviation": 1, Sum: 1,
   P10: 1, Q1: 1, Median: 1, Q3: 1, P90: 1,
   Variance: 2, M2: 2, M3: 3, M4: 4,
@@ -150,11 +150,23 @@ export function unitPower(uom, power, ascii = false) {
   return "(" + uom + ")" + (ascii ? "^" + power : SUPERSCRIPT[power] || "^" + power);
 }
 
-/* `1 property`, `3 properties` — the twin of numfmt.plural: a sentence
-   reading "1 property(ies)" says the page did not know how many it had. */
+/* `1 property`, `3 properties` — the twin of the server's numfmt.plural: a
+   sentence reading "1 property(ies)" says the page did not know how many it
+   had. */
 export function plural(count, one, many) {
   const n = read(count);
   const k = (typeof n === "number" && Number.isFinite(n)) ? Math.trunc(n) : 0;
   const word = k === 1 ? one : (many === undefined ? one + "s" : many);
   return fmtInt(k) + " " + word;
+}
+
+/* `514 MB`: a size in bytes, in DECIMAL units (powers of 1000), as the OSDU
+   server and the import endpoint write them — one size reads the same in the
+   file list and in the OSDU table of one dialog. "" for what is no number. */
+export function fmtBytes(n) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "";
+  const u = ["B", "kB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
 }

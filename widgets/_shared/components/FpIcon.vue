@@ -10,8 +10,8 @@
       v-for="(part, i) in resolved.parts"
       :key="i"
       :d="part.d"
-      :fill="part.fill ? colour(part.c) : 'none'"
-      :stroke="part.fill ? 'none' : colour(part.c)"
+      :fill="part.fill ? colour(part.c, part.m) : 'none'"
+      :stroke="part.fill ? 'none' : colour(part.c, part.m)"
       :stroke-width="part.fill ? null : 1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
@@ -61,9 +61,12 @@ export default {
     size: { type: [Number, String], default: 15 },
     // the colour the data declares for THIS object, any CSS colour
     declared: { type: String, default: "" },
-    // a TOOLBAR draws it: one ink, like the glyphs beside it (see the note
-    // above the component)
+    // a TOOLBAR draws it: one ink, like the glyphs beside it (see rule 2 in
+    // the header)
     mono: { type: Boolean, default: false },
+    // on the dark chrome (a view's title bar, a card's head): the same two
+    // inks, made for a dark ground
+    chrome: { type: Boolean, default: false },
     disabled: { type: Boolean, default: false },
     title: { type: String, default: "" },
   },
@@ -96,9 +99,19 @@ export default {
     },
   },
   methods: {
-    colour(family) {
+    // A part's colour: its family's, or a literal "#rrggbb" (the steps of the
+    // Colormap's bar, whose colours ARE the drawing). A `mono` toolbar draws
+    // in one ink — its own, the blue of F2I — except the green of F2I and
+    // the literal colours, its second ink, the green also on a part whose
+    // toolbar ink `m` says so; and the grey of what stands back in a
+    // drawing (`mute`), which stays grey whatever the ink.
+    colour(family, monoInk) {
       if (this.declared) return this.declared;
-      if (this.mono) return "currentColor";
+      if (family && family[0] === "#") return family;
+      const green = family === "f2i" || monoInk === "f2i";
+      const mute = family === "mute" ? "var(--fp-ic-mute, #8e9aa3)" : "";
+      if (this.chrome) return green ? "var(--fp-chrome-ic-f2i, #a6d63f)" : mute || "var(--fp-chrome-ic, #8cc8f0)";
+      if (this.mono) return green ? "var(--fp-ic-f2i, #8FC31F)" : mute || "currentColor";
       return family ? `var(--fp-ic-${family})` : "currentColor";
     },
   },

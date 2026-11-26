@@ -31,7 +31,7 @@ With a `layout` prop the toolbar carries a segmented control — **Objects** /
 TreeHierarchyMode). The grouping rows the plugin inserts sit ABOVE a grid's
 container: the block (geometry, properties, SubRep, blocked wellbores) stays
 whole, so the hoist below applies under a Feature row as at the top. No
-`layout` prop, no strip (the Compare tree).
+`layout` prop, no strip (the Statistics tree).
 
 ## A well in the tree
 

@@ -12,14 +12,15 @@
 /*
  * A chip: a short word glued to what it qualifies.
  *
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
  * R10 — a chip is the INFORMATION channel (a count, a unit, a provenance);
  *       a warning or an error is a band, never a chip in the row of controls.
  *       `warn` and `error` stay available because R14 gives the summary a
  *       warning form when something was left out, and the counts of File
  *       health are coloured counts — but they are held to a LENGTH: past
  *       MAX_WARNING characters a warning is a sentence, and an ellipsed
- *       one-line badge for a sentence is the shape R10 names as a defect
- *       (Compare's badge, 200 characters cut to "9 of 412 cells d…").
+ *       one-line badge for a sentence is the shape R10 names as a defect.
  * R12 — the target line: a chip ellipses, so `title` is REQUIRED and carries
  *       the FULL text. A truncated chip with no tooltip hides its own
  *       content. A target NAME is legitimately long and ellipsed, which is

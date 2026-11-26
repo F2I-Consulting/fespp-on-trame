@@ -1,9 +1,10 @@
 /*
  * The palette every panel of this application draws from.
  *
- * Split out of panel.css because a widget may need the colours without a
+ * Kept apart from panel.css because a widget may need the colours without a
  * single `fp-` class of its own: importing the whole sheet for three custom
- * properties ships ~4 KB of rules its markup never matches into its bundle.
+ * properties would ship ~4 KB of rules its markup never matches into its
+ * bundle.
  * `panel.css` imports this file, so a widget that uses the classes gets the
  * tokens with them and never imports both.
  *
@@ -14,7 +15,7 @@
  */
 
 :root {
-  /* F2I charter dark blue, the single accent */
+  /* the F2I brand dark blue, the single accent */
   --fp-accent: #00436d;
   --fp-accent-soft: #e3eef6;
 
@@ -22,11 +23,11 @@
   --fp-ink-soft: #555;
   --fp-ink-mute: #666;
   /* the faintest ink still readable: it carries the sentence that says why a
-     panel is empty, so it stays above the 4.5:1 the charter asks for */
+     panel is empty, so it stays above the 4.5:1 contrast of WCAG AA on white */
   --fp-ink-faint: #6f6f6f;
 
   --fp-bg: #fff;
-  --fp-bar-bg: #f5f5f5;
+  --fp-bar-bg: #fff;
 
   --fp-line: #ddd;
   --fp-line-soft: #eee;
@@ -38,13 +39,14 @@
   --fp-warn-ink: #8a5a00;
   --fp-error-bg: #fde0e0;
   --fp-error-ink: #b00020;
+  --fp-ok-ink: #2e7d32;
   --fp-neutral-bg: #eee;
 
   /* The icon palette (widgets/_shared/icons/fespp-icons.js). A colour names
      the FAMILY of the object, so a tree sorts itself before a word is read.
      They live here rather than in the module because an icon is drawn with
      `var(--fp-ic-<family>)`: without these lines every drawing of the set
-     paints nothing at all. */
+     paints nothing at all. Keep them equal to FESPP_ICON_COLORS.light. */
   --fp-ic-rock: #8a7043;      /* grids, their folders, their subsets */
   --fp-ic-surface: #00897b;   /* horizons, triangulated sets, points, lines */
   --fp-ic-well: #4a6572;      /* the hole: bore, trajectory, casing */
@@ -56,6 +58,13 @@
   --fp-ic-oil: #2e9e5b;       /* the fluids, on the trade's own convention */
   --fp-ic-gas: #d1453a;
   --fp-ic-water: #2d8fd5;
+  --fp-ic-f2i: #8FC31F;       /* the green of the i of F2I: the toolbar's second ink, the wait bar's track */
+  --fp-ic-brand: #00436d;     /* the blue of the F of F2I, the accent */
+  --fp-ic-mute: #8e9aa3;      /* what stands back in a drawing: a tree's branches under its root */
+  /* the same two inks on the dark chrome (a view's title bar, a card's
+     head): the light blue and the green made for a dark ground */
+  --fp-chrome-ic: #8cc8f0;
+  --fp-chrome-ic-f2i: #a6d63f;
 
   --fp-font: system-ui, sans-serif;
   --fp-size: 12px;

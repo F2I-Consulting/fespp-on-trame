@@ -1,17 +1,17 @@
 /*
- * Derive `widgets/_shared/icons/svg/` — one .svg per icon plus a contact
- * sheet — from `widgets/_shared/icons/fespp-icons.js`.
+ * Derive `widgets/_shared/icons/svg/` (one .svg per icon, plus an
+ * index.html contact sheet) from `widgets/_shared/icons/fespp-icons.js`.
  *
  *     node scripts/gen_icon_sheet.mjs            # write the folder
  *     node scripts/gen_icon_sheet.mjs --check    # fail if it is stale
  *
- * ONE WAY ONLY, and the module is the source. A part of an icon carries the
- * NAME of its family (`p("M4 8.5h…", "rock")`), which the renderer turns
- * into `var(--fp-ic-rock)`; a file can only carry the resolved value, and
- * any vector editor rewrites `stroke` to a literal colour — the family name
- * would be lost with nothing visibly broken. So the files are an artefact
- * for looking at, editing in Inkscape, or handing to someone who does not
- * read Vue, and they are gitignored.
+ * One way only: the module is the source. A part of an icon carries the
+ * NAME of its colour family (`p("M4 8.5h…", "rock")`), which the renderer
+ * turns into `var(--fp-ic-rock)`; a file can only carry the resolved value,
+ * and any vector editor rewrites `stroke` to a literal colour, so the
+ * family name would be lost with nothing visibly broken. The files are
+ * therefore an artefact for viewing, for editing in a vector editor, or for
+ * someone who does not read Vue, and they are gitignored.
  *
  * Each file stands on its own: the light palette's hex is the CSS
  * variable's fallback, and the root carries the tree's own `color` so the
@@ -19,8 +19,8 @@
  * application. Both are inert once the icon is inlined in a page that
  * defines the variables.
  *
- * `--check` regenerates in memory and compares; it prints every file that
- * differs and exits 1. Nothing here is silent.
+ * `--check` regenerates in memory and compares: it prints every file that
+ * is missing, differs or is left over, and exits 1 if there is any.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -32,12 +32,14 @@ const DIR = path.join(ROOT, "widgets/_shared/icons/svg");
 const CHECK = process.argv.includes("--check");
 
 // `.tn-icon`'s colour in the tree (TreeNode.vue): what a part with no
-// family resolves to in the application, so a standalone file matches.
+// family resolves to in the application, so that a standalone file matches.
 const NEUTRAL = "#546e7a";
 const BANNER = "GENERATED — edits here are lost on the next run."
   + " The source is ../fespp-icons.js (node scripts/gen_icon_sheet.mjs)";
 
-// the module is an ES module of plain data: run its body, no import
+// the module is plain data with no imports: its body is evaluated with the
+// `export` keywords stripped rather than imported, so no package.json has to
+// declare the widgets folder an ES module for Node
 const body = fs.readFileSync(SRC, "utf8")
   .replace(/export default[\s\S]*$/, "")
   .replace(/^export /gm, "");
@@ -45,7 +47,7 @@ const { FESPP_ICONS: ICONS, FESPP_ICON_COLORS: PAL } =
   new Function(body + "\nreturn { FESPP_ICONS, FESPP_ICON_COLORS };")();
 
 const kebab = (k) => k.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-const colour = (c) => (c ? `var(--fp-ic-${c}, ${PAL.light[c]})` : "currentColor");
+const colour = (c) => (!c ? "currentColor" : c[0] === "#" ? c : `var(--fp-ic-${c}, ${PAL.light[c]})`);
 
 const files = new Map();
 for (const [key, icon] of Object.entries(ICONS)) {

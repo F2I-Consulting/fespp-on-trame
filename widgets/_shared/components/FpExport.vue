@@ -12,6 +12,8 @@
 /*
  * The one export of the application.
  *
+ * Rn = rule n of the UI charter (doc/wiki/UI-Drawer-Toolbar-Shared.md).
+ *
  * R11 — one word, one place, one behaviour: the word follows the data
  *       ("Copy CSV", "Copy XML" — the verb never changes, so the `label`
  *       validator refuses anything not beginning with "Copy "), the place is
@@ -27,8 +29,8 @@
  *
  * `build` returns the text, and is called on the click: each widget keeps
  * its own provenance header and column order (buildCsv/csvMeta). Taking
- * columns and rows instead would be the table shell the contract rejects.
- * Six copies of this block, one per table widget, go away.
+ * columns and rows instead would turn this button into a table shell, which
+ * the shared components deliberately are not.
  *
  * `inheritAttrs: false` with the attributes re-bound onto the button: what a
  * host writes on <fp-export> — a class, a test hook — reaches the control it

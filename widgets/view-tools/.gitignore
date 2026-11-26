@@ -1,15 +1,1 @@
-# Build output (regenerated into the python serve dir)
-trame_fespp_view_tools/module/serve/
-
-# Node
-vue-components/node_modules/
-vue-components/dist/
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
-dist/
-.venv/
-venv/
+# The repository root .gitignore covers this widget; the built bundle (module/serve) is committed, never ignored.
