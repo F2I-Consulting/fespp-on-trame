@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-globe"
+version = "0.1.0"
+description = "Decoupled Trame widget: the Globe card of a 3D view (the Earth switch, the CRS, the imagery)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_globe/**/*.py",
+    "/trame_fespp_globe/**/*.js",
+    "/trame_fespp_globe/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_globe"]
+artifacts = [
+    "trame_fespp_globe/module/serve/*.js",
+    "trame_fespp_globe/module/serve/*.css",
+]

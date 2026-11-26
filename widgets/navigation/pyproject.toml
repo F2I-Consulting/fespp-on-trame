@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-navigation"
+version = "0.2.0"
+description = "Decoupled Trame widget: 3D navigation (pivot, framing, axis presets, projection)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_navigation/**/*.py",
+    "/trame_fespp_navigation/**/*.js",
+    "/trame_fespp_navigation/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_navigation"]
+artifacts = [
+    "trame_fespp_navigation/module/serve/*.js",
+    "trame_fespp_navigation/module/serve/*.css",
+]

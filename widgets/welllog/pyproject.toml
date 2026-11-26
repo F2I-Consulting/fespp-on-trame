@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-welllog"
+version = "0.6.0"
+description = "Trame widget rendering a D3 well-log correlation panel"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_welllog/**/*.py",
+    "/trame_welllog/**/*.js",
+    "/trame_welllog/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_welllog"]
+# The built UMD bundle (and any CSS) lands in the gitignored serve/ dir.
+# Hatchling excludes VCS-ignored files from the wheel unless they are listed
+# here as artifacts, so `include` alone is not enough to ship the bundle.
+artifacts = [
+    "trame_welllog/module/serve/*.js",
+    "trame_welllog/module/serve/*.css",
+]
