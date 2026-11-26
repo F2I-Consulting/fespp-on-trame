@@ -1,7 +1,13 @@
 * text=auto
+# shell scripts, run by bash on Linux (the Docker build stages among them): a
+# CRLF checkout would leave a carriage return at the end of every command
 *.sh text eol=lf
+*.bash text eol=lf
 *.py text eol=lf
 *.js text eol=lf
 *.html text eol=lf
 *.css text eol=lf
 *.md text eol=lf
+# applied by `patch` in the Dockerfile against LF sources: a CRLF checkout
+# would not match a single context line
+*.patch text eol=lf
