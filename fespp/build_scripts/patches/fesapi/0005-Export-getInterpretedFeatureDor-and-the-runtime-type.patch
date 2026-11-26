@@ -1,0 +1,40 @@
+From ff95d5148f5d1a805053bd1cb104c51dc754bfa8 Mon Sep 17 00:00:00 2001
+From: cedricRobert <cedric.robert@f2i-consulting.com>
+Date: Sun, 1 Nov 2026 18:11:23 +0100
+Subject: [PATCH 5/6] Export getInterpretedFeatureDor and the runtime-typed
+ createPartial for Windows DLL clients
+
+---
+ src/common/DataObjectRepository.h           | 2 +-
+ src/resqml2/AbstractFeatureInterpretation.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/DataObjectRepository.h b/src/common/DataObjectRepository.h
+index b4eee3a..6eae584 100644
+--- a/src/common/DataObjectRepository.h
++++ b/src/common/DataObjectRepository.h
+@@ -748,7 +748,7 @@ namespace COMMON_NS
+ 		/**
+ 		* Create a partial object i.e. a data object reference (DOR) based on an UUID + a title + a content type + a version
+ 		*/
+-		COMMON_NS::AbstractObject* createPartial(const std::string & uuid, const std::string & title, const std::string & contentType, const std::string & version = "");
++		DLL_IMPORT_OR_EXPORT COMMON_NS::AbstractObject* createPartial(const std::string & uuid, const std::string & title, const std::string & contentType, const std::string & version = "");
+ 
+ 		/**
+ 		 * Creates a partial object in this repository based on a data object reference.
+diff --git a/src/resqml2/AbstractFeatureInterpretation.h b/src/resqml2/AbstractFeatureInterpretation.h
+index f9d7086..87cbe37 100644
+--- a/src/resqml2/AbstractFeatureInterpretation.h
++++ b/src/resqml2/AbstractFeatureInterpretation.h
+@@ -38,7 +38,7 @@ namespace RESQML2_NS
+ 		 * @returns	Empty data object reference if no interpreted feature is associated to this interpretation.
+ 		 * 			Otherwise return the data objet reference of the associated interpreted feature.
+ 		 */
+-		COMMON_NS::DataObjectReference getInterpretedFeatureDor() const;
++		DLL_IMPORT_OR_EXPORT COMMON_NS::DataObjectReference getInterpretedFeatureDor() const;
+ 
+ 		/**
+ 		 * Sets the feature which is interpreted by the current instance.
+-- 
+2.37.1.windows.1
+

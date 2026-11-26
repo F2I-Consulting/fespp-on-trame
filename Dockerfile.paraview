@@ -1,14 +1,17 @@
+# Toolchain image, tagged paraview:6.0.x: compilers, CMake and a clone of
+# paraview-superbuild. It builds nothing itself; the application Dockerfile's
+# pvbuild stage runs build.bash on top of it to compile ParaView.
 FROM nvidia/opengl:1.2-glvnd-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
 
-# Installation des dépendances système
+# System packages of the toolchain.
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-        # Outils de build
+        # Build tools
         software-properties-common \
         build-essential \
         ninja-build \
@@ -19,10 +22,10 @@ RUN apt-get update && \
         pkg-config \
         file \
         patchelf \
-        # Compilateurs et parsers
+        # Parser generators
         bison \
         flex \
-        # Bibliothèques de développement
+        # Development libraries
         libgl1-mesa-dev \
         libegl1-mesa-dev \
         libglvnd-dev \
@@ -35,7 +38,7 @@ RUN apt-get update && \
         libhdf5-dev \
         zlib1g-dev \
         libpthread-stubs0-dev \
-        # Bibliothèques runtime pour GPU
+        # GPU runtime libraries
         libegl1 \
         libglvnd0 \
         libgl1 \
@@ -45,7 +48,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Installation de CMake 3.28.0
+# CMake 3.28.0, from Kitware's binary release.
 RUN mkdir -p /opt/cmake/3.28.0 && \
     cd /opt/cmake/3.28.0 && \
     curl -L https://cmake.org/files/v3.28/cmake-3.28.0-linux-x86_64.tar.gz | \
@@ -56,10 +59,5 @@ RUN mkdir -p /opt/cmake/3.28.0 && \
 
 WORKDIR /work
 RUN git clone --recursive https://gitlab.kitware.com/paraview/paraview-superbuild.git pvsb-sources
-
-# Création du script de build unifié
-COPY build.bash /work/build.bash
-RUN cat /work/build.bash
-RUN chmod +x /work/build.bash
 
 WORKDIR /work

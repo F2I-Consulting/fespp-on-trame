@@ -1,0 +1,329 @@
+From 9dd03d52559a25cd4a6e22fcb3940f87fce390d3 Mon Sep 17 00:00:00 2001
+From: Cedric Robert <cedric.robert@f2i-consulting.com>
+Date: Tue, 13 Oct 2026 18:54:14 +0200
+Subject: [PATCH 2/6] Sized reads: the AbstractObject read helpers take a Span,
+ handed to the proxy for the external parts
+
+The representations read their arrays through the AbstractObject helpers
+(gsoap array -> buffer): readArrayNdOfDoubleValues, readArrayNdOfFloatValues,
+readArrayNdOfIntegerValues<T>, readArrayNdOfBooleanValues, for RESQML 2.0.1
+and EML 2.3. Each gets a form taking a COMMON_NS::Span<T> instead of a bare
+pointer; the pointer forms are untouched.
+
+- For an external array (HDF5 dataset in 2.0.1, external data array parts
+  in 2.3), the sized proxy read of patch 1 is called: the file proxy checks
+  the dataset extent, the ETP proxy sizes its request. In 2.3 each part gets
+  the slice of the buffer its Count announces, and a part that would overrun
+  the buffer is refused with a std::range_error before any read.
+- For a constant, lattice, range or XML array, the values and their count
+  are in the XML: the pointer form does the work.
+- The sixteen integer specializations are one-liners over one private
+  template per standard version, readIntegerValuesSized<T>, built on the
+  readArrayNd<T> dispatch of AbstractHdfProxy.
+
+A representation migrates by computing the count it already uses to size
+its buffer and passing Span<T>(buffer, count) to the helper; the next
+patches do it file by file.
+---
+ src/common/AbstractObject.cpp | 127 ++++++++++++++++++++++++++++++++++
+ src/common/AbstractObject.h   |  69 ++++++++++++++++++
+ 2 files changed, 196 insertions(+)
+
+diff --git a/src/common/AbstractObject.cpp b/src/common/AbstractObject.cpp
+index aee63bd..02f7281 100644
+--- a/src/common/AbstractObject.cpp
++++ b/src/common/AbstractObject.cpp
+@@ -1387,6 +1387,133 @@ template<> uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml
+ 	}
+ }
+ 
++namespace {
++	/**
++	 * The part of the buffer an external data array part fills: its values counted from the XML,
++	 * taken at the running offset, which moves past them.
++	 * @exception std::range_error When the part holds more values than the buffer has left.
++	 */
++	template <typename T>
++	COMMON_NS::Span<T> bufferOfPart(gsoap_eml2_3::eml23__ExternalDataArrayPart const* dataArrayPart, COMMON_NS::Span<T> buffer, size_t& offset)
++	{
++		const uint64_t count = std::accumulate(std::begin(dataArrayPart->Count), std::end(dataArrayPart->Count), static_cast<LONG64>(1), std::multiplies<LONG64>());
++		if (count > buffer.size() - offset) {
++			throw range_error("The external data array part " + dataArrayPart->PathInExternalFile + " holds " + std::to_string(count)
++				+ " values but the buffer receiving them has " + std::to_string(buffer.size() - offset) + " left.");
++		}
++		const COMMON_NS::Span<T> part = buffer.subspan(offset, static_cast<size_t>(count));
++		offset += static_cast<size_t>(count);
++		return part;
++	}
++}
++
++void AbstractObject::readArrayNdOfFloatValues(gsoap_resqml2_0_1::resqml20__AbstractDoubleArray const* arrayInput, COMMON_NS::Span<float> arrayOutput) const
++{
++	if (arrayInput->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__DoubleHdf5Array) {
++		gsoap_resqml2_0_1::eml20__Hdf5Dataset const* dataset = static_cast<gsoap_resqml2_0_1::resqml20__DoubleHdf5Array const*>(arrayInput)->Values;
++		getHdfProxyFromDataset(dataset)->readArrayNdOfFloatValues(dataset->PathInHdfFile, arrayOutput);
++	}
++	else {
++		// the values and their count are in the XML
++		readArrayNdOfFloatValues(arrayInput, arrayOutput.data());
++	}
++}
++
++void AbstractObject::readArrayNdOfFloatValues(gsoap_eml2_3::eml23__AbstractFloatingPointArray const* arrayInput, COMMON_NS::Span<float> arrayOutput) const
++{
++	if (arrayInput->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__FloatingPointExternalArray) {
++		size_t offset = 0;
++		for (auto const* dataArrayPart : static_cast<gsoap_eml2_3::eml23__FloatingPointExternalArray const*>(arrayInput)->Values->ExternalDataArrayPart) {
++			getOrCreateHdfProxyFromDataArrayPart(dataArrayPart)->readArrayNdOfFloatValues(dataArrayPart->PathInExternalFile, bufferOfPart(dataArrayPart, arrayOutput, offset));
++		}
++	}
++	else {
++		// the values and their count are in the XML
++		readArrayNdOfFloatValues(arrayInput, arrayOutput.data());
++	}
++}
++
++void AbstractObject::readArrayNdOfDoubleValues(gsoap_resqml2_0_1::resqml20__AbstractDoubleArray const* arrayInput, COMMON_NS::Span<double> arrayOutput) const
++{
++	if (arrayInput->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__DoubleHdf5Array) {
++		gsoap_resqml2_0_1::eml20__Hdf5Dataset const* dataset = static_cast<gsoap_resqml2_0_1::resqml20__DoubleHdf5Array const*>(arrayInput)->Values;
++		getHdfProxyFromDataset(dataset)->readArrayNdOfDoubleValues(dataset->PathInHdfFile, arrayOutput);
++	}
++	else {
++		// the values and their count are in the XML
++		readArrayNdOfDoubleValues(arrayInput, arrayOutput.data());
++	}
++}
++
++void AbstractObject::readArrayNdOfDoubleValues(gsoap_eml2_3::eml23__AbstractFloatingPointArray const* arrayInput, COMMON_NS::Span<double> arrayOutput) const
++{
++	if (arrayInput->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__FloatingPointExternalArray) {
++		size_t offset = 0;
++		for (auto const* dataArrayPart : static_cast<gsoap_eml2_3::eml23__FloatingPointExternalArray const*>(arrayInput)->Values->ExternalDataArrayPart) {
++			getOrCreateHdfProxyFromDataArrayPart(dataArrayPart)->readArrayNdOfDoubleValues(dataArrayPart->PathInExternalFile, bufferOfPart(dataArrayPart, arrayOutput, offset));
++		}
++	}
++	else {
++		// the values and their count are in the XML
++		readArrayNdOfDoubleValues(arrayInput, arrayOutput.data());
++	}
++}
++
++void AbstractObject::readArrayNdOfBooleanValues(gsoap_eml2_3::eml23__BooleanExternalArray const * arrayInput, COMMON_NS::Span<int8_t> arrayOutput) const
++{
++	size_t offset = 0;
++	for (auto const* dataArrayPart : arrayInput->Values->ExternalDataArrayPart) {
++		getOrCreateHdfProxyFromDataArrayPart(dataArrayPart)->readArrayNdOfInt8Values(dataArrayPart->PathInExternalFile, bufferOfPart(dataArrayPart, arrayOutput, offset));
++	}
++}
++
++template<typename T>
++T AbstractObject::readIntegerValuesSized(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const
++{
++	const std::tuple<gsoap_resqml2_0_1::eml20__Hdf5Dataset const*, std::string, T> datasetAndPathAndNullValue = getDatasetAndPathAndNullValueFrom<T>(arrayInput);
++	const std::string& pathInHdfFile = std::get<1>(datasetAndPathAndNullValue);
++	if (pathInHdfFile.empty()) {
++		// the values and their count are in the XML
++		return readArrayNdOfNonHdf5IntegerValues(arrayInput, arrayOutput.data());
++	}
++	getHdfProxyFromDataset(std::get<0>(datasetAndPathAndNullValue))->readArrayNd(pathInHdfFile, arrayOutput);
++	return std::get<2>(datasetAndPathAndNullValue);
++}
++
++template<typename T>
++T AbstractObject::readIntegerValuesSized(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const
++{
++	const std::tuple<std::vector<gsoap_eml2_3::eml23__ExternalDataArrayPart*>, T> dataArrayPartsAndNullValue = getDataArrayPartsAndNullValueFrom<T>(arrayInput);
++	const std::vector<gsoap_eml2_3::eml23__ExternalDataArrayPart*>& externalDataArrayParts = std::get<0>(dataArrayPartsAndNullValue);
++	if (externalDataArrayParts.empty()) {
++		// the values and their count are in the XML
++		return readArrayNdOfNonHdf5IntegerValues(arrayInput, arrayOutput.data());
++	}
++	size_t offset = 0;
++	for (auto const* dataArrayPart : externalDataArrayParts) {
++		getOrCreateHdfProxyFromDataArrayPart(dataArrayPart)->readArrayNd(dataArrayPart->PathInExternalFile, bufferOfPart(dataArrayPart, arrayOutput, offset));
++	}
++	return std::get<1>(dataArrayPartsAndNullValue);
++}
++
++template<> int8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int8_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint8_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> int16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int16_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint16_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> int32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int32_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint32_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int64_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint64_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++
++template<> int8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int8_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint8_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> int16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int16_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint16_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> int32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int32_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint32_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int64_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++template<> uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint64_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
++
+ uint64_t AbstractObject::getCountOfArray(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput) const
+ {
+ 	if (arrayInput == nullptr) return 0;
+diff --git a/src/common/AbstractObject.h b/src/common/AbstractObject.h
+index cdf2c3f..82a80ea 100644
+--- a/src/common/AbstractObject.h
++++ b/src/common/AbstractObject.h
+@@ -25,6 +25,7 @@ under the License.
+ #include <vector>
+ 
+ #include "DataObjectRepository.h"
++#include "Span.h"
+ 
+ namespace COMMON_NS
+ {
+@@ -786,6 +787,13 @@ namespace COMMON_NS
+ 		 * @param[out]	arrayOutput	If non-null, the array output.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT void readArrayNdOfFloatValues(gsoap_resqml2_0_1::resqml20__AbstractDoubleArray const* arrayInput, float* arrayOutput) const;
++		/**
++		 * Same as the pointer form with the size of the buffer, which reaches the proxy for the
++		 * external (HDF5 or ETP) parts of the array: an HDF5 proxy checks the dataset extent
++		 * against it, an ETP proxy sizes its request without a metadata round trip.
++		 * @exception std::range_error If an external part holds more values than the buffer has left.
++		 */
++		DLL_IMPORT_OR_EXPORT void readArrayNdOfFloatValues(gsoap_resqml2_0_1::resqml20__AbstractDoubleArray const* arrayInput, COMMON_NS::Span<float> arrayOutput) const;
+ 
+ 		/**
+ 		 * Read an input array which come from EML 2.3 (and potentially HDF5) and store it into a
+@@ -795,6 +803,13 @@ namespace COMMON_NS
+ 		 * @param[out]	arrayOutput	If non-null, the array output.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT void readArrayNdOfFloatValues(gsoap_eml2_3::eml23__AbstractFloatingPointArray const* arrayInput, float* arrayOutput) const;
++		/**
++		 * Same as the pointer form with the size of the buffer, which reaches the proxy for the
++		 * external (HDF5 or ETP) parts of the array: an HDF5 proxy checks the dataset extent
++		 * against it, an ETP proxy sizes its request without a metadata round trip.
++		 * @exception std::range_error If an external part holds more values than the buffer has left.
++		 */
++		DLL_IMPORT_OR_EXPORT void readArrayNdOfFloatValues(gsoap_eml2_3::eml23__AbstractFloatingPointArray const* arrayInput, COMMON_NS::Span<float> arrayOutput) const;
+ 
+ 		/**
+ 		 * Read an input array which come from EML 2.0 (and potentially HDF5) and store it into a
+@@ -804,6 +819,13 @@ namespace COMMON_NS
+ 		 * @param[out]	arrayOutput	If non-null, the array output.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT void readArrayNdOfDoubleValues(gsoap_resqml2_0_1::resqml20__AbstractDoubleArray const* arrayInput, double * arrayOutput) const;
++		/**
++		 * Same as the pointer form with the size of the buffer, which reaches the proxy for the
++		 * external (HDF5 or ETP) parts of the array: an HDF5 proxy checks the dataset extent
++		 * against it, an ETP proxy sizes its request without a metadata round trip.
++		 * @exception std::range_error If an external part holds more values than the buffer has left.
++		 */
++		DLL_IMPORT_OR_EXPORT void readArrayNdOfDoubleValues(gsoap_resqml2_0_1::resqml20__AbstractDoubleArray const* arrayInput, COMMON_NS::Span<double> arrayOutput) const;
+ 
+ 		/**
+ 		 * Read an input array which come from EML 2.3 (and potentially HDF5) and store it into a
+@@ -813,6 +835,13 @@ namespace COMMON_NS
+ 		 * @param[out]	arrayOutput	If non-null, the array output.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT void readArrayNdOfDoubleValues(gsoap_eml2_3::eml23__AbstractFloatingPointArray const* arrayInput, double * arrayOutput) const;
++		/**
++		 * Same as the pointer form with the size of the buffer, which reaches the proxy for the
++		 * external (HDF5 or ETP) parts of the array: an HDF5 proxy checks the dataset extent
++		 * against it, an ETP proxy sizes its request without a metadata round trip.
++		 * @exception std::range_error If an external part holds more values than the buffer has left.
++		 */
++		DLL_IMPORT_OR_EXPORT void readArrayNdOfDoubleValues(gsoap_eml2_3::eml23__AbstractFloatingPointArray const* arrayInput, COMMON_NS::Span<double> arrayOutput) const;
+ 
+ 		template <class T>
+ 		T readArrayNdOfNonHdf5IntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const * arrayInput, T * arrayOutput) const {
+@@ -973,6 +1002,8 @@ namespace COMMON_NS
+ 		 * @returns	The null value of this array. Default returned value is uint16_t::max
+ 		 */
+ 		void readArrayNdOfBooleanValues(gsoap_eml2_3::eml23__BooleanExternalArray const * arrayInput, int8_t * arrayOutput) const;
++		/** Same as the pointer form with the size of the buffer, handed to the proxy of each part. */
++		void readArrayNdOfBooleanValues(gsoap_eml2_3::eml23__BooleanExternalArray const * arrayInput, COMMON_NS::Span<int8_t> arrayOutput) const;
+ 
+ 		/**
+ 		 * Read an input array which come from EML 2.0 (and potentially HDF5) and store it into a
+@@ -985,6 +1016,14 @@ namespace COMMON_NS
+ 		 */
+ 		template<typename T>
+ 		T readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, T* arrayOutput) const;
++		/**
++		 * Same as the pointer form with the size of the buffer, which reaches the proxy for the
++		 * external (HDF5 or ETP) parts of the array. T is one of the eight integer types below.
++		 * @exception std::range_error If an external part holds more values than the buffer has left.
++		 * @return The null value of the array, or the maximum value of T when it has none.
++		 */
++		template<typename T>
++		T readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const;
+ 
+ 		/**
+ 		 * Read an input array which come from EML 2.3 (and potentially HDF5) and store it into a
+@@ -997,6 +1036,14 @@ namespace COMMON_NS
+ 		 */
+ 		template<typename T>
+ 		T readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, T* arrayOutput) const;
++		/**
++		 * Same as the pointer form with the size of the buffer, which reaches the proxy for the
++		 * external (HDF5 or ETP) parts of the array. T is one of the eight integer types below.
++		 * @exception std::range_error If an external part holds more values than the buffer has left.
++		 * @return The null value of the array, or the maximum value of T when it has none.
++		 */
++		template<typename T>
++		T readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const;
+ 
+ 		/**
+ 		 * Get the count of item in an array of integer
+@@ -1016,6 +1063,12 @@ namespace COMMON_NS
+ 		 */
+ 		uint64_t getCountOfArray(gsoap_eml2_3::eml23__AbstractValueArray const * arrayInput) const;
+ 
++		/** The sized integer reads, generic on the integer type, behind the public specializations. */
++		template<typename T>
++		T readIntegerValuesSized(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const;
++		template<typename T>
++		T readIntegerValuesSized(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const;
++
+ 		/**
+ 		 * Converts a data object reference into a data object repository relationship.
+ 		 *
+@@ -1106,20 +1159,36 @@ namespace COMMON_NS
+ 	};
+ 
+ 	template<> DLL_IMPORT_OR_EXPORT int8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, int8_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int8_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, uint8_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint8_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT int16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, int16_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int16_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, uint16_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint16_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT int32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, int32_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int32_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, uint32_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint32_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, int64_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<int64_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, uint64_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint64_t> arrayOutput) const;
+ 	
+ 	template<> DLL_IMPORT_OR_EXPORT int8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, int8_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int8_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, uint8_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint8_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint8_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT int16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, int16_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int16_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, uint16_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint16_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint16_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT int32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, int32_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int32_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, uint32_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint32_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, int64_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int64_t> arrayOutput) const;
+ 	template<> DLL_IMPORT_OR_EXPORT uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, uint64_t* arrayOutput) const;
++	template<> DLL_IMPORT_OR_EXPORT uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint64_t> arrayOutput) const;
+ }
+-- 
+2.37.1.windows.1
+

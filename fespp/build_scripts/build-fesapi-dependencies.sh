@@ -1,4 +1,6 @@
 #!/bin/bash
+# Build Minizip (F2I-Consulting fork), the zip library fesapi uses to read and
+# write EPC packages.
 build_root_dir=${FESPP_BUILD_ROOT_DIR:-"/work/ttl"}
 deps_dir=${build_root_dir}/dependencies
 echo "Building in: ${build_root_dir}"

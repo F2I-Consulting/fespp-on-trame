@@ -37,10 +37,18 @@ _local/**
 doc
 doc/**
 **/*.tar
-# V2 is confidential WIP — it must NEVER ship in the V1 image. Untracked
-# fespp_on_trame/v2 leftovers on a dev checkout must not enter the context.
-fespp_on_trame/v2
-fespp_on_trame/v2/**
 # Local deploy kit (image tar + scripts) — not part of the image.
 deploy
 deploy/**
+# ...except the session pool, which the image carries (Dockerfile:
+# COPY ./deploy/pool /deploy/pool, the FESPP_POOL=1 launcher)
+!deploy/pool
+!deploy/pool/**
+# The local AI service: its own images and build context (ia/Dockerfile);
+# the app's image copies nothing from it, and its models weigh gigabytes.
+ia
+ia/**
+_archive-*
+# A store address and its token helpers: local only, never in the build context.
+adme.json
+scripts/adme-token.*

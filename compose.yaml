@@ -1,0 +1,46 @@
+# fespp_on_trame and its local AI service, in one command (docker compose v2).
+#
+#   docker compose up -d                                       -> the app on :8080, the AI on the CPU
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d   -> the same, both on an NVIDIA GPU
+#   docker compose down                                        -> stop and remove both
+#
+# Nothing here builds or downloads anything. Before the first start:
+#   - the images: the app's (fespp_on_trame:local, from the Dockerfile at the
+#     root of the repository) and the AI's (fespp_ia:cpu, or fespp_ia:cuda
+#     for compose.gpu.yaml: see ia/Dockerfile and ia/build.ps1);
+#   - in ia/models: the chat model (ia/get-model.ps1), the embedding model
+#     (ia/get-model.ps1 -Name embed) and the RAG index (ia/build-index.ps1).
+#
+# The app reaches the AI at http://ia:8000 on the project's private network;
+# the AI's port is published on 127.0.0.1 only, never on the network.
+# Every default below can be overridden from the environment or from a .env
+# file next to this one: FESPP_APP_IMAGE, FESPP_APP_PORT, FESPP_ASSISTANT_LOGS
+# (the host folder of the Assistant's journal), FESPP_IA_IMAGE, FESPP_IA_PORT,
+# and FESPP_IA_CHAT_MODEL (a .gguf file of ia/models).
+services:
+  app:
+    image: ${FESPP_APP_IMAGE:-fespp_on_trame:local}
+    ports:
+      - "${FESPP_APP_PORT:-8080}:80"
+    environment:
+      FESPP_IA_URL: http://ia:8000
+    volumes:
+      # the Assistant's dialogue journal stays on the host, where
+      # scripts/assistant-log.ps1 reads it
+      - ${FESPP_ASSISTANT_LOGS:-./_local/assistant-logs/compose}:/deploy/server/logs/assistant
+    depends_on:
+      - ia
+    restart: unless-stopped
+
+  ia:
+    image: ${FESPP_IA_IMAGE:-fespp_ia:cpu}
+    ports:
+      - "127.0.0.1:${FESPP_IA_PORT:-8000}:8000"
+    volumes:
+      - ./ia/models:/models:ro
+    environment:
+      # named rather than guessed: the service loads a model on its own only
+      # when ia/models holds a single .gguf
+      FESPP_IA_CHAT_MODEL: ${FESPP_IA_CHAT_MODEL:-Ministral-3-3B-Instruct-2512-Q4_K_M.gguf}
+      FESPP_IA_PARALLEL: "1"
+    restart: unless-stopped

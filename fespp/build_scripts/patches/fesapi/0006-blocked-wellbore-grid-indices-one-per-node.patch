@@ -1,0 +1,84 @@
+From ead0b05800cce3603888fbbe7c85bc3f6de48170 Mon Sep 17 00:00:00 2001
+From: patch <patch@local>
+Date: Sun, 15 Nov 2026 22:52:07 +0100
+Subject: [PATCH 6/6] Blocked wellbore: grid indices held one per node are read
+ whole, the intervals' given
+
+---
+ .../BlockedWellboreRepresentation.cpp            | 16 +++++++++++++++-
+ src/resqml2_2/BlockedWellboreRepresentation.cpp  | 16 +++++++++++++++-
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/src/resqml2_0_1/BlockedWellboreRepresentation.cpp b/src/resqml2_0_1/BlockedWellboreRepresentation.cpp
+index 7d65775..2be0cb3 100644
+--- a/src/resqml2_0_1/BlockedWellboreRepresentation.cpp
++++ b/src/resqml2_0_1/BlockedWellboreRepresentation.cpp
+@@ -18,8 +18,10 @@ under the License.
+ -----------------------------------------------------------------------*/
+ #include "BlockedWellboreRepresentation.h"
+ 
++#include <algorithm>
+ #include <limits>
+ #include <stdexcept>
++#include <vector>
+ 
+ #include "../resqml2/AbstractGridRepresentation.h"
+ #include "../resqml2/WellboreInterpretation.h"
+@@ -181,7 +183,19 @@ uint64_t BlockedWellboreRepresentation::getCellCount() const
+ 
+ int8_t BlockedWellboreRepresentation::getGridIndices(int8_t* gridIndices) const
+ {
+-	return readArrayNdOfIntegerValues(static_cast<_resqml20__BlockedWellboreRepresentation*>(gsoapProxy2_0_1)->GridIndices, COMMON_NS::Span(gridIndices, getMdValuesCount() - 1));
++	auto const* xmlGridIndices = static_cast<_resqml20__BlockedWellboreRepresentation*>(gsoapProxy2_0_1)->GridIndices;
++	// One grid index per interval. A file may hold more of them (one per node):
++	// it is read whole and its first ones are given, the buffer being sized
++	// for the intervals.
++	const uint64_t intervalCount = getMdValuesCount() - 1;
++	const uint64_t heldCount = getCountOfArray(xmlGridIndices);
++	if (heldCount <= intervalCount) {
++		return readArrayNdOfIntegerValues(xmlGridIndices, COMMON_NS::Span(gridIndices, intervalCount));
++	}
++	std::vector<int8_t> held(heldCount);
++	const int8_t nullValue = readArrayNdOfIntegerValues(xmlGridIndices, COMMON_NS::Span(held.data(), heldCount));
++	std::copy_n(held.begin(), intervalCount, gridIndices);
++	return nullValue;
+ }
+ 
+ int64_t BlockedWellboreRepresentation::getCellIndices(int64_t* cellIndices) const
+diff --git a/src/resqml2_2/BlockedWellboreRepresentation.cpp b/src/resqml2_2/BlockedWellboreRepresentation.cpp
+index 224f89e..44fd587 100644
+--- a/src/resqml2_2/BlockedWellboreRepresentation.cpp
++++ b/src/resqml2_2/BlockedWellboreRepresentation.cpp
+@@ -18,6 +18,9 @@ under the License.
+ -----------------------------------------------------------------------*/
+ #include "BlockedWellboreRepresentation.h"
+ 
++#include <algorithm>
++#include <vector>
++
+ #include <hdf5.h>
+ 
+ #include "../resqml2/AbstractGridRepresentation.h"
+@@ -151,7 +154,18 @@ uint64_t BlockedWellboreRepresentation::getCellCount() const
+ int8_t BlockedWellboreRepresentation::getGridIndices(int8_t* gridIndices) const
+ {
+ 	auto const* xmlGridIndices = static_cast<_resqml22__BlockedWellboreRepresentation*>(gsoapProxy2_3)->IntervalGridCells->GridIndices;
+-	return readArrayNdOfIntegerValues(xmlGridIndices, COMMON_NS::Span(gridIndices, getMdValuesCount() - 1));
++	// One grid index per interval. A file may hold more of them (one per node):
++	// it is read whole and its first ones are given, the buffer being sized
++	// for the intervals.
++	const uint64_t intervalCount = getMdValuesCount() - 1;
++	const uint64_t heldCount = getCountOfArray(xmlGridIndices);
++	if (heldCount <= intervalCount) {
++		return readArrayNdOfIntegerValues(xmlGridIndices, COMMON_NS::Span(gridIndices, intervalCount));
++	}
++	std::vector<int8_t> held(heldCount);
++	const int8_t nullValue = readArrayNdOfIntegerValues(xmlGridIndices, COMMON_NS::Span(held.data(), heldCount));
++	std::copy_n(held.begin(), intervalCount, gridIndices);
++	return nullValue;
+ }
+ 
+ int64_t BlockedWellboreRepresentation::getCellIndices(int64_t* cellIndices) const
+-- 
+2.37.1.windows.1
+

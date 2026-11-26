@@ -2,10 +2,9 @@ dataclasses_json
 numpy>=1.22.0 # @<1.22.0 low vulnerability CWE-119 buffer overflow
 Pillow>=10.4.0 # @9.5.0 critical vulnerability, see https://cwe.mitre.org/data/definitions/400.html https://www.first.org/cvss/calculator/3.1#CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
 # Release pins (v1.2.0): the trame stack is frozen to the versions the
-# validated image shipped — an unpinned rebuild silently drifted
-# trame-dockview 1.4.0 → 2.0.0, whose reworked DOM defeats the
-# overflow:visible CSS that lets the per-view action chrome overflow into
-# the dockview tab row (buttons rendered but clipped invisible).
+# validated image shipped — an unpinned rebuild silently drifts. The dock is
+# the application's own (widgets/dock, dockview 7.0.4 pinned in its
+# package.json).
 trame==3.13.2
 trame-iframe==1.1.1
 trame-vuetify==3.2.5
@@ -23,27 +22,19 @@ trame-components==2.5.0
 # vtk and works against the same ParaView. Revisit when upstream stops
 # importing the monolithic vtk (or ships vtkViewsInfovis).
 trame-vtk==2.11.8
-# Pinned: dockview 2.0.0 (dockview-core 4.x) renames its internal
-# containers — the app CSS forcing `overflow: visible` on
-# .dv-content-container / .dv-active-panel-wrapper no longer matches, so
-# the per-view TC/MR/⚙ chrome that pokes up into the tab row gets
-# clipped. Revisit the selectors before unpinning.
-trame-dockview==1.4.0
 trame-plotly==3.1.2
 plotly
-vtk
+# Globe view: projected CRS (EPSG) -> geographic, any code (engine/geo.py
+# falls back to a built-in UTM inverse when pyproj is missing).
+pyproj
+# No `vtk` wheel: pvpython imports ParaView's own VTK first, the wheel
+# (a second VTK, 565 MB with the matplotlib, fonttools, contourpy it pulls)
+# was imported by nothing at run time. Only three unit tests need VTK in the
+# venv; test-unit.ps1 installs it for the run (2026-09-24).
 requests>=2.32.2 # @<2.32.2 medium vulnerability CWE-670 always-incorrect control flow
 urllib3>=2.2.2 # @2.0.7 medium vulnerability, see https://cwe.mitre.org/data/definitions/212.html https://www.first.org/cvss/calculator/4.0#CVSS:4.0/AV:N/AC:H/AT:P/PR:L/UI:N/VC:H/VI:N/VA:N/SC:L/SI:N/SA:N
 aiohttp>=3.9.2 # @3.8.6 medium vulnerability CVE-2024-23334 CVE-2024-23829 (improper input validation)
-fonttools>=4.43.0 # @4.38.0 high vulnerability XXE injection + ReDoS
 marshmallow>=3.21.1 # @3.19.0 medium vulnerability asymmetric resource consumption
 zipp>=3.19.1 # @3.15.0 medium vulnerability CVE-2024-5569 infinite loop
 wheel
 setuptools
-# Pinned for the release — @main made every rebuild resolve whatever
-# Kitware had merged that day (same reproducibility trap as an unpinned
-# FESPP master). NOTE: main's stale __version__ said 0.14.2 while its
-# CODE was post-0.17 (ptc.color_opacity_editor & co) — the real PyPI
-# 0.14.2 wheel lacks those modules; 0.17.0 is the release that has them
-# (validated locally against trame-dockview 1.x).
-paraview-trame-components==0.17.0

@@ -1,0 +1,1685 @@
+From c45fa281a206884935d7878dce17a5bf3cd5b75f Mon Sep 17 00:00:00 2001
+From: Cedric Robert <cedric.robert@f2i-consulting.com>
+Date: Wed, 14 Oct 2026 00:25:42 +0200
+Subject: [PATCH 4/6] Sized reads: every remaining one-dataset read passes the
+ size of its buffer
+
+The representations and properties left on the pointer forms by patch 3
+move to the sized reads: 165 sites in 38 files (point sets, polylines,
+polyline sets, triangulated sets, unstructured grids, 2D grids, deviation
+surveys, 2.2 wellbore trajectories, explicit and parametric IJK grids,
+blocked wellbores, streamlines, sub-representations, sealed and surface
+frameworks, grid connection sets, the abstract grid (parent windows,
+regrids, stratigraphic and fluid phase units, truncation), seismic
+coordinates and traces, seismic wellbore frames, points and realization
+indices).
+
+Each site hands the proxy COMMON_NS::Span(buffer, count) where the count
+is the one the XML gives and the caller already used to size its buffer
+(node, cell, pillar, line, interval, patch, contact counts; the Count
+dimensions of an EML 2.3 external data array part, through the new
+AbstractObject::getCountOfDataArrayPart). Where the XML does not carry the
+count (the elements of a jagged array, regrid child cell weights, the
+truncation index lists, the columns of split coordinate lines), the count
+of the array itself is used (getCountOfArray or getElementCount): no more
+round trips than before on a store, and the buffer can no longer be
+overrun.
+
+The hyperslab forms, which already carry their sizes, are untouched. After
+this patch no read inside fesapi uses the pointer forms, which can be
+deprecated.
+
+Found by the extent check of the sized reads: the RESQML 2.2 blocked
+wellbore writer announced in its XML parts NodeCount grid indices,
+CellCount cell indices and CellCount*2 local face pairs while writing one
+value (two for the pairs) per interval, NodeCount - 1 of them; the parts
+now announce what is written, and the reader sizes its buffers by the
+interval count. The 2.0.1 reader already worked per interval.
+---
+ src/common/AbstractObject.cpp                 |  4 ++
+ src/common/AbstractObject.h                   |  6 ++
+ .../AbstractColumnLayerGridRepresentation.cpp |  8 +--
+ src/resqml2/AbstractGridRepresentation.cpp    | 66 +++++++++----------
+ src/resqml2/AbstractIjkGridRepresentation.cpp |  8 +--
+ src/resqml2/AbstractProperty.cpp              |  2 +-
+ src/resqml2/AbstractRepresentation.cpp        | 12 ++--
+ src/resqml2/AbstractSeismicLineFeature.cpp    |  2 +-
+ ...AbstractSurfaceFrameworkRepresentation.cpp |  8 +--
+ .../IjkGridParametricRepresentation.cpp       |  8 +--
+ src/resqml2/PointsProperty.cpp                |  2 +-
+ .../SeismicWellboreFrameRepresentation.cpp    |  6 +-
+ .../BlockedWellboreRepresentation.cpp         | 10 +--
+ .../DeviationSurveyRepresentation.cpp         |  6 +-
+ src/resqml2_0_1/Grid2dRepresentation.cpp      |  6 +-
+ .../GridConnectionSetRepresentation.cpp       | 18 ++---
+ .../IjkGridExplicitRepresentation.cpp         |  4 +-
+ .../IjkGridParametricRepresentation.cpp       |  8 +--
+ src/resqml2_0_1/PointSetRepresentation.cpp    |  8 +--
+ src/resqml2_0_1/PolylineRepresentation.cpp    |  2 +-
+ src/resqml2_0_1/PolylineSetRepresentation.cpp | 10 +--
+ .../SealedSurfaceFrameworkRepresentation.cpp  |  4 +-
+ src/resqml2_0_1/StreamlinesRepresentation.cpp | 12 ++--
+ src/resqml2_0_1/SubRepresentation.cpp         |  2 +-
+ .../TriangulatedSetRepresentation.cpp         |  4 +-
+ .../UnstructuredGridRepresentation.cpp        | 12 ++--
+ .../BlockedWellboreRepresentation.cpp         | 12 ++--
+ src/resqml2_2/Grid2dRepresentation.cpp        |  6 +-
+ .../GridConnectionSetRepresentation.cpp       | 18 ++---
+ .../IjkGridExplicitRepresentation.cpp         |  4 +-
+ .../IjkGridParametricRepresentation.cpp       |  8 +--
+ src/resqml2_2/PointSetRepresentation.cpp      |  8 +--
+ src/resqml2_2/PolylineRepresentation.cpp      |  2 +-
+ src/resqml2_2/PolylineSetRepresentation.cpp   | 10 +--
+ .../SealedSurfaceFrameworkRepresentation.cpp  |  4 +-
+ src/resqml2_2/StreamlinesRepresentation.cpp   | 14 ++--
+ .../TriangulatedSetRepresentation.cpp         |  4 +-
+ .../UnstructuredGridRepresentation.cpp        | 12 ++--
+ .../WellboreTrajectoryRepresentation.cpp      |  6 +-
+ 39 files changed, 178 insertions(+), 168 deletions(-)
+
+diff --git a/src/common/AbstractObject.cpp b/src/common/AbstractObject.cpp
+index 02f7281..562ecc7 100644
+--- a/src/common/AbstractObject.cpp
++++ b/src/common/AbstractObject.cpp
+@@ -1514,6 +1514,10 @@ template<> uint32_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml
+ template<> int64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<int64_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
+ template<> uint64_t AbstractObject::readArrayNdOfIntegerValues(gsoap_eml2_3::eml23__AbstractValueArray const* arrayInput, COMMON_NS::Span<uint64_t> arrayOutput) const { return readIntegerValuesSized(arrayInput, arrayOutput); }
+ 
++uint64_t AbstractObject::getCountOfDataArrayPart(gsoap_eml2_3::eml23__ExternalDataArrayPart const* dataArrayPart)
++{
++	return std::accumulate(std::begin(dataArrayPart->Count), std::end(dataArrayPart->Count), static_cast<uint64_t>(1), std::multiplies<uint64_t>());
++}
+ uint64_t AbstractObject::getCountOfArray(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput) const
+ {
+ 	if (arrayInput == nullptr) return 0;
+diff --git a/src/common/AbstractObject.h b/src/common/AbstractObject.h
+index 82a80ea..9806558 100644
+--- a/src/common/AbstractObject.h
++++ b/src/common/AbstractObject.h
+@@ -1063,6 +1063,12 @@ namespace COMMON_NS
+ 		 */
+ 		uint64_t getCountOfArray(gsoap_eml2_3::eml23__AbstractValueArray const * arrayInput) const;
+ 
++		/**
++		 * The number of values an external data array part (EML 2.3) announces: the product of its
++		 * Count dimensions, from the XML, without touching the proxy.
++		 */
++		DLL_IMPORT_OR_EXPORT static uint64_t getCountOfDataArrayPart(gsoap_eml2_3::eml23__ExternalDataArrayPart const* dataArrayPart);
++
+ 		/** The sized integer reads, generic on the integer type, behind the public specializations. */
+ 		template<typename T>
+ 		T readIntegerValuesSized(gsoap_resqml2_0_1::resqml20__AbstractValueArray const* arrayInput, COMMON_NS::Span<T> arrayOutput) const;
+diff --git a/src/resqml2/AbstractColumnLayerGridRepresentation.cpp b/src/resqml2/AbstractColumnLayerGridRepresentation.cpp
+index 893555b..d1f50dc 100644
+--- a/src/resqml2/AbstractColumnLayerGridRepresentation.cpp
++++ b/src/resqml2/AbstractColumnLayerGridRepresentation.cpp
+@@ -185,7 +185,7 @@ int64_t AbstractColumnLayerGridRepresentation::getIntervalStratigraphicUnitIndic
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+ 		resqml20__AbstractColumnLayerGridRepresentation const* rep = static_cast<resqml20__AbstractColumnLayerGridRepresentation*>(gsoapProxy2_0_1);
+-		return readArrayNdOfIntegerValues(rep->IntervalStratigraphicUnits->UnitIndices, stratiUnitIndices);
++		return readArrayNdOfIntegerValues(rep->IntervalStratigraphicUnits->UnitIndices, COMMON_NS::Span(stratiUnitIndices, getKCellCount()));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+ 		gsoap_eml2_3::resqml22__AbstractColumnLayerGridRepresentation const* rep = static_cast<gsoap_eml2_3::resqml22__AbstractColumnLayerGridRepresentation*>(gsoapProxy2_3);
+@@ -196,18 +196,18 @@ int64_t AbstractColumnLayerGridRepresentation::getIntervalStratigraphicUnitIndic
+ 				static_cast<gsoap_eml2_3::eml23__IntegerConstantArray*>(latticeArray->Offset[0])->Value == 1 &&
+ 				static_cast<uint64_t>(static_cast<gsoap_eml2_3::eml23__IntegerConstantArray*>(latticeArray->Offset[0])->Count) == getKCellCount() - 1) {
+ 				auto const* daPart = static_cast<gsoap_eml2_3::eml23__IntegerExternalArray*>(rep->IntervalStratigraphicUnits->UnitIndices->Elements)->Values->ExternalDataArrayPart[0];
+-				getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt64Values(daPart->PathInExternalFile, stratiUnitIndices);
++				getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt64Values(daPart->PathInExternalFile, COMMON_NS::Span(stratiUnitIndices, getKCellCount()));
+ 				return static_cast<gsoap_eml2_3::eml23__IntegerExternalArray*>(rep->IntervalStratigraphicUnits->UnitIndices->Elements)->NullValue;
+ 			}
+ 			throw logic_error("FESAPI does not support an association of more than one strati unit for a single K layer for now.");
+ 		}
+ 		else if (rep->IntervalStratigraphicUnits->UnitIndices->CumulativeLength->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__IntegerXmlArray) {
+ 			std::unique_ptr<uint64_t[]> cumulativeLength(new uint64_t[getKCellCount()]);
+-			readArrayNdOfIntegerValues(rep->IntervalStratigraphicUnits->UnitIndices->CumulativeLength, cumulativeLength.get());
++			readArrayNdOfIntegerValues(rep->IntervalStratigraphicUnits->UnitIndices->CumulativeLength, COMMON_NS::Span(cumulativeLength.get(), getKCellCount()));
+ 			if (cumulativeLength[0] == 1 && cumulativeLength[getKCellCount() - 1] == getKCellCount()) {
+ 				auto* elements = dynamic_cast<gsoap_eml2_3::eml23__AbstractIntegerArray*>(rep->IntervalStratigraphicUnits->UnitIndices->Elements);
+ 				if (elements != nullptr) {
+-					return readArrayNdOfIntegerValues(elements, stratiUnitIndices);
++					return readArrayNdOfIntegerValues(elements, COMMON_NS::Span(stratiUnitIndices, getKCellCount()));
+ 				}
+ 				throw logic_error("The stratigraphic unit indices associated to K layer must be integers only.");
+ 			}
+diff --git a/src/resqml2/AbstractGridRepresentation.cpp b/src/resqml2/AbstractGridRepresentation.cpp
+index b5e8d3a..6dd4b0c 100644
+--- a/src/resqml2/AbstractGridRepresentation.cpp
++++ b/src/resqml2/AbstractGridRepresentation.cpp
+@@ -881,7 +881,7 @@ void AbstractGridRepresentation::getParentCellIndices(uint64_t * parentCellIndic
+ 			if (parentWindow->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__CellParentWindow)
+ 			{
+ 				gsoap_resqml2_0_1::resqml20__CellParentWindow const* cpw = static_cast<gsoap_resqml2_0_1::resqml20__CellParentWindow*>(parentWindow);
+-				readArrayNdOfIntegerValues(cpw->CellIndices, parentCellIndices);
++				readArrayNdOfIntegerValues(cpw->CellIndices, COMMON_NS::Span(parentCellIndices, getParentCellIndexCount()));
+ 			}
+ 			else
+ 				throw invalid_argument("This information is only available for cell parent window.");
+@@ -898,7 +898,7 @@ void AbstractGridRepresentation::getParentCellIndices(uint64_t * parentCellIndic
+ 			if (parentWindow->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__CellParentWindow)
+ 			{
+ 				gsoap_eml2_3::resqml22__CellParentWindow const* cpw = static_cast<gsoap_eml2_3::resqml22__CellParentWindow*>(parentWindow);
+-				readArrayNdOfIntegerValues(cpw->CellIndices, parentCellIndices);
++				readArrayNdOfIntegerValues(cpw->CellIndices, COMMON_NS::Span(parentCellIndices, getParentCellIndexCount()));
+ 			}
+ 			else
+ 				throw invalid_argument("This information is only available for cell parent window.");
+@@ -962,7 +962,7 @@ void AbstractGridRepresentation::getParentColumnIndices(uint64_t * parentColumnI
+ 			if (parentWindow->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__ColumnLayerParentWindow)
+ 			{
+ 				gsoap_resqml2_0_1::resqml20__ColumnLayerParentWindow const* clpw = static_cast<gsoap_resqml2_0_1::resqml20__ColumnLayerParentWindow*>(parentWindow);
+-				readArrayNdOfIntegerValues(clpw->ColumnIndices, parentColumnIndices);
++				readArrayNdOfIntegerValues(clpw->ColumnIndices, COMMON_NS::Span(parentColumnIndices, getParentColumnIndexCount()));
+ 			}
+ 			else {
+ 				throw invalid_argument("This information is only available for column layer parent window.");
+@@ -980,7 +980,7 @@ void AbstractGridRepresentation::getParentColumnIndices(uint64_t * parentColumnI
+ 			if (parentWindow->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__ColumnLayerParentWindow)
+ 			{
+ 				gsoap_eml2_3::resqml22__ColumnLayerParentWindow const* cpw = static_cast<gsoap_eml2_3::resqml22__ColumnLayerParentWindow*>(parentWindow);
+-				readArrayNdOfIntegerValues(cpw->ColumnIndices, parentColumnIndices);
++				readArrayNdOfIntegerValues(cpw->ColumnIndices, COMMON_NS::Span(parentColumnIndices, getParentColumnIndexCount()));
+ 			}
+ 			else {
+ 				throw invalid_argument("This information is only available for column layer parent window.");
+@@ -1370,10 +1370,10 @@ uint64_t AbstractGridRepresentation::getRegridConstantCellCountPerInterval(char
+ void AbstractGridRepresentation::getRegridCellCountPerInterval(char dimension, uint64_t * childCellCountPerInterval, bool childVsParentCellCount) const
+ {
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(getCellCountPerInterval2_0_1(dimension, childVsParentCellCount), childCellCountPerInterval);
++		readArrayNdOfIntegerValues(getCellCountPerInterval2_0_1(dimension, childVsParentCellCount), COMMON_NS::Span(childCellCountPerInterval, getRegridIntervalCount(dimension)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(getCellCountPerInterval2_2(dimension, childVsParentCellCount), childCellCountPerInterval);
++		readArrayNdOfIntegerValues(getCellCountPerInterval2_2(dimension, childVsParentCellCount), COMMON_NS::Span(childCellCountPerInterval, getRegridIntervalCount(dimension)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1490,21 +1490,21 @@ void AbstractGridRepresentation::getRegridChildCellWeights(char dimension, doubl
+ 				gsoap_resqml2_0_1::resqml20__IjkParentWindow* ijkpw = static_cast<gsoap_resqml2_0_1::resqml20__IjkParentWindow*>(parentWindow);
+ 				if (dimension == 'i' || dimension == 'I') {
+ 					if (ijkpw->IRegrid->Intervals != nullptr && ijkpw->IRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(ijkpw->IRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(ijkpw->IRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(ijkpw->IRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for I regrid.");
+ 				}
+ 				else if (dimension == 'j' || dimension == 'J') {
+ 					if (ijkpw->JRegrid->Intervals != nullptr && ijkpw->JRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(ijkpw->JRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(ijkpw->JRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(ijkpw->JRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for J regrid.");
+ 				}
+ 				else if (dimension == 'k' || dimension == 'K') {
+ 					if (ijkpw->KRegrid->Intervals != nullptr && ijkpw->KRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(ijkpw->KRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(ijkpw->KRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(ijkpw->KRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for K regrid.");
+@@ -1516,7 +1516,7 @@ void AbstractGridRepresentation::getRegridChildCellWeights(char dimension, doubl
+ 				if (dimension == 'k' || dimension == 'K') {
+ 					gsoap_resqml2_0_1::resqml20__ColumnLayerParentWindow* clpw = static_cast<gsoap_resqml2_0_1::resqml20__ColumnLayerParentWindow*>(parentWindow);
+ 					if (clpw->KRegrid->Intervals != nullptr  && clpw->KRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(clpw->KRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(clpw->KRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(clpw->KRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for K regrid.");
+@@ -1539,21 +1539,21 @@ void AbstractGridRepresentation::getRegridChildCellWeights(char dimension, doubl
+ 				gsoap_eml2_3::resqml22__IjkParentWindow* ijkpw = static_cast<gsoap_eml2_3::resqml22__IjkParentWindow*>(parentWindow);
+ 				if (dimension == 'i' || dimension == 'I') {
+ 					if (ijkpw->IRegrid->Intervals != nullptr && ijkpw->IRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(ijkpw->IRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(ijkpw->IRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(ijkpw->IRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for I regrid.");
+ 				}
+ 				else if (dimension == 'j' || dimension == 'J') {
+ 					if (ijkpw->JRegrid->Intervals != nullptr && ijkpw->JRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(ijkpw->JRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(ijkpw->JRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(ijkpw->JRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for J regrid.");
+ 				}
+ 				else if (dimension == 'k' || dimension == 'K') {
+ 					if (ijkpw->KRegrid->Intervals != nullptr && ijkpw->KRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(ijkpw->KRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(ijkpw->KRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(ijkpw->KRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for K regrid.");
+@@ -1565,7 +1565,7 @@ void AbstractGridRepresentation::getRegridChildCellWeights(char dimension, doubl
+ 				if (dimension == 'k' || dimension == 'K') {
+ 					gsoap_eml2_3::resqml22__ColumnLayerParentWindow* clpw = static_cast<gsoap_eml2_3::resqml22__ColumnLayerParentWindow*>(parentWindow);
+ 					if (clpw->KRegrid->Intervals != nullptr  && clpw->KRegrid->Intervals->ChildCellWeights != nullptr) {
+-						readArrayNdOfDoubleValues(clpw->KRegrid->Intervals->ChildCellWeights, childCellWeights);
++						readArrayNdOfDoubleValues(clpw->KRegrid->Intervals->ChildCellWeights, COMMON_NS::Span(childCellWeights, getCountOfArray(clpw->KRegrid->Intervals->ChildCellWeights)));
+ 					}
+ 					else
+ 						throw invalid_argument("No interval for K regrid.");
+@@ -1756,7 +1756,7 @@ int64_t AbstractGridRepresentation::getCellStratigraphicUnitIndices(int64_t * st
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+ 		gsoap_resqml2_0_1::resqml20__AbstractGridRepresentation* rep = static_cast<gsoap_resqml2_0_1::resqml20__AbstractGridRepresentation*>(gsoapProxy2_0_1);
+-		readArrayNdOfIntegerValues(rep->CellStratigraphicUnits->UnitIndices, stratiUnitIndices);
++		readArrayNdOfIntegerValues(rep->CellStratigraphicUnits->UnitIndices, COMMON_NS::Span(stratiUnitIndices, getCellCount()));
+ 		return static_cast<gsoap_resqml2_0_1::resqml20__IntegerHdf5Array*>(rep->CellStratigraphicUnits->UnitIndices)->NullValue;
+ 	}
+ 	else {
+@@ -1772,7 +1772,7 @@ int64_t AbstractGridRepresentation::getCellFluidPhaseUnitIndices(int64_t * rockF
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+ 		gsoap_resqml2_0_1::resqml20__AbstractGridRepresentation* rep = static_cast<gsoap_resqml2_0_1::resqml20__AbstractGridRepresentation*>(gsoapProxy2_0_1);
+-		readArrayNdOfIntegerValues(rep->CellFluidPhaseUnits->PhaseUnitIndices, rockFluidUnitIndices);
++		readArrayNdOfIntegerValues(rep->CellFluidPhaseUnits->PhaseUnitIndices, COMMON_NS::Span(rockFluidUnitIndices, getCellCount()));
+ 		return static_cast<gsoap_resqml2_0_1::resqml20__IntegerHdf5Array*>(rep->CellFluidPhaseUnits->PhaseUnitIndices)->NullValue;
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+@@ -1785,7 +1785,7 @@ int64_t AbstractGridRepresentation::getCellFluidPhaseUnitIndices(int64_t * rockF
+ 				static_cast<uint64_t>(static_cast<gsoap_eml2_3::eml23__IntegerConstantArray*>(latticeArray->Offset[0])->Count) == getCellCount()) {
+ 				auto const* daPart = static_cast<gsoap_eml2_3::eml23__IntegerExternalArray*>(rep->CellFluidPhaseUnits->PhaseUnitIndices->Elements)->Values->ExternalDataArrayPart[0];
+ 				EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+-				hdfProxy->readArrayNdOfInt64Values(daPart->PathInExternalFile, rockFluidUnitIndices);
++				hdfProxy->readArrayNdOfInt64Values(daPart->PathInExternalFile, COMMON_NS::Span(rockFluidUnitIndices, getCellCount()));
+ 				return static_cast<gsoap_eml2_3::eml23__IntegerExternalArray*>(rep->CellFluidPhaseUnits->PhaseUnitIndices->Elements)->NullValue;
+ 			}
+ 		}
+@@ -1831,10 +1831,10 @@ void AbstractGridRepresentation::getNodeIndicesOfTruncatedFaces(uint64_t * nodeI
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->NodesPerTruncationFace->Elements, nodeIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->NodesPerTruncationFace->Elements, COMMON_NS::Span(nodeIndices, getCountOfArray(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->NodesPerTruncationFace->Elements)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->NodesPerTruncationFace->Elements, nodeIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->NodesPerTruncationFace->Elements, COMMON_NS::Span(nodeIndices, getCountOfArray(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->NodesPerTruncationFace->Elements)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1848,10 +1848,10 @@ void AbstractGridRepresentation::getCumulativeNodeCountPerTruncatedFace(uint64_t
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->NodesPerTruncationFace->CumulativeLength, nodeCountPerFace);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->NodesPerTruncationFace->CumulativeLength, COMMON_NS::Span(nodeCountPerFace, getTruncatedFaceCount()));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->NodesPerTruncationFace->CumulativeLength, nodeCountPerFace);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->NodesPerTruncationFace->CumulativeLength, COMMON_NS::Span(nodeCountPerFace, getTruncatedFaceCount()));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1896,10 +1896,10 @@ void AbstractGridRepresentation::getTruncatedCellIndices(uint64_t* cellIndices)
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->ParentCellIndices, cellIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->ParentCellIndices, COMMON_NS::Span(cellIndices, getTruncatedCellCount()));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->ParentCellIndices, cellIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->ParentCellIndices, COMMON_NS::Span(cellIndices, getTruncatedCellCount()));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1913,10 +1913,10 @@ void AbstractGridRepresentation::getTruncatedFaceIndicesOfTruncatedCells(uint64_
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationFacesPerCell->Elements, faceIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationFacesPerCell->Elements, COMMON_NS::Span(faceIndices, getCountOfArray(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationFacesPerCell->Elements)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationFacesPerCell->Elements, faceIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationFacesPerCell->Elements, COMMON_NS::Span(faceIndices, getCountOfArray(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationFacesPerCell->Elements)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1930,10 +1930,10 @@ void AbstractGridRepresentation::getCumulativeTruncatedFaceCountPerTruncatedCell
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationFacesPerCell->CumulativeLength, cumulativeFaceCountPerCell);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationFacesPerCell->CumulativeLength, COMMON_NS::Span(cumulativeFaceCountPerCell, getTruncatedCellCount()));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationFacesPerCell->CumulativeLength, cumulativeFaceCountPerCell);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationFacesPerCell->CumulativeLength, COMMON_NS::Span(cumulativeFaceCountPerCell, getTruncatedCellCount()));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1961,10 +1961,10 @@ void AbstractGridRepresentation::getNonTruncatedFaceIndicesOfTruncatedCells(uint
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->LocalFacesPerCell->Elements, faceIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->LocalFacesPerCell->Elements, COMMON_NS::Span(faceIndices, getCountOfArray(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->LocalFacesPerCell->Elements)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->LocalFacesPerCell->Elements, faceIndices);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->LocalFacesPerCell->Elements, COMMON_NS::Span(faceIndices, getCountOfArray(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->LocalFacesPerCell->Elements)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -1979,10 +1979,10 @@ void AbstractGridRepresentation::getCumulativeNonTruncatedFaceCountPerTruncatedC
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->LocalFacesPerCell->CumulativeLength, cumulativeFaceCountPerCell);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->LocalFacesPerCell->CumulativeLength, COMMON_NS::Span(cumulativeFaceCountPerCell, getTruncatedCellCount()));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->LocalFacesPerCell->CumulativeLength, cumulativeFaceCountPerCell);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->LocalFacesPerCell->CumulativeLength, COMMON_NS::Span(cumulativeFaceCountPerCell, getTruncatedCellCount()));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -2009,10 +2009,10 @@ void AbstractGridRepresentation::getTruncatedFaceIsRightHanded(uint8_t* cellFace
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationCellFaceIsRightHanded, cellFaceIsRightHanded);
++		readArrayNdOfIntegerValues(static_cast<gsoap_resqml2_0_1::resqml20__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationCellFaceIsRightHanded, COMMON_NS::Span(cellFaceIsRightHanded, getTruncatedFaceCount()));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationCellFaceIsRightHanded, cellFaceIsRightHanded);
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractTruncatedColumnLayerGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationCellFaceIsRightHanded, COMMON_NS::Span(cellFaceIsRightHanded, getTruncatedFaceCount()));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+diff --git a/src/resqml2/AbstractIjkGridRepresentation.cpp b/src/resqml2/AbstractIjkGridRepresentation.cpp
+index 21259f8..00bc5f2 100644
+--- a/src/resqml2/AbstractIjkGridRepresentation.cpp
++++ b/src/resqml2/AbstractIjkGridRepresentation.cpp
+@@ -338,7 +338,7 @@ void AbstractIjkGridRepresentation::getPillarsOfSplitCoordinateLines(unsigned in
+ 		if (geom == nullptr || geom->ColumnLayerSplitCoordinateLines == nullptr) {
+ 			throw invalid_argument("There is no geometry or no split coordinate line in this grid.");
+ 		}
+-		readArrayNdOfIntegerValues(geom->ColumnLayerSplitCoordinateLines->PillarIndices, pillarIndices);
++		readArrayNdOfIntegerValues(geom->ColumnLayerSplitCoordinateLines->PillarIndices, COMMON_NS::Span(pillarIndices, getSplitCoordinateLineCount()));
+ 	}
+ 
+ 	if (reverseIAxis || reverseJAxis) {
+@@ -369,7 +369,7 @@ void AbstractIjkGridRepresentation::getColumnsOfSplitCoordinateLines(unsigned in
+ 			throw invalid_argument("There is no geometry or no split coordinate line in this IJK grid.");
+ 		}
+ 
+-		readArrayNdOfIntegerValues(geom->SplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements, columnIndices);
++		readArrayNdOfIntegerValues(geom->SplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements, COMMON_NS::Span(columnIndices, getCountOfArray(geom->SplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements)));
+ 		if (reverseIAxis || reverseJAxis) {
+ 			datasetValueCount = getCountOfArray(geom->SplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements);
+ 		}
+@@ -380,7 +380,7 @@ void AbstractIjkGridRepresentation::getColumnsOfSplitCoordinateLines(unsigned in
+ 			throw invalid_argument("There is no geometry or no split coordinate line in this IJK grid.");
+ 		}
+ 
+-		readArrayNdOfIntegerValues(geom->ColumnLayerSplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements, columnIndices);
++		readArrayNdOfIntegerValues(geom->ColumnLayerSplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements, COMMON_NS::Span(columnIndices, getCountOfArray(geom->ColumnLayerSplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements)));
+ 		if (reverseIAxis || reverseJAxis) {
+ 			datasetValueCount = getCountOfArray(geom->ColumnLayerSplitCoordinateLines->ColumnsPerSplitCoordinateLine->Elements);
+ 		}
+@@ -418,7 +418,7 @@ void AbstractIjkGridRepresentation::getColumnCountOfSplitCoordinateLines(unsigne
+ 		if (geom == nullptr || geom->ColumnLayerSplitCoordinateLines == nullptr) {
+ 			throw invalid_argument("There is no geometry or no split coordinate line in this IJK grid.");
+ 		}
+-		readArrayNdOfIntegerValues(geom->ColumnLayerSplitCoordinateLines->ColumnsPerSplitCoordinateLine->CumulativeLength, columnIndexCountPerSplitCoordinateLine);
++		readArrayNdOfIntegerValues(geom->ColumnLayerSplitCoordinateLines->ColumnsPerSplitCoordinateLine->CumulativeLength, COMMON_NS::Span(columnIndexCountPerSplitCoordinateLine, getSplitCoordinateLineCount()));
+ 	}
+ }
+ 
+diff --git a/src/resqml2/AbstractProperty.cpp b/src/resqml2/AbstractProperty.cpp
+index b148373..cba0eb9 100644
+--- a/src/resqml2/AbstractProperty.cpp
++++ b/src/resqml2/AbstractProperty.cpp
+@@ -468,7 +468,7 @@ std::vector<unsigned int> AbstractProperty::getRealizationIndices() const
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+ 		std::vector<unsigned int> result(getCountOfArray(static_cast<gsoap_eml2_3::resqml22__AbstractProperty*>(gsoapProxy2_3)->RealizationIndices));
+-		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractProperty*>(gsoapProxy2_3)->RealizationIndices, result.data());
++		readArrayNdOfIntegerValues(static_cast<gsoap_eml2_3::resqml22__AbstractProperty*>(gsoapProxy2_3)->RealizationIndices, COMMON_NS::Span(result.data(), result.size()));
+ 		return result;
+ 	}
+ 	else {
+diff --git a/src/resqml2/AbstractRepresentation.cpp b/src/resqml2/AbstractRepresentation.cpp
+index 91d0907..b8245c9 100644
+--- a/src/resqml2/AbstractRepresentation.cpp
++++ b/src/resqml2/AbstractRepresentation.cpp
+@@ -857,7 +857,7 @@ void AbstractRepresentation::getSeismicLineAbscissaOfPointsOfPatch(uint64_t patc
+ 		}
+ 
+ 		gsoap_resqml2_0_1::resqml20__Seismic2dCoordinates const* seisInfo = static_cast<gsoap_resqml2_0_1::resqml20__Seismic2dCoordinates*>(geom->SeismicCoordinates);
+-		readArrayNdOfDoubleValues(seisInfo->LineAbscissa, values);
++		readArrayNdOfDoubleValues(seisInfo->LineAbscissa, COMMON_NS::Span(values, getXyzPointCountOfPatch(patchIndex)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+ 		gsoap_eml2_3::resqml22__PointGeometry* const geom = getPointGeometry2_2(patchIndex);
+@@ -867,7 +867,7 @@ void AbstractRepresentation::getSeismicLineAbscissaOfPointsOfPatch(uint64_t patc
+ 		}
+ 
+ 		gsoap_eml2_3::resqml22__Seismic2dCoordinates const* seisInfo = static_cast<gsoap_eml2_3::resqml22__Seismic2dCoordinates*>(geom->SeismicCoordinates);
+-		readArrayNdOfDoubleValues(seisInfo->LineAbscissa, values);
++		readArrayNdOfDoubleValues(seisInfo->LineAbscissa, COMMON_NS::Span(values, getXyzPointCountOfPatch(patchIndex)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -885,7 +885,7 @@ void AbstractRepresentation::getInlinesOfPointsOfPatch(uint64_t patchIndex, doub
+ 		if (seisInfo->InlineCoordinates->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__DoubleHdf5Array) {
+ 			gsoap_resqml2_0_1::resqml20__DoubleHdf5Array* dblValues = static_cast<gsoap_resqml2_0_1::resqml20__DoubleHdf5Array*>(seisInfo->InlineCoordinates);
+ 			getRepository()->getDataObjectByUuid<EML2_NS::AbstractHdfProxy>(dblValues->Values->HdfProxy->UUID)
+-				->readArrayNdOfDoubleValues(dblValues->Values->PathInHdfFile, values);
++				->readArrayNdOfDoubleValues(dblValues->Values->PathInHdfFile, COMMON_NS::Span(values, getXyzPointCountOfPatch(patchIndex)));
+ 		}
+ 		else
+ 			throw logic_error("Not implemented yet");
+@@ -896,7 +896,7 @@ void AbstractRepresentation::getInlinesOfPointsOfPatch(uint64_t patchIndex, doub
+ 			throw invalid_argument("The patch of this representation has not got any seismic information.");
+ 		}
+ 
+-		readArrayNdOfDoubleValues(seisInfo->InlineCoordinates, values);
++		readArrayNdOfDoubleValues(seisInfo->InlineCoordinates, COMMON_NS::Span(values, getXyzPointCountOfPatch(patchIndex)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+@@ -913,7 +913,7 @@ void AbstractRepresentation::getCrosslinesOfPointsOfPatch(uint64_t patchIndex, d
+ 
+ 		if (seisInfo->CrosslineCoordinates->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__DoubleHdf5Array) {
+ 			gsoap_resqml2_0_1::resqml20__DoubleHdf5Array* dblValues = static_cast<gsoap_resqml2_0_1::resqml20__DoubleHdf5Array*>(seisInfo->CrosslineCoordinates);
+-			getRepository()->getDataObjectByUuid<EML2_NS::AbstractHdfProxy>(dblValues->Values->HdfProxy->UUID)->readArrayNdOfDoubleValues(dblValues->Values->PathInHdfFile, values);
++			getRepository()->getDataObjectByUuid<EML2_NS::AbstractHdfProxy>(dblValues->Values->HdfProxy->UUID)->readArrayNdOfDoubleValues(dblValues->Values->PathInHdfFile, COMMON_NS::Span(values, getXyzPointCountOfPatch(patchIndex)));
+ 		}
+ 		else
+ 			throw logic_error("Not implemented yet");
+@@ -923,7 +923,7 @@ void AbstractRepresentation::getCrosslinesOfPointsOfPatch(uint64_t patchIndex, d
+ 		if (seisInfo == nullptr) {
+ 			throw invalid_argument("The patch of this representation has not got any seismic information.");
+ 		}
+-		readArrayNdOfDoubleValues(seisInfo->CrosslineCoordinates, values);
++		readArrayNdOfDoubleValues(seisInfo->CrosslineCoordinates, COMMON_NS::Span(values, getXyzPointCountOfPatch(patchIndex)));
+ 	}
+ 	else {
+ 		throw logic_error("Not implemented yet");
+diff --git a/src/resqml2/AbstractSeismicLineFeature.cpp b/src/resqml2/AbstractSeismicLineFeature.cpp
+index 2fe67c8..021d857 100644
+--- a/src/resqml2/AbstractSeismicLineFeature.cpp
++++ b/src/resqml2/AbstractSeismicLineFeature.cpp
+@@ -111,7 +111,7 @@ std::vector<std::string> AbstractSeismicLineFeature::getTraceLabels() const
+ 
+ 		// Read all char/strings from the hdf dataset
+ 		std::unique_ptr<unsigned char[]> values(new unsigned char[nbStrings * stringLength]);
+-		hdfProxy->readArrayNdOfUInt8Values(datasetPath, values.get());
++		hdfProxy->readArrayNdOfUInt8Values(datasetPath, COMMON_NS::Span(values.get(), nbStrings * stringLength));
+ 
+ 		for (uint64_t stringIndex = 0; stringIndex < nbStrings; ++stringIndex) {
+ 			std::string comment;
+diff --git a/src/resqml2/AbstractSurfaceFrameworkRepresentation.cpp b/src/resqml2/AbstractSurfaceFrameworkRepresentation.cpp
+index f5bfa89..7ef64d1 100644
+--- a/src/resqml2/AbstractSurfaceFrameworkRepresentation.cpp
++++ b/src/resqml2/AbstractSurfaceFrameworkRepresentation.cpp
+@@ -253,10 +253,10 @@ void AbstractSurfaceFrameworkRepresentation::getContactIndices(unsigned int ciIn
+ {
+ 	cannotBePartial();
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(getContactIdentity201(ciIndex)->ListOfContactRepresentations, contactRepIndices);
++		readArrayNdOfIntegerValues(getContactIdentity201(ciIndex)->ListOfContactRepresentations, COMMON_NS::Span(contactRepIndices, getContactCountInContactIdentity(ciIndex)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(getContactIdentity22(ciIndex)->ContactIndices, contactRepIndices);
++		readArrayNdOfIntegerValues(getContactIdentity22(ciIndex)->ContactIndices, COMMON_NS::Span(contactRepIndices, getContactCountInContactIdentity(ciIndex)));
+ 	}
+ 	else {
+ 		throw std::logic_error("Unknown RESQML version");
+@@ -310,10 +310,10 @@ void AbstractSurfaceFrameworkRepresentation::getIdenticalContactNodeIndices(unsi
+ 	}
+ 
+ 	if (gsoapProxy2_0_1 != nullptr) {
+-		readArrayNdOfIntegerValues(getContactIdentity201(ciIndex)->ListOfIdenticalNodes, nodeIndices);
++		readArrayNdOfIntegerValues(getContactIdentity201(ciIndex)->ListOfIdenticalNodes, COMMON_NS::Span(nodeIndices, getIdenticalContactNodeCount(ciIndex)));
+ 	}
+ 	else if (gsoapProxy2_3 != nullptr) {
+-		readArrayNdOfIntegerValues(getContactIdentity22(ciIndex)->IdenticalNodeIndices, nodeIndices);
++		readArrayNdOfIntegerValues(getContactIdentity22(ciIndex)->IdenticalNodeIndices, COMMON_NS::Span(nodeIndices, getIdenticalContactNodeCount(ciIndex)));
+ 	}
+ 	else {
+ 		throw std::logic_error("Unknown RESQML version");
+diff --git a/src/resqml2/IjkGridParametricRepresentation.cpp b/src/resqml2/IjkGridParametricRepresentation.cpp
+index 9693350..59541fc 100644
+--- a/src/resqml2/IjkGridParametricRepresentation.cpp
++++ b/src/resqml2/IjkGridParametricRepresentation.cpp
+@@ -167,7 +167,7 @@ void IjkGridParametricRepresentation::getControlPoints(double * controlPoints, b
+ {
+ 	string datasetPath;
+ 	EML2_NS::AbstractHdfProxy* hdfProxy = getControlPointDatasetPath(datasetPath);
+-	hdfProxy->readArrayNdOfDoubleValues(datasetPath, controlPoints);
++	hdfProxy->readArrayNdOfDoubleValues(datasetPath, COMMON_NS::Span(controlPoints, getPillarCount() * getControlPointMaxCountPerPillar() * 3));
+ 
+ 	if (reverseIAxis || reverseJAxis || reverseKAxis)
+ 	{
+@@ -232,7 +232,7 @@ void IjkGridParametricRepresentation::getControlPointParameters(double * control
+ {
+ 	string datasetPath;
+ 	EML2_NS::AbstractHdfProxy* hdfProxy = getControlPointParametersDatasetPath(datasetPath);
+-	hdfProxy->readArrayNdOfDoubleValues(datasetPath, controlPointParameters);
++	hdfProxy->readArrayNdOfDoubleValues(datasetPath, COMMON_NS::Span(controlPointParameters, getPillarCount() * getControlPointMaxCountPerPillar()));
+ 	
+ 	if (reverseIAxis || reverseJAxis || reverseKAxis)
+ 	{
+@@ -328,7 +328,7 @@ void IjkGridParametricRepresentation::getParametersOfNodes(double * parameters,
+ {
+ 	string datasetPath;
+ 	EML2_NS::AbstractHdfProxy* hdfProxy = getParametersOfNodesDatasetPath(datasetPath);
+-	hdfProxy->readArrayNdOfDoubleValues(datasetPath, parameters);
++	hdfProxy->readArrayNdOfDoubleValues(datasetPath, COMMON_NS::Span(parameters, getXyzPointCountOfPatch(0)));
+ 
+ 	// Copy in order not to modify the controlPoints pointer
+ 	if (reverseIAxis || reverseJAxis || reverseKAxis)
+@@ -883,7 +883,7 @@ void IjkGridParametricRepresentation::getXyzPointsFromParametricPoints(double* x
+ 	std::string datasetPathInExternalFile;
+ 	EML2_NS::AbstractHdfProxy* hdfProxy = getParameterDatasetPath(datasetPathInExternalFile);
+ 	std::unique_ptr<double[]> parameters(new double[getXyzPointCountOfPatch(0)]);
+-	hdfProxy->readArrayNdOfDoubleValues(datasetPathInExternalFile, parameters.get());
++	hdfProxy->readArrayNdOfDoubleValues(datasetPathInExternalFile, COMMON_NS::Span(parameters.get(), getXyzPointCountOfPatch(0)));
+ 	const uint64_t ijNodeCount = getXyzPointCountOfKInterface();
+ 	const uint64_t kNodeCount = getKCellCount() + getKGapsCount() + 1;
+ 
+diff --git a/src/resqml2/PointsProperty.cpp b/src/resqml2/PointsProperty.cpp
+index 9039929..731fc29 100644
+--- a/src/resqml2/PointsProperty.cpp
++++ b/src/resqml2/PointsProperty.cpp
+@@ -104,7 +104,7 @@ void PointsProperty::getXyzPointsOfPatch(uint64_t patchIndex, double * xyzPoints
+ 	std::string datasetPath;
+ 	EML2_NS::AbstractHdfProxy* hdfProxy = getValuesHdfProxyAndDatasetPathOfPatch(patchIndex, datasetPath);
+ 
+-	hdfProxy->readArrayNdOfDoubleValues(datasetPath, xyzPoints);
++	hdfProxy->readArrayNdOfDoubleValues(datasetPath, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ }
+ 
+ void PointsProperty::pushBackArray1dOfXyzPoints(const double * points, uint64_t pointCount, EML2_NS::AbstractHdfProxy * proxy)
+diff --git a/src/resqml2/SeismicWellboreFrameRepresentation.cpp b/src/resqml2/SeismicWellboreFrameRepresentation.cpp
+index a9a03b5..eb71d7f 100644
+--- a/src/resqml2/SeismicWellboreFrameRepresentation.cpp
++++ b/src/resqml2/SeismicWellboreFrameRepresentation.cpp
+@@ -92,7 +92,7 @@ double SeismicWellboreFrameRepresentation::getTimeFirstValue() const
+ 			throw invalid_argument("The HDF proxy is missing.");
+ 		}
+ 		std::unique_ptr<double[]> values(new double[getTimeValuesCount()]);
+-		hdfProxy->readArrayNdOfDoubleValues(static_cast<eml23__FloatingPointExternalArray*>(frame->NodeTimeValues)->Values->ExternalDataArrayPart[0]->PathInExternalFile, values.get());
++		hdfProxy->readArrayNdOfDoubleValues(static_cast<eml23__FloatingPointExternalArray*>(frame->NodeTimeValues)->Values->ExternalDataArrayPart[0]->PathInExternalFile, COMMON_NS::Span(values.get(), getTimeValuesCount()));
+ 
+ 		return values[0];
+ 	}
+@@ -137,7 +137,7 @@ void SeismicWellboreFrameRepresentation::getTimeAsDoubleValues(double* values) c
+ 		if (hdfProxy == nullptr) {
+ 			throw invalid_argument("The HDF proxy is missing.");
+ 		}
+-		hdfProxy->readArrayNdOfDoubleValues(static_cast<eml23__FloatingPointExternalArray*>(frame->NodeTimeValues)->Values->ExternalDataArrayPart[0]->PathInExternalFile, values);
++		hdfProxy->readArrayNdOfDoubleValues(static_cast<eml23__FloatingPointExternalArray*>(frame->NodeTimeValues)->Values->ExternalDataArrayPart[0]->PathInExternalFile, COMMON_NS::Span(values, getTimeValuesCount()));
+ 	}
+ 	else if (frame->NodeTimeValues->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__FloatingPointLatticeArray)
+ 	{
+@@ -161,7 +161,7 @@ void SeismicWellboreFrameRepresentation::getTimeAsFloatValues(float* values) con
+ 		if (hdfProxy == nullptr) {
+ 			throw invalid_argument("The HDF proxy is missing.");
+ 		}
+-		hdfProxy->readArrayNdOfFloatValues(static_cast<eml23__FloatingPointExternalArray*>(frame->NodeTimeValues)->Values->ExternalDataArrayPart[0]->PathInExternalFile, values);
++		hdfProxy->readArrayNdOfFloatValues(static_cast<eml23__FloatingPointExternalArray*>(frame->NodeTimeValues)->Values->ExternalDataArrayPart[0]->PathInExternalFile, COMMON_NS::Span(values, getTimeValuesCount()));
+ 	}
+ 	else if (frame->NodeTimeValues->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__FloatingPointLatticeArray)
+ 	{
+diff --git a/src/resqml2_0_1/BlockedWellboreRepresentation.cpp b/src/resqml2_0_1/BlockedWellboreRepresentation.cpp
+index c1ecf92..7d65775 100644
+--- a/src/resqml2_0_1/BlockedWellboreRepresentation.cpp
++++ b/src/resqml2_0_1/BlockedWellboreRepresentation.cpp
+@@ -181,7 +181,7 @@ uint64_t BlockedWellboreRepresentation::getCellCount() const
+ 
+ int8_t BlockedWellboreRepresentation::getGridIndices(int8_t* gridIndices) const
+ {
+-	return readArrayNdOfIntegerValues(static_cast<_resqml20__BlockedWellboreRepresentation*>(gsoapProxy2_0_1)->GridIndices, gridIndices);
++	return readArrayNdOfIntegerValues(static_cast<_resqml20__BlockedWellboreRepresentation*>(gsoapProxy2_0_1)->GridIndices, COMMON_NS::Span(gridIndices, getMdValuesCount() - 1));
+ }
+ 
+ int64_t BlockedWellboreRepresentation::getCellIndices(int64_t* cellIndices) const
+@@ -195,11 +195,11 @@ int64_t BlockedWellboreRepresentation::getCellIndices(int64_t* cellIndices) cons
+ 		gsoap_resqml2_0_1::eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(xmlCellIndices)->Values;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+ 		if (cellCount == intervalCount) {
+-			hdfProxy->readArrayNdOfInt64Values(dataset->PathInHdfFile, cellIndices);
++			hdfProxy->readArrayNdOfInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(cellIndices, cellCount));
+ 		}
+ 		else {
+ 			std::unique_ptr<int64_t[]> nonNullCellIndices(new int64_t[cellCount]);
+-			hdfProxy->readArrayNdOfInt64Values(dataset->PathInHdfFile, nonNullCellIndices.get());
++			hdfProxy->readArrayNdOfInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(nonNullCellIndices.get(), cellCount));
+ 			std::unique_ptr<int8_t[]> gridIndices(new int8_t[intervalCount]);
+ 			int8_t gridIndexNullvalue = getGridIndices(gridIndices.get());
+ 			size_t tmp = 0;
+@@ -236,11 +236,11 @@ int8_t BlockedWellboreRepresentation::getLocalFacePairPerCellIndices(int8_t* loc
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+ 		const auto cellCount = getCellCount();
+ 		if (cellCount == intervalCount) {
+-			hdfProxy->readArrayNdOfInt8Values(dataset->PathInHdfFile, localFacePairPerCellIndices);
++			hdfProxy->readArrayNdOfInt8Values(dataset->PathInHdfFile, COMMON_NS::Span(localFacePairPerCellIndices, cellCount * 2));
+ 		}
+ 		else {
+ 			std::unique_ptr<int8_t[]> nonNullCellLocalFacePairPerCellIndices(new int8_t[cellCount*2]);
+-			hdfProxy->readArrayNdOfInt8Values(dataset->PathInHdfFile, nonNullCellLocalFacePairPerCellIndices.get());
++			hdfProxy->readArrayNdOfInt8Values(dataset->PathInHdfFile, COMMON_NS::Span(nonNullCellLocalFacePairPerCellIndices.get(), cellCount * 2));
+ 			std::unique_ptr<int8_t[]> gridIndices(new int8_t[intervalCount]);
+ 			int8_t gridIndexNullvalue = getGridIndices(gridIndices.get());
+ 			size_t tmp = 0;
+diff --git a/src/resqml2_0_1/DeviationSurveyRepresentation.cpp b/src/resqml2_0_1/DeviationSurveyRepresentation.cpp
+index 879be82..00cfc1d 100644
+--- a/src/resqml2_0_1/DeviationSurveyRepresentation.cpp
++++ b/src/resqml2_0_1/DeviationSurveyRepresentation.cpp
+@@ -142,19 +142,19 @@ void DeviationSurveyRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ void DeviationSurveyRepresentation::getMdValues(double* values) const
+ {
+ 	_resqml20__DeviationSurveyRepresentation const* rep = static_cast<_resqml20__DeviationSurveyRepresentation*>(gsoapProxy2_0_1);
+-	readArrayNdOfDoubleValues(rep->Mds, values);
++	readArrayNdOfDoubleValues(rep->Mds, COMMON_NS::Span(values, getXyzPointCountOfPatch(0)));
+ }
+ 
+ void DeviationSurveyRepresentation::getInclinations(double* values) const
+ {
+ 	_resqml20__DeviationSurveyRepresentation const* rep = static_cast<_resqml20__DeviationSurveyRepresentation*>(gsoapProxy2_0_1);
+-	readArrayNdOfDoubleValues(rep->Inclinations, values);
++	readArrayNdOfDoubleValues(rep->Inclinations, COMMON_NS::Span(values, getXyzPointCountOfPatch(0)));
+ }
+ 
+ void DeviationSurveyRepresentation::getAzimuths(double* values) const
+ {
+ 	_resqml20__DeviationSurveyRepresentation const* rep = static_cast<_resqml20__DeviationSurveyRepresentation*>(gsoapProxy2_0_1);
+-	readArrayNdOfDoubleValues(rep->Azimuths, values);
++	readArrayNdOfDoubleValues(rep->Azimuths, COMMON_NS::Span(values, getXyzPointCountOfPatch(0)));
+ }
+ 
+ void DeviationSurveyRepresentation::setMdDatum(RESQML2_NS::MdDatum* mdDatum)
+diff --git a/src/resqml2_0_1/Grid2dRepresentation.cpp b/src/resqml2_0_1/Grid2dRepresentation.cpp
+index 79a1a18..386d046 100644
+--- a/src/resqml2_0_1/Grid2dRepresentation.cpp
++++ b/src/resqml2_0_1/Grid2dRepresentation.cpp
+@@ -83,7 +83,7 @@ void Grid2dRepresentation::getZValues(double* values) const
+ 		if (zValues->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__DoubleHdf5Array) {
+ 			eml20__Hdf5Dataset const * dataset = static_cast<resqml20__DoubleHdf5Array*>(zValues)->Values;
+ 			EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, values);
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(values, getNodeCountAlongIAxis() * getNodeCountAlongJAxis()));
+ 		}
+ 		else {
+ 			throw std::logic_error("The Z values can only be retrieved if they are described as a DoubleHdf5Array.");
+@@ -404,7 +404,7 @@ void Grid2dRepresentation::getJSpacing(double* const jSpacings) const
+ 			if (hdfProxy == nullptr) {
+ 				throw logic_error("The HDF proxy is missing.");
+ 			}
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, jSpacings);
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(jSpacings, getNodeCountAlongJAxis() - 1));
+ 		}
+ 		else {
+ 			throw logic_error("Not implemented yet.");
+@@ -475,7 +475,7 @@ void Grid2dRepresentation::getISpacing(double* const iSpacings) const
+ 			if (hdfProxy == nullptr) {
+ 				throw invalid_argument("The HDF proxy is missing.");
+ 			}
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, iSpacings);
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(iSpacings, getNodeCountAlongIAxis() - 1));
+ 		}
+ 		else {
+ 			throw logic_error("Not implemented yet.");
+diff --git a/src/resqml2_0_1/GridConnectionSetRepresentation.cpp b/src/resqml2_0_1/GridConnectionSetRepresentation.cpp
+index e8daf9e..acb8591 100644
+--- a/src/resqml2_0_1/GridConnectionSetRepresentation.cpp
++++ b/src/resqml2_0_1/GridConnectionSetRepresentation.cpp
+@@ -139,7 +139,7 @@ void GridConnectionSetRepresentation::getInterpretationIndexCumulativeCount(uint
+ {
+ 	if (isAssociatedToInterpretations()) {		
+ 		_resqml20__GridConnectionSetRepresentation* rep = static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1);
+-		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, cumulativeCount);
++		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, COMMON_NS::Span(cumulativeCount, getCellIndexPairCount()));
+ 	}
+ 	else {
+ 		throw std::invalid_argument("The grid connection does not contain any interpretation association.");
+@@ -152,7 +152,7 @@ void GridConnectionSetRepresentation::getInterpretationIndices(int64_t * interpr
+ 		_resqml20__GridConnectionSetRepresentation* rep = static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1);
+ 		auto const* integerArray = dynamic_cast<resqml20__AbstractIntegerArray const*>(rep->ConnectionInterpretations->InterpretationIndices->Elements);
+ 		if (integerArray != nullptr) {
+-			readArrayNdOfIntegerValues(integerArray, interpretationIndices);
++			readArrayNdOfIntegerValues(integerArray, COMMON_NS::Span(interpretationIndices, getCountOfArray(integerArray)));
+ 		}
+ 		else {
+ 			throw std::logic_error("The interpretation indices array should be an integer one.");
+@@ -201,7 +201,7 @@ uint64_t GridConnectionSetRepresentation::getCellIndexPairCountFromInterpretatio
+ 		}
+ 		else {
+ 			std::unique_ptr<unsigned int[]> const cumulative(new unsigned int[totalCellIndexPairCount]);
+-			readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, cumulative.get());
++			readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, COMMON_NS::Span(cumulative.get(), totalCellIndexPairCount));
+ 			result = cumulative[0] > 0 ? 0 : 1;
+ 			for (uint64_t i = 1; i < totalCellIndexPairCount; ++i) {
+ 				if (cumulative[i] == cumulative[i-1]) {
+@@ -220,7 +220,7 @@ uint64_t GridConnectionSetRepresentation::getCellIndexPairCountFromInterpretatio
+ 			const uint64_t faultIndexCount = hdfProxy->getElementCount(dataset->PathInHdfFile);
+ 			std::unique_ptr<int64_t[]> const faultIndices(new int64_t[faultIndexCount]);
+ 
+-			hdfProxy->readArrayNdOfInt64Values(dataset->PathInHdfFile, faultIndices.get());
++			hdfProxy->readArrayNdOfInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(faultIndices.get(), faultIndexCount));
+ 			for (size_t i = 0; i < faultIndexCount; ++i) {
+ 				if (faultIndices[i] == interpretationIndex) {
+ 					result++;
+@@ -268,7 +268,7 @@ void GridConnectionSetRepresentation::getGridConnectionSetInformationFromInterpr
+ 
+ 	std::unique_ptr<unsigned int[]> cumulativeCount(new unsigned int[totalCellIndexPairCount]);
+ 	if (interpCount > 0) {
+-		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, cumulativeCount.get());
++		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, COMMON_NS::Span(cumulativeCount.get(), totalCellIndexPairCount));
+ 	}
+ 	else {
+ 		std::fill(cumulativeCount.get(), cumulativeCount.get() + totalCellIndexPairCount, 0);
+@@ -311,7 +311,7 @@ void GridConnectionSetRepresentation::getGridConnectionSetInformationFromInterpr
+ 		if (arrayType == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__IntegerHdf5Array) {
+ 			faultIndices.reset(new int64_t[cumulativeCount[totalCellIndexPairCount-1]]);
+ 			eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(rep->ConnectionInterpretations->InterpretationIndices->Elements)->Values;
+-			getRepository()->getDataObjectByUuid<EML2_NS::AbstractHdfProxy>(dataset->HdfProxy->UUID)->readArrayNdOfInt64Values(dataset->PathInHdfFile, faultIndices.get());
++			getRepository()->getDataObjectByUuid<EML2_NS::AbstractHdfProxy>(dataset->HdfProxy->UUID)->readArrayNdOfInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(faultIndices.get(), cumulativeCount[totalCellIndexPairCount - 1]));
+ 		}
+ 		else if (arrayType == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__IntegerConstantArray)
+ 		{
+@@ -377,7 +377,7 @@ uint64_t GridConnectionSetRepresentation::getInterpretationCount() const
+ 
+ int64_t GridConnectionSetRepresentation::getCellIndexPairs(int64_t * cellIndexPairs) const
+ {
+-	return readArrayNdOfIntegerValues(static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1)->CellIndexPairs, cellIndexPairs);
++	return readArrayNdOfIntegerValues(static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1)->CellIndexPairs, COMMON_NS::Span(cellIndexPairs, getCellIndexPairCount() * 2));
+ }
+ 
+ bool GridConnectionSetRepresentation::isBasedOnMultiGrids() const 
+@@ -393,7 +393,7 @@ void GridConnectionSetRepresentation::getGridIndexPairs(unsigned short * gridInd
+ 	if (!isBasedOnMultiGrids()) {
+ 		throw std::invalid_argument("This GridConnectionSet representation has no multiple grid support.");
+ 	}
+-	readArrayNdOfIntegerValues(static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1)->GridIndexPairs, gridIndexPairs);
++	readArrayNdOfIntegerValues(static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1)->GridIndexPairs, COMMON_NS::Span(gridIndexPairs, getCellIndexPairCount() * 2));
+ }
+ 
+ bool GridConnectionSetRepresentation::hasLocalFacePerCell() const
+@@ -406,7 +406,7 @@ int64_t GridConnectionSetRepresentation::getLocalFacePerCellIndexPairs(int* loca
+ 	if (!hasLocalFacePerCell()) {
+ 		throw std::invalid_argument("This representation has no local face per cell.");
+ 	}
+-	return readArrayNdOfIntegerValues(static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1)->LocalFacePerCellIndexPairs, localFaceCellIndexPairs);
++	return readArrayNdOfIntegerValues(static_cast<_resqml20__GridConnectionSetRepresentation*>(gsoapProxy2_0_1)->LocalFacePerCellIndexPairs, COMMON_NS::Span(localFaceCellIndexPairs, getCellIndexPairCount() * 2));
+ }
+ 
+ void GridConnectionSetRepresentation::pushBackXmlSupportingGridRepresentation(RESQML2_NS::AbstractGridRepresentation * supportingGridRep)
+diff --git a/src/resqml2_0_1/IjkGridExplicitRepresentation.cpp b/src/resqml2_0_1/IjkGridExplicitRepresentation.cpp
+index cfa75e3..9ae3eb7 100644
+--- a/src/resqml2_0_1/IjkGridExplicitRepresentation.cpp
++++ b/src/resqml2_0_1/IjkGridExplicitRepresentation.cpp
+@@ -63,7 +63,7 @@ void IjkGridExplicitRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(xmlDataset);
+ 		if (isTruncated()) {
+ 			// the truncation points follow in the same buffer, read below
+-			hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, xyzPoints);
++			hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, hdfProxy->getElementCount(xmlDataset->PathInHdfFile)));
+ 		}
+ 		else {
+ 			hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, COMMON_NS::Span<double>(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+@@ -81,7 +81,7 @@ void IjkGridExplicitRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ 				eml20__Hdf5Dataset const * xmlDataset = static_cast<resqml20__Point3dHdf5Array*>(truncatedGeom->AdditionalGridPoints[0]->Points)->Coordinates;
+ 				EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(xmlDataset);
+ 				xyzPoints += (getXyzPointCountOfPatch(patchIndex) - static_cast<gsoap_resqml2_0_1::_resqml20__TruncatedIjkGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationNodeCount) * 3;
+-				hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, xyzPoints);
++				hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, hdfProxy->getElementCount(xmlDataset->PathInHdfFile)));
+ 			}
+ 			else {
+ 				throw logic_error("The additional grid points must be explicit ones for now. Parametric additional points are not supported yet for example.");
+diff --git a/src/resqml2_0_1/IjkGridParametricRepresentation.cpp b/src/resqml2_0_1/IjkGridParametricRepresentation.cpp
+index 158f693..7d0b05c 100644
+--- a/src/resqml2_0_1/IjkGridParametricRepresentation.cpp
++++ b/src/resqml2_0_1/IjkGridParametricRepresentation.cpp
+@@ -92,7 +92,7 @@ bool IjkGridParametricRepresentation::isParametricLineKindConstant() const
+ 				throw std::logic_error("Size difference between values count in hdf and pillars count");
+ 			}
+ 			std::unique_ptr<short[]> pillarKind(new short[getPillarCount()]);
+-			hdfProxy->readArrayNdOfShortValues(dataset->PathInHdfFile, pillarKind.get());
++			hdfProxy->readArrayNdOfShortValues(dataset->PathInHdfFile, COMMON_NS::Span(pillarKind.get(), getPillarCount()));
+ 			short firstPillarKind = pillarKind[0];
+ 			size_t pillarIndex = 0;
+ 			while (pillarIndex < getPillarCount()) {
+@@ -144,7 +144,7 @@ short IjkGridParametricRepresentation::getConstantParametricLineKind() const
+ 			eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(paramLineArray->LineKindIndices)->Values;
+ 			EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+ 			std::unique_ptr<short[]> pillarKind(new short[getPillarCount()]);
+-			hdfProxy->readArrayNdOfShortValues(dataset->PathInHdfFile, pillarKind.get());
++			hdfProxy->readArrayNdOfShortValues(dataset->PathInHdfFile, COMMON_NS::Span(pillarKind.get(), getPillarCount()));
+ 			return pillarKind[0];
+ 		}
+ 		else {
+@@ -170,7 +170,7 @@ void IjkGridParametricRepresentation::getRawParametricLineKind(short * pillarKin
+ 		{
+ 			eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(paramLineArray->LineKindIndices)->Values;
+ 			EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-			hdfProxy->readArrayNdOfShortValues(dataset->PathInHdfFile, pillarKind);
++			hdfProxy->readArrayNdOfShortValues(dataset->PathInHdfFile, COMMON_NS::Span(pillarKind, getPillarCount()));
+ 		}
+ 		else if (paramLineArray->LineKindIndices->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__IntegerConstantArray)
+ 		{
+@@ -222,7 +222,7 @@ void IjkGridParametricRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, d
+ 				eml20__Hdf5Dataset const * xmlDataset = static_cast<resqml20__Point3dHdf5Array*>(truncatedGeom->AdditionalGridPoints[0]->Points)->Coordinates;
+ 				EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(xmlDataset);
+ 				xyzPoints += (getXyzPointCountOfPatch(patchIndex) - static_cast<gsoap_resqml2_0_1::_resqml20__TruncatedIjkGridRepresentation*>(gsoapProxy2_0_1)->TruncationCells->TruncationNodeCount) * 3;
+-				hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, xyzPoints);
++				hdfProxy->readArrayNdOfDoubleValues(xmlDataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, hdfProxy->getElementCount(xmlDataset->PathInHdfFile)));
+ 			}
+ 			else {
+ 				throw logic_error("The additional grid points must be explicit ones for now. Parametric additional points are not supported yet for example.");
+diff --git a/src/resqml2_0_1/PointSetRepresentation.cpp b/src/resqml2_0_1/PointSetRepresentation.cpp
+index d3d85d5..b30a823 100644
+--- a/src/resqml2_0_1/PointSetRepresentation.cpp
++++ b/src/resqml2_0_1/PointSetRepresentation.cpp
+@@ -135,13 +135,13 @@ void PointSetRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double * x
+ 		{
+ 			eml20__Hdf5Dataset const* dataset = static_cast<resqml20__Point3dHdf5Array*>(pointGeom->Points)->Coordinates;
+ 			EML2_NS::AbstractHdfProxy* hdfProxy = getHdfProxyFromDataset(dataset);
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints);
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 		}
+ 		else if (pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__Point2dHdf5Array)
+ 		{
+ 			eml20__Hdf5Dataset const* dataset = static_cast<resqml20__Point2dHdf5Array*>(pointGeom->Points)->Coordinates;
+ 			EML2_NS::AbstractHdfProxy* hdfProxy = getHdfProxyFromDataset(dataset);
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints);
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 2));
+ 			const uint64_t pointCount = getXyzPointCountOfPatch(patchIndex);
+ 			for (size_t pointIndex = pointCount - 1; pointIndex >= 1; --pointIndex) {
+ 				xyzPoints[pointIndex * 3 + 2] = std::numeric_limits<double>::quiet_NaN();
+@@ -170,7 +170,7 @@ void PointSetRepresentation::getXyPointsOfPatch(uint64_t patchIndex, double* xyP
+ 
+ 			const uint64_t pointCount = getXyzPointCountOfPatch(patchIndex);
+ 			std::unique_ptr<double[]> xyzPoints(new double[pointCount*3]);
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints.get());
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints.get(), pointCount * 3));
+ 			for (size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
+ 				xyPoints[pointIndex * 2] = xyzPoints[pointIndex * 3];
+ 				xyPoints[pointIndex * 2 + 1] = xyzPoints[pointIndex * 3 + 1];
+@@ -180,7 +180,7 @@ void PointSetRepresentation::getXyPointsOfPatch(uint64_t patchIndex, double* xyP
+ 		{
+ 			eml20__Hdf5Dataset const* dataset = static_cast<resqml20__Point2dHdf5Array*>(pointGeom->Points)->Coordinates;
+ 			EML2_NS::AbstractHdfProxy* hdfProxy = getHdfProxyFromDataset(dataset);
+-			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyPoints);
++			hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyPoints, getXyzPointCountOfPatch(patchIndex) * 2));
+ 		}
+ 		else {
+ 			throw invalid_argument("The geometry of the point set representation is neither simple 3d or 2d.");
+diff --git a/src/resqml2_0_1/PolylineRepresentation.cpp b/src/resqml2_0_1/PolylineRepresentation.cpp
+index b8b0165..0c8b859 100644
+--- a/src/resqml2_0_1/PolylineRepresentation.cpp
++++ b/src/resqml2_0_1/PolylineRepresentation.cpp
+@@ -106,7 +106,7 @@ void PolylineRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double * x
+ 	{
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__Point3dHdf5Array*>(pointGeom->Points)->Coordinates;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+diff --git a/src/resqml2_0_1/PolylineSetRepresentation.cpp b/src/resqml2_0_1/PolylineSetRepresentation.cpp
+index 881add0..9891cb1 100644
+--- a/src/resqml2_0_1/PolylineSetRepresentation.cpp
++++ b/src/resqml2_0_1/PolylineSetRepresentation.cpp
+@@ -244,7 +244,7 @@ void PolylineSetRepresentation::getNodeCountPerPolylineInPatch(uint64_t patchInd
+ 		throw std::out_of_range("patchIndex id out of range.");
+ 	}
+ 	resqml20__PolylineSetPatch* patch = static_cast<_resqml20__PolylineSetRepresentation*>(gsoapProxy2_0_1)->LinePatch[patchIndex];
+-	readArrayNdOfIntegerValues(patch->NodeCountPerPolyline, nodeCountPerPolyline);
++	readArrayNdOfIntegerValues(patch->NodeCountPerPolyline, COMMON_NS::Span(nodeCountPerPolyline, getPolylineCountOfPatch(patchIndex)));
+ }
+ 
+ void PolylineSetRepresentation::getNodeCountPerPolylineOfAllPatches(unsigned int * NodeCountPerPolyline) const
+@@ -268,7 +268,7 @@ void PolylineSetRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double
+ 	{
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__Point3dHdf5Array*>(pointGeom->Points)->Coordinates;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -296,7 +296,7 @@ bool PolylineSetRepresentation::areAllPolylinesClosedOfPatch(uint64_t patchIndex
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values;
+ 
+ 		std::unique_ptr<int8_t[]> tmp(new int8_t[polylineCount]);
+-		getHdfProxyFromDataset(dataset)->readArrayNdOfInt8Values(static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values->PathInHdfFile, tmp.get());
++		getHdfProxyFromDataset(dataset)->readArrayNdOfInt8Values(static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values->PathInHdfFile, COMMON_NS::Span(tmp.get(), polylineCount));
+ 		const bool result = find(tmp.get(), tmp.get() + polylineCount, 0) == tmp.get() + polylineCount;
+ 
+ 		return result;
+@@ -334,7 +334,7 @@ bool PolylineSetRepresentation::areAllPolylinesNonClosedOfPatch(uint64_t patchIn
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values;
+ 
+ 		std::unique_ptr<int8_t[]> tmp(new int8_t[polylineCount]);
+-		getHdfProxyFromDataset(dataset)->readArrayNdOfInt8Values(static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values->PathInHdfFile, tmp.get());
++		getHdfProxyFromDataset(dataset)->readArrayNdOfInt8Values(static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values->PathInHdfFile, COMMON_NS::Span(tmp.get(), polylineCount));
+ 		return find_if(tmp.get(), tmp.get() + polylineCount, [](char i) {return i != 0; }) == tmp.get() + polylineCount;
+ 	}
+ 	else
+@@ -364,7 +364,7 @@ void PolylineSetRepresentation::getClosedFlagPerPolylineOfPatch(uint64_t patchIn
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values;
+ 
+ 		std::unique_ptr<int8_t[]> tmp(new int8_t[polylineCount]);
+-		getHdfProxyFromDataset(dataset)->readArrayNdOfInt8Values(static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values->PathInHdfFile, tmp.get());
++		getHdfProxyFromDataset(dataset)->readArrayNdOfInt8Values(static_cast<resqml20__BooleanHdf5Array*>(patch->ClosedPolylines)->Values->PathInHdfFile, COMMON_NS::Span(tmp.get(), polylineCount));
+ 		for (size_t i = 0; i < polylineCount; ++i) {
+ 			closedFlagPerPolyline[i] = tmp[i];
+ 		}
+diff --git a/src/resqml2_0_1/SealedSurfaceFrameworkRepresentation.cpp b/src/resqml2_0_1/SealedSurfaceFrameworkRepresentation.cpp
+index 1e42234..618e05d 100644
+--- a/src/resqml2_0_1/SealedSurfaceFrameworkRepresentation.cpp
++++ b/src/resqml2_0_1/SealedSurfaceFrameworkRepresentation.cpp
+@@ -224,7 +224,7 @@ void SealedSurfaceFrameworkRepresentation::getIdenticalContactPatchNodeIndices(u
+ 		throw invalid_argument("The nodes are all identical");
+ 	}
+ 
+-	readArrayNdOfIntegerValues(getContact(crIndex)->IdenticalNodeIndices, nodeIndices);
++	readArrayNdOfIntegerValues(getContact(crIndex)->IdenticalNodeIndices, COMMON_NS::Span(nodeIndices, getIdenticalContactPatchNodeCount(crIndex)));
+ }
+ 
+ unsigned int SealedSurfaceFrameworkRepresentation::getContactPatchCount(unsigned int crIndex) const
+@@ -277,5 +277,5 @@ unsigned int SealedSurfaceFrameworkRepresentation::getContactPatchNodeCount(unsi
+ 
+ void SealedSurfaceFrameworkRepresentation::getContactPatchNodeIndices(unsigned int crIndex, unsigned int cpIndex, unsigned int * nodeIndices) const
+ {
+-	readArrayNdOfIntegerValues(getContactPatch(crIndex, cpIndex)->SupportingRepresentationNodes, nodeIndices);
++	readArrayNdOfIntegerValues(getContactPatch(crIndex, cpIndex)->SupportingRepresentationNodes, COMMON_NS::Span(nodeIndices, getContactPatchNodeCount(crIndex, cpIndex)));
+ }
+diff --git a/src/resqml2_0_1/StreamlinesRepresentation.cpp b/src/resqml2_0_1/StreamlinesRepresentation.cpp
+index 6802f17..0074e66 100644
+--- a/src/resqml2_0_1/StreamlinesRepresentation.cpp
++++ b/src/resqml2_0_1/StreamlinesRepresentation.cpp
+@@ -87,7 +87,7 @@ uint32_t StreamlinesRepresentation::getInjectorPerLine(uint32_t* injectorPerLine
+ 		throw std::logic_error("There is no wellbore trajectory associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(wellboresInfo->InjectorPerLine, injectorPerLine);
++	return readArrayNdOfIntegerValues(wellboresInfo->InjectorPerLine, COMMON_NS::Span(injectorPerLine, getLineCount()));
+ }
+ 
+ uint32_t StreamlinesRepresentation::getProducerPerLine(uint32_t* producerPerLine) const
+@@ -98,7 +98,7 @@ uint32_t StreamlinesRepresentation::getProducerPerLine(uint32_t* producerPerLine
+ 		throw std::logic_error("There is no wellbore trajectory associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(wellboresInfo->ProducerPerLine, producerPerLine);
++	return readArrayNdOfIntegerValues(wellboresInfo->ProducerPerLine, COMMON_NS::Span(producerPerLine, getLineCount()));
+ }
+ 
+ void StreamlinesRepresentation::setWellboreInformation(uint32_t const* injectorPerLine, uint32_t const* producerPerLine, const std::vector<RESQML2_NS::WellboreTrajectoryRepresentation*> & wellboreTrajectories,
+@@ -170,7 +170,7 @@ void StreamlinesRepresentation::getNodeCountPerLine(uint32_t * nodeCountPerPolyl
+ 		throw std::logic_error("There is no geometry associated to this streamlines representation");
+ 	}
+ 
+-	readArrayNdOfIntegerValues(geometry->NodeCountPerPolyline, nodeCountPerPolyline);
++	readArrayNdOfIntegerValues(geometry->NodeCountPerPolyline, COMMON_NS::Span(nodeCountPerPolyline, getLineCount()));
+ }
+ 
+ void StreamlinesRepresentation::setGeometry(
+@@ -328,7 +328,7 @@ uint16_t StreamlinesRepresentation::getGridIndices(uint16_t * gridIndices) const
+ 		throw std::logic_error("There is no grid associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(gridLink->GridIndices, gridIndices);
++	return readArrayNdOfIntegerValues(gridLink->GridIndices, COMMON_NS::Span(gridIndices, getIntervalCount()));
+ }
+ 
+ int64_t StreamlinesRepresentation::getCellIndices(int64_t * cellIndices) const
+@@ -342,7 +342,7 @@ int64_t StreamlinesRepresentation::getCellIndices(int64_t * cellIndices) const
+ 		throw std::logic_error("There is no grid associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(gridLink->CellIndices, cellIndices);
++	return readArrayNdOfIntegerValues(gridLink->CellIndices, COMMON_NS::Span(cellIndices, getIntervalCount()));
+ }
+ 
+ uint8_t StreamlinesRepresentation::getLocalFacePairPerCellIndices(uint8_t * localFacePairPerCellIndices) const
+@@ -356,7 +356,7 @@ uint8_t StreamlinesRepresentation::getLocalFacePairPerCellIndices(uint8_t * loca
+ 		throw std::logic_error("There is no grid associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(gridLink->LocalFacePairPerCellIndices, localFacePairPerCellIndices);
++	return readArrayNdOfIntegerValues(gridLink->LocalFacePairPerCellIndices, COMMON_NS::Span(localFacePairPerCellIndices, getIntervalCount() * 2));
+ }
+ 
+ uint64_t StreamlinesRepresentation::getGridRepresentationCount() const
+diff --git a/src/resqml2_0_1/SubRepresentation.cpp b/src/resqml2_0_1/SubRepresentation.cpp
+index f198174..c3038a8 100644
+--- a/src/resqml2_0_1/SubRepresentation.cpp
++++ b/src/resqml2_0_1/SubRepresentation.cpp
+@@ -328,7 +328,7 @@ void SubRepresentation::getElementIndicesOfPatch(uint64_t patchIndex, unsigned i
+ 		throw out_of_range("The elementIndices does not exist at this index.");
+ 	}
+ 
+-	readArrayNdOfIntegerValues(rep->SubRepresentationPatch[patchIndex]->ElementIndices[elementIndicesIndex]->Indices, elementIndices);
++	readArrayNdOfIntegerValues(rep->SubRepresentationPatch[patchIndex]->ElementIndices[elementIndicesIndex]->Indices, COMMON_NS::Span(elementIndices, getElementCountOfPatch(patchIndex)));
+ }
+ 
+ void SubRepresentation::getSupportingRepresentationIndicesOfPatch(uint64_t patchIndex, short * supportingRepresentationIndices) const
+diff --git a/src/resqml2_0_1/TriangulatedSetRepresentation.cpp b/src/resqml2_0_1/TriangulatedSetRepresentation.cpp
+index ef515dc..f49ae75 100644
+--- a/src/resqml2_0_1/TriangulatedSetRepresentation.cpp
++++ b/src/resqml2_0_1/TriangulatedSetRepresentation.cpp
+@@ -135,7 +135,7 @@ void TriangulatedSetRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ 	{
+ 		eml20__Hdf5Dataset const* dataset = static_cast<resqml20__Point3dHdf5Array const*>(pointGeom->Points)->Coordinates;
+ 		EML2_NS::AbstractHdfProxy* hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -161,7 +161,7 @@ uint64_t TriangulatedSetRepresentation::getTriangleCountOfAllPatches() const
+ 
+ void TriangulatedSetRepresentation::getTriangleNodeIndicesOfPatch(uint64_t patchIndex, unsigned int* triangleNodeIndices) const
+ {
+-	readArrayNdOfIntegerValues(static_cast<_resqml20__TriangulatedSetRepresentation const*>(gsoapProxy2_0_1)->TrianglePatch.at(patchIndex)->Triangles, triangleNodeIndices);
++	readArrayNdOfIntegerValues(static_cast<_resqml20__TriangulatedSetRepresentation const*>(gsoapProxy2_0_1)->TrianglePatch.at(patchIndex)->Triangles, COMMON_NS::Span(triangleNodeIndices, getTriangleCountOfPatch(patchIndex) * 3));
+ }
+ 
+ void TriangulatedSetRepresentation::getTriangleNodeIndicesOfAllPatches(unsigned int* triangleNodeIndices) const
+diff --git a/src/resqml2_0_1/UnstructuredGridRepresentation.cpp b/src/resqml2_0_1/UnstructuredGridRepresentation.cpp
+index b12848f..2f61abb 100644
+--- a/src/resqml2_0_1/UnstructuredGridRepresentation.cpp
++++ b/src/resqml2_0_1/UnstructuredGridRepresentation.cpp
+@@ -129,7 +129,7 @@ void UnstructuredGridRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, do
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__Point3dHdf5Array) {
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__Point3dHdf5Array*>(pointGeom->Points)->Coordinates;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInHdfFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else {
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -145,7 +145,7 @@ void UnstructuredGridRepresentation::getFaceIndicesOfCells(uint64_t * faceIndice
+ 	if (grid->Geometry->FacesPerCell->Elements->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__IntegerHdf5Array) {
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(grid->Geometry->FacesPerCell->Elements)->Values;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, faceIndices);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(faceIndices, hdfProxy->getElementCount(dataset->PathInHdfFile)));
+ 	}
+ 	else {
+ 		throw logic_error("Not yet implemented");
+@@ -161,7 +161,7 @@ void UnstructuredGridRepresentation::getCumulativeFaceCountPerCell(uint64_t * cu
+ 	{
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(grid->Geometry->FacesPerCell->CumulativeLength)->Values;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, cumulativeFaceCountPerCell_);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(cumulativeFaceCountPerCell_, getCellCount()));
+ 	}
+ 	else if (grid->Geometry->FacesPerCell->CumulativeLength->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__IntegerLatticeArray)
+ 	{
+@@ -243,7 +243,7 @@ void UnstructuredGridRepresentation::getNodeIndicesOfFaces(uint64_t * nodeIndice
+ 	{
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(grid->Geometry->NodesPerFace->Elements)->Values;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, nodeIndices);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(nodeIndices, hdfProxy->getElementCount(dataset->PathInHdfFile)));
+ 	}
+ 	else
+ 		throw logic_error("Not yet implemented");
+@@ -258,7 +258,7 @@ void UnstructuredGridRepresentation::getCumulativeNodeCountPerFace(uint64_t * no
+ 	{
+ 		eml20__Hdf5Dataset const * dataset = static_cast<resqml20__IntegerHdf5Array*>(grid->Geometry->NodesPerFace->CumulativeLength)->Values;
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, nodeCountPerFace);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInHdfFile, COMMON_NS::Span(nodeCountPerFace, getFaceCount()));
+ 	}
+ 	else if (grid->Geometry->NodesPerFace->CumulativeLength->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__IntegerLatticeArray)
+ 	{
+@@ -325,7 +325,7 @@ void UnstructuredGridRepresentation::getCellFaceIsRightHanded(uint8_t* cellFaceI
+   {
+ 	  eml20__Hdf5Dataset const * dataset = static_cast<resqml20__BooleanHdf5Array*>(grid->Geometry->CellFaceIsRightHanded)->Values;
+ 	  EML2_NS::AbstractHdfProxy * hdfProxy = getHdfProxyFromDataset(dataset);
+-	hdfProxy->readArrayNdOfUInt8Values(dataset->PathInHdfFile, cellFaceIsRightHanded);
++	hdfProxy->readArrayNdOfUInt8Values(dataset->PathInHdfFile, COMMON_NS::Span(cellFaceIsRightHanded, hdfProxy->getElementCount(dataset->PathInHdfFile)));
+   }
+   else if (grid->Geometry->CellFaceIsRightHanded->soap_type() == SOAP_TYPE_gsoap_resqml2_0_1_resqml20__BooleanConstantArray)
+   {
+diff --git a/src/resqml2_2/BlockedWellboreRepresentation.cpp b/src/resqml2_2/BlockedWellboreRepresentation.cpp
+index f1387d2..224f89e 100644
+--- a/src/resqml2_2/BlockedWellboreRepresentation.cpp
++++ b/src/resqml2_2/BlockedWellboreRepresentation.cpp
+@@ -104,7 +104,7 @@ void BlockedWellboreRepresentation::setIntervalGridCells(int8_t const* gridIndic
+ 	eml23__IntegerExternalArray* xmlGridIndices = soap_new_eml23__IntegerExternalArray(gsoapProxy2_3->soap);
+ 	xmlGridIndices->NullValue = gridIndicesNullValue;
+ 	xmlGridIndices->Values = soap_new_eml23__ExternalDataArray(gsoapProxy2_3->soap);
+-	xmlGridIndices->Values->ExternalDataArrayPart.push_back(createExternalDataArrayPart(getHdfGroup() +"/GridIndices", rep->NodeCount, hdfProxy));
++	xmlGridIndices->Values->ExternalDataArrayPart.push_back(createExternalDataArrayPart(getHdfGroup() +"/GridIndices", rep->NodeCount - 1, hdfProxy));
+ 	rep->IntervalGridCells->GridIndices = xmlGridIndices;
+ 	// HDF
+ 	hdfProxy->writeArrayNd(getHdfGroup(),
+@@ -118,7 +118,7 @@ void BlockedWellboreRepresentation::setIntervalGridCells(int8_t const* gridIndic
+ 	eml23__IntegerExternalArray* xmlCellIndices = soap_new_eml23__IntegerExternalArray(gsoapProxy2_3->soap);
+ 	xmlCellIndices->NullValue = -1;
+ 	xmlCellIndices->Values = soap_new_eml23__ExternalDataArray(gsoapProxy2_3->soap);
+-	xmlCellIndices->Values->ExternalDataArrayPart.push_back(createExternalDataArrayPart(getHdfGroup() +"/CellIndices", cellCount, hdfProxy));
++	xmlCellIndices->Values->ExternalDataArrayPart.push_back(createExternalDataArrayPart(getHdfGroup() +"/CellIndices", rep->NodeCount - 1, hdfProxy));
+ 	rep->IntervalGridCells->CellIndices = xmlCellIndices;
+ 	// HDF
+ 	hdfProxy->writeArrayNd(getHdfGroup(),
+@@ -132,7 +132,7 @@ void BlockedWellboreRepresentation::setIntervalGridCells(int8_t const* gridIndic
+ 	eml23__IntegerExternalArray* xmlLocalFacePairPerCellIndices = soap_new_eml23__IntegerExternalArray(gsoapProxy2_3->soap);
+ 	xmlLocalFacePairPerCellIndices->NullValue = localFacePairPerCellIndicesNullValue;
+ 	xmlLocalFacePairPerCellIndices->Values = soap_new_eml23__ExternalDataArray(gsoapProxy2_3->soap);
+-	xmlLocalFacePairPerCellIndices->Values->ExternalDataArrayPart.push_back(createExternalDataArrayPart(getHdfGroup() +"/LocalFacePairPerCellIndices", cellCount*2, hdfProxy));
++	xmlLocalFacePairPerCellIndices->Values->ExternalDataArrayPart.push_back(createExternalDataArrayPart(getHdfGroup() +"/LocalFacePairPerCellIndices", (rep->NodeCount - 1) * 2, hdfProxy));
+ 	rep->IntervalGridCells->LocalFacePairPerCellIndices = xmlLocalFacePairPerCellIndices;
+ 	// HDF
+ 	intervalCount *= 2;
+@@ -151,19 +151,19 @@ uint64_t BlockedWellboreRepresentation::getCellCount() const
+ int8_t BlockedWellboreRepresentation::getGridIndices(int8_t* gridIndices) const
+ {
+ 	auto const* xmlGridIndices = static_cast<_resqml22__BlockedWellboreRepresentation*>(gsoapProxy2_3)->IntervalGridCells->GridIndices;
+-	return readArrayNdOfIntegerValues(xmlGridIndices, gridIndices);
++	return readArrayNdOfIntegerValues(xmlGridIndices, COMMON_NS::Span(gridIndices, getMdValuesCount() - 1));
+ }
+ 
+ int64_t BlockedWellboreRepresentation::getCellIndices(int64_t* cellIndices) const
+ {
+ 	auto const* xmlCellIndices = static_cast<_resqml22__BlockedWellboreRepresentation*>(gsoapProxy2_3)->IntervalGridCells->CellIndices;
+-	return readArrayNdOfIntegerValues(xmlCellIndices, cellIndices);
++	return readArrayNdOfIntegerValues(xmlCellIndices, COMMON_NS::Span(cellIndices, getMdValuesCount() - 1));
+ }
+ 
+ int8_t BlockedWellboreRepresentation::getLocalFacePairPerCellIndices(int8_t* localFacePairPerCellIndices) const
+ {
+ 	auto const* xmlLocalFacePairPerCellIndices = static_cast<_resqml22__BlockedWellboreRepresentation*>(gsoapProxy2_3)->IntervalGridCells->LocalFacePairPerCellIndices;
+-	return readArrayNdOfIntegerValues(xmlLocalFacePairPerCellIndices, localFacePairPerCellIndices);
++	return readArrayNdOfIntegerValues(xmlLocalFacePairPerCellIndices, COMMON_NS::Span(localFacePairPerCellIndices, (getMdValuesCount() - 1) * 2));
+ }
+ 
+ void BlockedWellboreRepresentation::pushBackSupportingGridRepresentation(RESQML2_NS::AbstractGridRepresentation * supportingGridRep)
+diff --git a/src/resqml2_2/Grid2dRepresentation.cpp b/src/resqml2_2/Grid2dRepresentation.cpp
+index ac924eb..f309e40 100644
+--- a/src/resqml2_2/Grid2dRepresentation.cpp
++++ b/src/resqml2_2/Grid2dRepresentation.cpp
+@@ -83,7 +83,7 @@ void Grid2dRepresentation::getZValues(double* values) const
+ 		if (dynamic_cast<eml23__FloatingPointExternalArray*>(zValues) != nullptr) {
+ 			eml23__ExternalDataArrayPart const* daPart = static_cast<eml23__FloatingPointExternalArray*>(zValues)->Values->ExternalDataArrayPart[0];
+ 			EML2_NS::AbstractHdfProxy* hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+-			hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, values);
++			hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(values, getCountOfDataArrayPart(daPart)));
+ 		}
+ 		else {
+ 			throw std::logic_error("The Z values can only be retrieved if they are described as a FloatingPointExternalArray.");
+@@ -392,7 +392,7 @@ void Grid2dRepresentation::getJSpacing(double* const jSpacings) const
+ 	const uint64_t jSpacingCount = getNodeCountAlongJAxis() - 1;
+ 
+ 	if (arrayLatticeOfPoints3d != nullptr) {
+-		readArrayNdOfDoubleValues(arrayLatticeOfPoints3d->Dimension[0]->Spacing, jSpacings);
++		readArrayNdOfDoubleValues(arrayLatticeOfPoints3d->Dimension[0]->Spacing, COMMON_NS::Span(jSpacings, jSpacingCount));
+ 	}
+ 	else if (!getSupportingRepresentationDor().isEmpty())
+ 	{
+@@ -447,7 +447,7 @@ void Grid2dRepresentation::getISpacing(double* iSpacings) const
+ 	const uint64_t iSpacingCount = getNodeCountAlongIAxis() - 1;
+ 
+ 	if (arrayLatticeOfPoints3d != nullptr) {
+-		readArrayNdOfDoubleValues(arrayLatticeOfPoints3d->Dimension[1]->Spacing, iSpacings);
++		readArrayNdOfDoubleValues(arrayLatticeOfPoints3d->Dimension[1]->Spacing, COMMON_NS::Span(iSpacings, iSpacingCount));
+ 	}
+ 	else if (!getSupportingRepresentationDor().isEmpty())
+ 	{
+diff --git a/src/resqml2_2/GridConnectionSetRepresentation.cpp b/src/resqml2_2/GridConnectionSetRepresentation.cpp
+index db12c3b..18a5e74 100644
+--- a/src/resqml2_2/GridConnectionSetRepresentation.cpp
++++ b/src/resqml2_2/GridConnectionSetRepresentation.cpp
+@@ -141,7 +141,7 @@ void GridConnectionSetRepresentation::getInterpretationIndexCumulativeCount(uint
+ {
+ 	if (isAssociatedToInterpretations()) {		
+ 		_resqml22__GridConnectionSetRepresentation const* rep = static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3);
+-		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, cumulativeCount);
++		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, COMMON_NS::Span(cumulativeCount, getCellIndexPairCount()));
+ 	}
+ 	else {
+ 		throw std::invalid_argument("The grid connection does not contain any interpretation association.");
+@@ -154,7 +154,7 @@ void GridConnectionSetRepresentation::getInterpretationIndices(int64_t * interpr
+ 		_resqml22__GridConnectionSetRepresentation* rep = static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3);
+ 		auto const* integerArray = dynamic_cast<eml23__AbstractIntegerArray const*>(rep->ConnectionInterpretations->InterpretationIndices->Elements);
+ 		if (integerArray != nullptr) {
+-			readArrayNdOfIntegerValues(integerArray, interpretationIndices);
++			readArrayNdOfIntegerValues(integerArray, COMMON_NS::Span(interpretationIndices, getCountOfArray(integerArray)));
+ 		}
+ 		else {
+ 			throw std::logic_error("The interpretation indices array should be an integer one.");
+@@ -203,7 +203,7 @@ uint64_t GridConnectionSetRepresentation::getCellIndexPairCountFromInterpretatio
+ 		}
+ 		else {
+ 			std::unique_ptr<unsigned int[]> const cumulative(new unsigned int[totalCellIndexPairCount]);
+-			readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, cumulative.get());
++			readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, COMMON_NS::Span(cumulative.get(), totalCellIndexPairCount));
+ 			result = cumulative[0] > 0 ? 0 : 1;
+ 			for (uint64_t i = 1; i < totalCellIndexPairCount; ++i) {
+ 				if (cumulative[i] == cumulative[i - 1]) {
+@@ -222,7 +222,7 @@ uint64_t GridConnectionSetRepresentation::getCellIndexPairCountFromInterpretatio
+ 			const uint64_t faultIndexCount = getOrCreateHdfProxyFromDataArrayPart(daPart)->getElementCount(daPart->PathInExternalFile);
+ 			std::unique_ptr<int64_t[]> faultIndices(new int64_t[faultIndexCount]);
+ 
+-			hdfProxy->readArrayNdOfInt64Values(daPart->PathInExternalFile, faultIndices.get());
++			hdfProxy->readArrayNdOfInt64Values(daPart->PathInExternalFile, COMMON_NS::Span(faultIndices.get(), faultIndexCount));
+ 			for (size_t i = 0; i < faultIndexCount; ++i) {
+ 				if (faultIndices[i] == interpretationIndex) {
+ 					result++;
+@@ -270,7 +270,7 @@ void GridConnectionSetRepresentation::getGridConnectionSetInformationFromInterpr
+ 
+ 	std::unique_ptr<unsigned int[]> cumulativeCount(new unsigned int[totalCellIndexPairCount]);
+ 	if (interpCount > 0) {
+-		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, cumulativeCount.get());
++		readArrayNdOfIntegerValues(rep->ConnectionInterpretations->InterpretationIndices->CumulativeLength, COMMON_NS::Span(cumulativeCount.get(), totalCellIndexPairCount));
+ 	}
+ 	else {
+ 		std::fill(cumulativeCount.get(), cumulativeCount.get() + totalCellIndexPairCount, 0);
+@@ -312,7 +312,7 @@ void GridConnectionSetRepresentation::getGridConnectionSetInformationFromInterpr
+ 		std::unique_ptr<int64_t[]> faultIndices(new int64_t[getCountOfArray(xmlArray)]);
+ 		eml23__AbstractIntegerArray const* xmlIntArray = dynamic_cast<eml23__AbstractIntegerArray const*>(xmlArray);
+ 		if (xmlIntArray != nullptr) {
+-			readArrayNdOfIntegerValues(xmlIntArray, faultIndices.get());
++			readArrayNdOfIntegerValues(xmlIntArray, COMMON_NS::Span(faultIndices.get(), getCountOfArray(xmlIntArray)));
+ 		}
+ 		else {
+ 			throw std::logic_error("Interpretation indices: only integer arrays are supported for now");
+@@ -369,7 +369,7 @@ uint64_t GridConnectionSetRepresentation::getInterpretationCount() const
+ 
+ int64_t GridConnectionSetRepresentation::getCellIndexPairs(int64_t* cellIndexPairs) const
+ {
+-	return readArrayNdOfIntegerValues(static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3)->CellIndexPairs, cellIndexPairs);
++	return readArrayNdOfIntegerValues(static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3)->CellIndexPairs, COMMON_NS::Span(cellIndexPairs, getCellIndexPairCount() * 2));
+ }
+ 
+ bool GridConnectionSetRepresentation::isBasedOnMultiGrids() const 
+@@ -385,7 +385,7 @@ void GridConnectionSetRepresentation::getGridIndexPairs(unsigned short* gridInde
+ 	if (!isBasedOnMultiGrids()) {
+ 		throw std::invalid_argument("This representation has no multiple grid support.");
+ 	}
+-	readArrayNdOfIntegerValues(static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3)->GridIndexPairs, gridIndexPairs);
++	readArrayNdOfIntegerValues(static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3)->GridIndexPairs, COMMON_NS::Span(gridIndexPairs, getCellIndexPairCount() * 2));
+ }
+ 
+ bool GridConnectionSetRepresentation::hasLocalFacePerCell() const
+@@ -398,7 +398,7 @@ int64_t GridConnectionSetRepresentation::getLocalFacePerCellIndexPairs(int* loca
+ 	if (!hasLocalFacePerCell()) {
+ 		throw std::invalid_argument("This representation has no local face per cell.");
+ 	}
+-	return readArrayNdOfIntegerValues(static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3)->LocalFacePerCellIndexPairs, localFaceCellIndexPairs);
++	return readArrayNdOfIntegerValues(static_cast<_resqml22__GridConnectionSetRepresentation*>(gsoapProxy2_3)->LocalFacePerCellIndexPairs, COMMON_NS::Span(localFaceCellIndexPairs, getCellIndexPairCount() * 2));
+ }
+ 
+ void GridConnectionSetRepresentation::pushBackXmlSupportingGridRepresentation(RESQML2_NS::AbstractGridRepresentation * supportingGridRep)
+diff --git a/src/resqml2_2/IjkGridExplicitRepresentation.cpp b/src/resqml2_2/IjkGridExplicitRepresentation.cpp
+index 24565a9..8b9d0d1 100644
+--- a/src/resqml2_2/IjkGridExplicitRepresentation.cpp
++++ b/src/resqml2_2/IjkGridExplicitRepresentation.cpp
+@@ -63,7 +63,7 @@ void IjkGridExplicitRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray) {
+ 		auto daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+-		hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getCountOfDataArrayPart(daPart)));
+ 	}
+ 	else {
+ 		throw logic_error("The geometry of the grid either does not exist or is not an explicit one.");
+@@ -77,7 +77,7 @@ void IjkGridExplicitRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ 				auto daPart = static_cast<resqml22__Point3dExternalArray*>(truncatedGeom->AdditionalGridPoints[0]->Points)->Coordinates->ExternalDataArrayPart[0];
+ 				EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+ 				xyzPoints += (getXyzPointCountOfPatch(patchIndex) - static_cast<_resqml22__TruncatedIjkGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationNodeCount) * 3;
+-				hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++				hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getCountOfDataArrayPart(daPart)));
+ 			}
+ 			else {
+ 				throw logic_error("The additional grid points must be explicit ones for now. Parametric additional points are not supported yet for example.");
+diff --git a/src/resqml2_2/IjkGridParametricRepresentation.cpp b/src/resqml2_2/IjkGridParametricRepresentation.cpp
+index 2ec97d8..257221a 100644
+--- a/src/resqml2_2/IjkGridParametricRepresentation.cpp
++++ b/src/resqml2_2/IjkGridParametricRepresentation.cpp
+@@ -91,7 +91,7 @@ bool IjkGridParametricRepresentation::isParametricLineKindConstant() const
+ 				throw std::logic_error("Size difference between values count in hdf and pillars count");
+ 			}
+ 			std::unique_ptr<short[]> pillarKind(new short[getPillarCount()]);
+-			hdfProxy->readArrayNdOfShortValues(daPart->PathInExternalFile, pillarKind.get());
++			hdfProxy->readArrayNdOfShortValues(daPart->PathInExternalFile, COMMON_NS::Span(pillarKind.get(), getPillarCount()));
+ 			short firstPillarKind = pillarKind[0];
+ 			size_t pillarIndex = 0;
+ 			while (pillarIndex < getPillarCount()) {
+@@ -143,7 +143,7 @@ short IjkGridParametricRepresentation::getConstantParametricLineKind() const
+ 			auto const* daPart = static_cast<eml23__IntegerExternalArray*>(paramLineArray->LineKindIndices)->Values->ExternalDataArrayPart[0];
+ 			EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+ 			std::unique_ptr<short[]> pillarKind(new short[getPillarCount()]);
+-			hdfProxy->readArrayNdOfShortValues(daPart->PathInExternalFile, pillarKind.get());
++			hdfProxy->readArrayNdOfShortValues(daPart->PathInExternalFile, COMMON_NS::Span(pillarKind.get(), getPillarCount()));
+ 			return pillarKind[0];
+ 		}
+ 		else {
+@@ -169,7 +169,7 @@ void IjkGridParametricRepresentation::getRawParametricLineKind(short * pillarKin
+ 		{
+ 			auto const* daPart = static_cast<eml23__IntegerExternalArray*>(paramLineArray->LineKindIndices)->Values->ExternalDataArrayPart[0];
+ 			EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+-			hdfProxy->readArrayNdOfShortValues(daPart->PathInExternalFile, pillarKind);
++			hdfProxy->readArrayNdOfShortValues(daPart->PathInExternalFile, COMMON_NS::Span(pillarKind, getPillarCount()));
+ 		}
+ 		else if (paramLineArray->LineKindIndices->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__IntegerConstantArray)
+ 		{
+@@ -221,7 +221,7 @@ void IjkGridParametricRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, d
+ 				auto const* daPart = static_cast<resqml22__Point3dExternalArray*>(truncatedGeom->AdditionalGridPoints[0]->Points)->Coordinates->ExternalDataArrayPart[0];
+ 				EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(daPart);
+ 				xyzPoints += (getXyzPointCountOfPatch(patchIndex) - static_cast<_resqml22__TruncatedIjkGridRepresentation*>(gsoapProxy2_3)->TruncationCellPatch->TruncationNodeCount) * 3;
+-				hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++				hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getCountOfDataArrayPart(daPart)));
+ 			}
+ 			else {
+ 				throw logic_error("The additional grid points must be explicit ones for now. Parametric additional points are not supported yet for example.");
+diff --git a/src/resqml2_2/PointSetRepresentation.cpp b/src/resqml2_2/PointSetRepresentation.cpp
+index 950223f..c0bc70e 100644
+--- a/src/resqml2_2/PointSetRepresentation.cpp
++++ b/src/resqml2_2/PointSetRepresentation.cpp
+@@ -145,12 +145,12 @@ void PointSetRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double * x
+ 		if (pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray)
+ 		{
+ 			auto const* daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 		}
+ 		else if (pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point2dExternalArray)
+ 		{
+ 			auto const* daPart = static_cast<resqml22__Point2dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 2));
+ 			const uint64_t pointCount = getXyzPointCountOfPatch(patchIndex);
+ 			for (size_t pointIndex = pointCount - 1; pointIndex >= 1; --pointIndex) {
+ 				xyzPoints[pointIndex * 3 + 2] = std::numeric_limits<double>::quiet_NaN();
+@@ -177,7 +177,7 @@ void PointSetRepresentation::getXyPointsOfPatch(uint64_t patchIndex, double* xyP
+ 			auto const* daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+ 			const uint64_t pointCount = getXyzPointCountOfPatch(patchIndex);
+ 			std::unique_ptr<double[]> xyzPoints(new double[pointCount * 3]);
+-			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints.get());
++			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints.get(), pointCount * 3));
+ 			for (size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
+ 				xyPoints[pointIndex * 2] = xyzPoints[pointIndex * 3];
+ 				xyPoints[pointIndex * 2 + 1] = xyzPoints[pointIndex * 3 + 1];
+@@ -186,7 +186,7 @@ void PointSetRepresentation::getXyPointsOfPatch(uint64_t patchIndex, double* xyP
+ 		else if (pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point2dExternalArray)
+ 		{
+ 			auto const* daPart = static_cast<resqml22__Point2dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyPoints);
++			getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyPoints, getXyzPointCountOfPatch(patchIndex) * 2));
+ 		}
+ 		else {
+ 			throw invalid_argument("The geometry of the point set representation is neither simple 3d or 2d.");
+diff --git a/src/resqml2_2/PolylineRepresentation.cpp b/src/resqml2_2/PolylineRepresentation.cpp
+index 0639cda..25d180e 100644
+--- a/src/resqml2_2/PolylineRepresentation.cpp
++++ b/src/resqml2_2/PolylineRepresentation.cpp
+@@ -112,7 +112,7 @@ void PolylineRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double * x
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray)
+ 	{
+ 		auto const* daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+diff --git a/src/resqml2_2/PolylineSetRepresentation.cpp b/src/resqml2_2/PolylineSetRepresentation.cpp
+index 41df9bd..37d7248 100644
+--- a/src/resqml2_2/PolylineSetRepresentation.cpp
++++ b/src/resqml2_2/PolylineSetRepresentation.cpp
+@@ -225,7 +225,7 @@ void PolylineSetRepresentation::getNodeCountPerPolylineInPatch(uint64_t patchInd
+ 	}
+ 
+ 	resqml22__PolylineSetPatch* patch = static_cast<_resqml22__PolylineSetRepresentation*>(gsoapProxy2_3)->LinePatch[patchIndex];
+-	readArrayNdOfIntegerValues(patch->NodeCountPerPolyline, nodeCountPerPolyline);
++	readArrayNdOfIntegerValues(patch->NodeCountPerPolyline, COMMON_NS::Span(nodeCountPerPolyline, getPolylineCountOfPatch(patchIndex)));
+ }
+ 
+ void PolylineSetRepresentation::getNodeCountPerPolylineOfAllPatches(unsigned int * NodeCountPerPolyline) const
+@@ -248,7 +248,7 @@ void PolylineSetRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray)
+ 	{
+ 		auto const* daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-		getOrCreateHdfProxyFromDataArrayPart(daPart) ->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++		getOrCreateHdfProxyFromDataArrayPart(daPart) ->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -276,7 +276,7 @@ bool PolylineSetRepresentation::areAllPolylinesClosedOfPatch(uint64_t patchIndex
+ 		eml23__ExternalDataArrayPart const * daPart = static_cast<eml23__BooleanExternalArray*>(patch->ClosedPolylines)->Values->ExternalDataArrayPart[0];
+ 
+ 		std::unique_ptr<int8_t[]> tmp(new int8_t[polylineCount]);
+-		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt8Values(daPart->PathInExternalFile, tmp.get());
++		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt8Values(daPart->PathInExternalFile, COMMON_NS::Span(tmp.get(), polylineCount));
+ 		const bool result = find(tmp.get(), tmp.get() + polylineCount, 0) == tmp.get() + polylineCount;
+ 
+ 		return result;
+@@ -318,7 +318,7 @@ bool PolylineSetRepresentation::areAllPolylinesNonClosedOfPatch(uint64_t patchIn
+ 		eml23__ExternalDataArrayPart const * daPart = static_cast<eml23__BooleanExternalArray*>(patch->ClosedPolylines)->Values->ExternalDataArrayPart[0];
+ 
+ 		std::unique_ptr<int8_t[]> tmp(new int8_t[polylineCount]);
+-		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt8Values(daPart->PathInExternalFile, tmp.get());
++		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt8Values(daPart->PathInExternalFile, COMMON_NS::Span(tmp.get(), polylineCount));
+ 		return find_if(tmp.get(), tmp.get() + polylineCount, [](char i) {return i != 0; }) == tmp.get() + polylineCount;
+ 	}
+ 	else if (patch->ClosedPolylines->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__BooleanXmlArray)
+@@ -352,7 +352,7 @@ void PolylineSetRepresentation::getClosedFlagPerPolylineOfPatch(uint64_t patchIn
+ 		eml23__ExternalDataArrayPart const * daPart = static_cast<eml23__BooleanExternalArray*>(patch->ClosedPolylines)->Values->ExternalDataArrayPart[0];
+ 
+ 		std::unique_ptr<int8_t[]> tmp(new int8_t[polylineCount]);
+-		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt8Values(daPart->PathInExternalFile, tmp.get());
++		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfInt8Values(daPart->PathInExternalFile, COMMON_NS::Span(tmp.get(), polylineCount));
+ 		for (size_t i = 0; i < polylineCount; ++i) {
+ 			closedFlagPerPolyline[i] = tmp[i];
+ 		}
+diff --git a/src/resqml2_2/SealedSurfaceFrameworkRepresentation.cpp b/src/resqml2_2/SealedSurfaceFrameworkRepresentation.cpp
+index 19dfdeb..cb08622 100644
+--- a/src/resqml2_2/SealedSurfaceFrameworkRepresentation.cpp
++++ b/src/resqml2_2/SealedSurfaceFrameworkRepresentation.cpp
+@@ -212,7 +212,7 @@ void SealedSurfaceFrameworkRepresentation::getIdenticalContactPatchNodeIndices(u
+ 		throw invalid_argument("The nodes are all identical");
+ 	}
+ 
+-	readArrayNdOfIntegerValues(getContact(crIndex)->IdenticalNodeIndices, nodeIndices);
++	readArrayNdOfIntegerValues(getContact(crIndex)->IdenticalNodeIndices, COMMON_NS::Span(nodeIndices, getIdenticalContactPatchNodeCount(crIndex)));
+ }
+ 
+ unsigned int SealedSurfaceFrameworkRepresentation::getContactPatchCount(unsigned int crIndex) const
+@@ -265,5 +265,5 @@ unsigned int SealedSurfaceFrameworkRepresentation::getContactPatchNodeCount(unsi
+ 
+ void SealedSurfaceFrameworkRepresentation::getContactPatchNodeIndices(unsigned int crIndex, unsigned int cpIndex, unsigned int * nodeIndices) const
+ {
+-	readArrayNdOfIntegerValues(getContactPatch(crIndex, cpIndex)->SupportingRepresentationNodes, nodeIndices);
++	readArrayNdOfIntegerValues(getContactPatch(crIndex, cpIndex)->SupportingRepresentationNodes, COMMON_NS::Span(nodeIndices, getContactPatchNodeCount(crIndex, cpIndex)));
+ }
+diff --git a/src/resqml2_2/StreamlinesRepresentation.cpp b/src/resqml2_2/StreamlinesRepresentation.cpp
+index ed7e846..5bf4fcc 100644
+--- a/src/resqml2_2/StreamlinesRepresentation.cpp
++++ b/src/resqml2_2/StreamlinesRepresentation.cpp
+@@ -85,7 +85,7 @@ uint32_t StreamlinesRepresentation::getInjectorPerLine(uint32_t* injectorPerLine
+ 		throw std::logic_error("There is no wellbore trajectory associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(wellboresInfo->InjectorPerLine, injectorPerLine);
++	return readArrayNdOfIntegerValues(wellboresInfo->InjectorPerLine, COMMON_NS::Span(injectorPerLine, getLineCount()));
+ }
+ 
+ uint32_t StreamlinesRepresentation::getProducerPerLine(uint32_t* producerPerLine) const
+@@ -96,7 +96,7 @@ uint32_t StreamlinesRepresentation::getProducerPerLine(uint32_t* producerPerLine
+ 		throw std::logic_error("There is no wellbore trajectory associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(wellboresInfo->ProducerPerLine, producerPerLine);
++	return readArrayNdOfIntegerValues(wellboresInfo->ProducerPerLine, COMMON_NS::Span(producerPerLine, getLineCount()));
+ }
+ 
+ void StreamlinesRepresentation::setWellboreInformation(uint32_t const* injectorPerLine, uint32_t const* producerPerLine, const std::vector<RESQML2_NS::WellboreTrajectoryRepresentation*> & wellboreTrajectories,
+@@ -166,7 +166,7 @@ void StreamlinesRepresentation::getNodeCountPerLine(uint32_t * nodeCountPerPolyl
+ 		throw std::logic_error("There is no geometry associated to this streamlines representation");
+ 	}
+ 
+-	readArrayNdOfIntegerValues(geometry->NodeCountPerPolyline, nodeCountPerPolyline);
++	readArrayNdOfIntegerValues(geometry->NodeCountPerPolyline, COMMON_NS::Span(nodeCountPerPolyline, getLineCount()));
+ }
+ 
+ void StreamlinesRepresentation::setGeometry(
+@@ -251,7 +251,7 @@ void StreamlinesRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, double
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray)
+ 	{
+ 		auto const* daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -353,7 +353,7 @@ uint16_t StreamlinesRepresentation::getGridIndices(uint16_t * gridIndices) const
+ 		throw std::logic_error("There is no grid associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(gridLink->GridIndices, gridIndices);
++	return readArrayNdOfIntegerValues(gridLink->GridIndices, COMMON_NS::Span(gridIndices, getIntervalCount()));
+ }
+ 
+ int64_t StreamlinesRepresentation::getCellIndices(int64_t * cellIndices) const
+@@ -367,7 +367,7 @@ int64_t StreamlinesRepresentation::getCellIndices(int64_t * cellIndices) const
+ 		throw std::logic_error("There is no grid associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(gridLink->CellIndices, cellIndices);
++	return readArrayNdOfIntegerValues(gridLink->CellIndices, COMMON_NS::Span(cellIndices, getIntervalCount()));
+ }
+ 
+ uint8_t StreamlinesRepresentation::getLocalFacePairPerCellIndices(uint8_t * localFacePairPerCellIndices) const
+@@ -381,7 +381,7 @@ uint8_t StreamlinesRepresentation::getLocalFacePairPerCellIndices(uint8_t * loca
+ 		throw std::logic_error("There is no grid associated to this streamlines representation");
+ 	}
+ 
+-	return readArrayNdOfIntegerValues(gridLink->LocalFacePairPerCellIndices, localFacePairPerCellIndices);
++	return readArrayNdOfIntegerValues(gridLink->LocalFacePairPerCellIndices, COMMON_NS::Span(localFacePairPerCellIndices, getIntervalCount() * 2));
+ }
+ 
+ uint64_t StreamlinesRepresentation::getGridRepresentationCount() const
+diff --git a/src/resqml2_2/TriangulatedSetRepresentation.cpp b/src/resqml2_2/TriangulatedSetRepresentation.cpp
+index 7dcd529..2089121 100644
+--- a/src/resqml2_2/TriangulatedSetRepresentation.cpp
++++ b/src/resqml2_2/TriangulatedSetRepresentation.cpp
+@@ -149,7 +149,7 @@ void TriangulatedSetRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, dou
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray)
+ 	{
+ 		eml23__ExternalDataArrayPart const * daPart = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+-		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++		getOrCreateHdfProxyFromDataArrayPart(daPart)->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else {
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -180,7 +180,7 @@ void TriangulatedSetRepresentation::getTriangleNodeIndicesOfPatch(uint64_t patch
+ 		throw out_of_range("The patchIndex is out of range");
+ 	}
+ 
+-	readArrayNdOfIntegerValues(triRep->TrianglePatch[patchIndex]->Triangles, triangleNodeIndices);
++	readArrayNdOfIntegerValues(triRep->TrianglePatch[patchIndex]->Triangles, COMMON_NS::Span(triangleNodeIndices, getTriangleCountOfPatch(patchIndex) * 3));
+ }
+ 
+ void TriangulatedSetRepresentation::getTriangleNodeIndicesOfAllPatches(unsigned int * triangleNodeIndices) const
+diff --git a/src/resqml2_2/UnstructuredGridRepresentation.cpp b/src/resqml2_2/UnstructuredGridRepresentation.cpp
+index d3fa784..8db88cc 100644
+--- a/src/resqml2_2/UnstructuredGridRepresentation.cpp
++++ b/src/resqml2_2/UnstructuredGridRepresentation.cpp
+@@ -131,7 +131,7 @@ void UnstructuredGridRepresentation::getXyzPointsOfPatch(uint64_t patchIndex, do
+ 	if (pointGeom != nullptr && pointGeom->Points->soap_type() == SOAP_TYPE_gsoap_eml2_3_resqml22__Point3dExternalArray) {
+ 		auto dataset = static_cast<resqml22__Point3dExternalArray*>(pointGeom->Points)->Coordinates->ExternalDataArrayPart[0];
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(dataset);
+-		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInExternalFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(dataset->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else {
+ 		throw invalid_argument("The geometry of the representation either does not exist or it is not an explicit one.");
+@@ -147,7 +147,7 @@ void UnstructuredGridRepresentation::getFaceIndicesOfCells(uint64_t* faceIndices
+ 	if (grid->Geometry->FacesPerCell->Elements->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__IntegerExternalArray) {
+ 		auto dataset = static_cast<eml23__IntegerExternalArray*>(grid->Geometry->FacesPerCell->Elements)->Values->ExternalDataArrayPart[0];
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, faceIndices);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, COMMON_NS::Span(faceIndices, getCountOfDataArrayPart(dataset)));
+ 	}
+ 	else {
+ 		throw logic_error("Not yet implemented");
+@@ -163,7 +163,7 @@ void UnstructuredGridRepresentation::getCumulativeFaceCountPerCell(uint64_t* cum
+ 	{
+ 		auto dataset = static_cast<eml23__IntegerExternalArray*>(grid->Geometry->FacesPerCell->CumulativeLength)->Values->ExternalDataArrayPart[0];
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, cumulativeFaceCountPerCell_);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, COMMON_NS::Span(cumulativeFaceCountPerCell_, getCellCount()));
+ 	}
+ 	else if (grid->Geometry->FacesPerCell->CumulativeLength->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__IntegerLatticeArray)
+ 	{
+@@ -241,7 +241,7 @@ void UnstructuredGridRepresentation::getNodeIndicesOfFaces(uint64_t * nodeIndice
+ 	{
+ 		auto dataset = static_cast<eml23__IntegerExternalArray*>(grid->Geometry->NodesPerFace->Elements)->Values->ExternalDataArrayPart[0];
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, nodeIndices);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, COMMON_NS::Span(nodeIndices, getCountOfDataArrayPart(dataset)));
+ 	}
+ 	else
+ 		throw logic_error("Not yet implemented");
+@@ -256,7 +256,7 @@ void UnstructuredGridRepresentation::getCumulativeNodeCountPerFace(uint64_t * no
+ 	{
+ 		auto dataset = static_cast<eml23__IntegerExternalArray*>(grid->Geometry->NodesPerFace->CumulativeLength)->Values->ExternalDataArrayPart[0];
+ 		EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(dataset);
+-		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, nodeCountPerFace);
++		hdfProxy->readArrayNdOfUInt64Values(dataset->PathInExternalFile, COMMON_NS::Span(nodeCountPerFace, getFaceCount()));
+ 	}
+ 	else if (grid->Geometry->NodesPerFace->CumulativeLength->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__IntegerLatticeArray)
+ 	{
+@@ -323,7 +323,7 @@ void UnstructuredGridRepresentation::getCellFaceIsRightHanded(uint8_t* cellFaceI
+   if (grid->Geometry->CellFaceIsRightHanded->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__BooleanExternalArray) {
+ 	  auto dataset = static_cast<eml23__BooleanExternalArray*>(grid->Geometry->CellFaceIsRightHanded)->Values->ExternalDataArrayPart[0];
+ 	  EML2_NS::AbstractHdfProxy * hdfProxy = getOrCreateHdfProxyFromDataArrayPart(dataset);
+-	  hdfProxy->readArrayNdOfUInt8Values(dataset->PathInExternalFile, cellFaceIsRightHanded);
++	  hdfProxy->readArrayNdOfUInt8Values(dataset->PathInExternalFile, COMMON_NS::Span(cellFaceIsRightHanded, getCountOfDataArrayPart(dataset)));
+   }
+   else if (grid->Geometry->CellFaceIsRightHanded->soap_type() == SOAP_TYPE_gsoap_eml2_3_eml23__BooleanConstantArray) {
+ 	  for (auto i = 0; i < static_cast<eml23__BooleanConstantArray*>(grid->Geometry->CellFaceIsRightHanded)->Count; ++i) {
+diff --git a/src/resqml2_2/WellboreTrajectoryRepresentation.cpp b/src/resqml2_2/WellboreTrajectoryRepresentation.cpp
+index 628e228..61a6d20 100644
+--- a/src/resqml2_2/WellboreTrajectoryRepresentation.cpp
++++ b/src/resqml2_2/WellboreTrajectoryRepresentation.cpp
+@@ -231,7 +231,7 @@ void WellboreTrajectoryRepresentation::getXyzPointsOfPatch(uint64_t patchIndex,
+ 		if (hdfProxy == nullptr) {
+ 			throw invalid_argument("The HDF proxy is missing.");
+ 		}
+-		hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, xyzPoints);
++		hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(xyzPoints, getXyzPointCountOfPatch(patchIndex) * 3));
+ 	}
+ 	else {
+ 		throw invalid_argument("The wellbore trajectory has no geometry.");
+@@ -287,7 +287,7 @@ void WellboreTrajectoryRepresentation::getMdValues(double * values) const
+ 		if (hdfProxy == nullptr) {
+ 			throw invalid_argument("The HDF proxy is missing.");
+ 		}
+-		hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, values);
++		hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(values, getXyzPointCountOfPatch(0)));
+ 	}
+ 	else {
+ 		throw invalid_argument("Mds can only be defined using FloatingPointExternalArray for now in fesapi.");
+@@ -328,7 +328,7 @@ void WellboreTrajectoryRepresentation::getTangentVectors(double* tangentVectors)
+ 	if (hdfProxy == nullptr) {
+ 		throw invalid_argument("The HDF proxy is missing.");
+ 	}
+-	hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, tangentVectors);
++	hdfProxy->readArrayNdOfDoubleValues(daPart->PathInExternalFile, COMMON_NS::Span(tangentVectors, getXyzPointCountOfPatch(0) * 3));
+ }
+ 
+ void WellboreTrajectoryRepresentation::setMdDatum(RESQML2_NS::MdDatum * mdDatum)
+-- 
+2.37.1.windows.1
+

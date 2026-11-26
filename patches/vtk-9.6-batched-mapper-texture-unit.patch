@@ -1,0 +1,12 @@
+--- a/VTK/Rendering/OpenGL2/vtkOpenGLBatchedPolyDataMapper.cxx
++++ b/VTK/Rendering/OpenGL2/vtkOpenGLBatchedPolyDataMapper.cxx
+@@ -231,6 +231,9 @@
+   if (!this->BlockTexturePrototype->GetTextureObject())
+   {
+     this->BlockTexturePrototype->Load(renderer);
++    // Load() activates the texture on a free unit and nothing gives it back:
++    // one unit held per batched mapper, the context runs out (fespp-on-trame).
++    this->BlockTexturePrototype->PostRender(renderer);
+   }
+ 
+   for (auto& [polyData, element] : this->VTKPolyDataToGLBatchElement)

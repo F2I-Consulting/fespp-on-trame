@@ -1,0 +1,773 @@
+From 7a0173b4088419aa932b31deb5711ace816038f1 Mon Sep 17 00:00:00 2001
+From: Cedric Robert <cedric.robert@f2i-consulting.com>
+Date: Tue, 13 Oct 2026 18:54:14 +0200
+Subject: [PATCH 1/6] Sized reads: Span view, ten sized virtual reads on
+ AbstractHdfProxy, extent check in HdfProxy
+
+Reading an array through AbstractHdfProxy takes a bare pointer, so a proxy
+never knows how many values the caller expects: an HDF5 proxy cannot check
+the dataset extent against the buffer, and an ETP proxy has to ask the
+store for the array metadata before every read, one round trip out of two
+on a remote store, only to learn a count the caller already had.
+
+This first patch adds the sized form without changing anything existing:
+
+- common/Span.h: COMMON_NS::Span<T>, a non-owning view on a buffer and its
+  size, the C++17 stand-in for std::span<T> with the same constructors and
+  accessors, so that it becomes an alias of std::span the day fesapi
+  requires C++20 without touching the call sites.
+- AbstractHdfProxy: ten readArrayNdOf...Values(datasetName, Span<T>)
+  virtuals, one per value type, whose default implementation forwards to
+  the pointer form, so every existing proxy (SWIG directors included) keeps
+  working; and readArrayNd<T>(datasetName, Span<T>), a template dispatching
+  on T, the one entry point for generic code.
+- HdfProxy (HDF5): overrides the ten sized forms and refuses, with a
+  std::range_error, a dataset holding more values than the buffer.
+- Unit tests: the Span view, and the sized reads on the existing HdfProxy
+  test dataset (exact buffer, generic dispatch, conversion, too small a
+  buffer refused, pointer form untouched).
+
+The pointer forms stay the primary API for now; the next patches give the
+AbstractObject helpers a sized form and move the representations to it,
+after which the pointer forms can be deprecated.
+---
+ src/common/CMakeLists.txt   |   3 +-
+ src/common/Span.h           | 148 ++++++++++++++++++++++++++++++++
+ src/eml2/AbstractHdfProxy.h | 167 ++++++++++++++++++++++++++++++++++++
+ src/eml2/HdfProxy.cpp       |  57 +++++++++++-
+ src/eml2/HdfProxy.h         |  17 +++-
+ test/eml2_test/HdfProxy.cpp |  88 +++++++++++++++++++
+ 6 files changed, 477 insertions(+), 3 deletions(-)
+ create mode 100644 src/common/Span.h
+
+diff --git a/src/common/CMakeLists.txt b/src/common/CMakeLists.txt
+index e5aecce..6c728fd 100644
+--- a/src/common/CMakeLists.txt
++++ b/src/common/CMakeLists.txt
+@@ -12,7 +12,8 @@ set(FESAPI_COMMON_HEADERS 	${CMAKE_CURRENT_SOURCE_DIR}/common/AbstractObject.h
+               				${CMAKE_CURRENT_SOURCE_DIR}/common/EpcDocument.h
+               				${CMAKE_CURRENT_SOURCE_DIR}/common/HdfProxyFactory.h
+               				${CMAKE_CURRENT_SOURCE_DIR}/common/HidtType.h
+-							${CMAKE_CURRENT_SOURCE_DIR}/common/NumberArrayStatistics.h)
++							${CMAKE_CURRENT_SOURCE_DIR}/common/NumberArrayStatistics.h
++							${CMAKE_CURRENT_SOURCE_DIR}/common/Span.h)
+ if (HDF5_PREFER_PARALLEL)
+ 	list(APPEND FESAPI_COMMON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/common/HdfProxyMPIFactory.cpp )
+ 	list(APPEND FESAPI_COMMON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/common/HdfProxyMPIFactory.h )
+diff --git a/src/common/Span.h b/src/common/Span.h
+new file mode 100644
+index 0000000..ed141e9
+--- /dev/null
++++ b/src/common/Span.h
+@@ -0,0 +1,148 @@
++/*-----------------------------------------------------------------------
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"; you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-----------------------------------------------------------------------*/
++#pragma once
++
++#include <array>
++#include <cstddef>
++#include <cstdint>
++#include <iterator>
++#include <stdexcept>
++#include <type_traits>
++#include <vector>
++
++#include "../nsDefinitions.h"
++
++namespace COMMON_NS
++{
++	/** The value meaning "up to the end" in Span::subspan, as std::span::dynamic_extent. */
++	inline constexpr std::size_t dynamic_extent = static_cast<std::size_t>(-1);
++
++	/**
++	 * @brief	A non-owning view on a contiguous buffer of values together with its size.
++	 *
++	 * This is the C++17 stand-in for std::span<T> (C++20): same constructors (pointer and count,
++	 * std::vector, std::array, C array), same accessors (data, size, size_bytes, empty, operator[],
++	 * begin, end, first, last, subspan) so that it can become an alias of std::span the day fesapi
++	 * requires C++20, without touching the call sites.
++	 *
++	 * It is the way to give a read method the size of the buffer it fills, which lets an HDF5 proxy
++	 * check the dataset extent against it and lets an ETP proxy size its request without a
++	 * preliminary metadata round trip.
++	 */
++	template<class T>
++	class Span
++	{
++	public:
++		using element_type = T;
++		using value_type = std::remove_cv_t<T>;
++		using size_type = std::size_t;
++		using difference_type = std::ptrdiff_t;
++		using pointer = T*;
++		using const_pointer = const T*;
++		using reference = T&;
++		using const_reference = const T&;
++		using iterator = T*;
++		using reverse_iterator = std::reverse_iterator<iterator>;
++
++		/** An empty view. */
++		constexpr Span() noexcept = default;
++
++		/**
++		 * A view on @p count values starting at @p data.
++		 * @param data	The first value. May be null only when @p count is zero.
++		 * @param count	The number of values the buffer holds.
++		 */
++		constexpr Span(T* data, size_type count) noexcept : data_(data), size_(count) {}
++
++		/** A view on the values between @p first (included) and @p last (excluded). */
++		constexpr Span(T* first, T* last) noexcept : data_(first), size_(static_cast<size_type>(last - first)) {}
++
++		/** A view on a whole std::vector (non const element type). */
++		template<class U, class A, class = std::enable_if_t<std::is_convertible_v<U(*)[], T(*)[]>>>
++		Span(std::vector<U, A>& v) noexcept : data_(v.data()), size_(v.size()) {}
++
++		/** A view on a whole const std::vector (const element type only). */
++		template<class U, class A, class = std::enable_if_t<std::is_convertible_v<const U(*)[], T(*)[]>>>
++		Span(const std::vector<U, A>& v) noexcept : data_(v.data()), size_(v.size()) {}
++
++		/** A view on a whole std::array. */
++		template<class U, std::size_t N, class = std::enable_if_t<std::is_convertible_v<U(*)[], T(*)[]>>>
++		constexpr Span(std::array<U, N>& a) noexcept : data_(a.data()), size_(N) {}
++
++		/** A view on a whole const std::array (const element type only). */
++		template<class U, std::size_t N, class = std::enable_if_t<std::is_convertible_v<const U(*)[], T(*)[]>>>
++		constexpr Span(const std::array<U, N>& a) noexcept : data_(a.data()), size_(N) {}
++
++		/** A view on a whole C array. */
++		template<std::size_t N>
++		constexpr Span(T (&a)[N]) noexcept : data_(a), size_(N) {}
++
++		/** Conversion from a view on non const values to a view on const values. */
++		template<class U, class = std::enable_if_t<std::is_convertible_v<U(*)[], T(*)[]>>>
++		constexpr Span(Span<U> other) noexcept : data_(other.data()), size_(other.size()) {}
++
++		constexpr Span(const Span&) noexcept = default;
++		Span& operator=(const Span&) noexcept = default;
++
++		/** The first value, null for an empty default constructed view. */
++		constexpr T* data() const noexcept { return data_; }
++		/** The number of values. */
++		constexpr size_type size() const noexcept { return size_; }
++		/** The number of bytes. */
++		constexpr size_type size_bytes() const noexcept { return size_ * sizeof(T); }
++		/** True when the view holds no value. */
++		constexpr bool empty() const noexcept { return size_ == 0; }
++
++		constexpr T& operator[](size_type index) const noexcept { return data_[index]; }
++		constexpr T& front() const noexcept { return data_[0]; }
++		constexpr T& back() const noexcept { return data_[size_ - 1]; }
++
++		constexpr iterator begin() const noexcept { return data_; }
++		constexpr iterator end() const noexcept { return data_ + size_; }
++		constexpr reverse_iterator rbegin() const noexcept { return reverse_iterator(end()); }
++		constexpr reverse_iterator rend() const noexcept { return reverse_iterator(begin()); }
++
++		/** The first @p count values. @exception std::out_of_range when the view is shorter. */
++		constexpr Span first(size_type count) const { return subspan(0, count); }
++		/** The last @p count values. @exception std::out_of_range when the view is shorter. */
++		constexpr Span last(size_type count) const { return count > size_ ? throw std::out_of_range("Span::last") : Span(data_ + (size_ - count), count); }
++
++		/**
++		 * The values from @p offset, @p count of them or all the remaining ones.
++		 * Unlike std::span::subspan, a view that would overrun this one throws instead of being undefined.
++		 * @exception std::out_of_range when @p offset or @p offset + @p count exceeds the size.
++		 */
++		constexpr Span subspan(size_type offset, size_type count = dynamic_extent) const {
++			if (offset > size_) {
++				throw std::out_of_range("Span::subspan offset");
++			}
++			if (count == dynamic_extent) {
++				return Span(data_ + offset, size_ - offset);
++			}
++			if (count > size_ - offset) {
++				throw std::out_of_range("Span::subspan count");
++			}
++			return Span(data_ + offset, count);
++		}
++
++	private:
++		T* data_ = nullptr;
++		size_type size_ = 0;
++	};
++}
+diff --git a/src/eml2/AbstractHdfProxy.h b/src/eml2/AbstractHdfProxy.h
+index 9fb4883..6a26110 100644
+--- a/src/eml2/AbstractHdfProxy.h
++++ b/src/eml2/AbstractHdfProxy.h
+@@ -20,6 +20,9 @@ under the License.
+ 
+ #include "EpcExternalPartReference.h"
+ #include "../common/HidtType.h"
++#include "../common/Span.h"
++
++#include <type_traits>
+ 
+ namespace EML2_NS
+ {
+@@ -554,6 +557,20 @@ namespace EML2_NS
+ 		 * 							values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfDoubleValues(const std::string & datasetName, double* values) = 0;
++		/**
++		 * Reads an nd array of double values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfDoubleValues(const std::string & datasetName, COMMON_NS::Span<double> values) { readArrayNdOfDoubleValues(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Finds the nd array of double values associated with @p datasetName and reads from it
+@@ -682,6 +699,20 @@ namespace EML2_NS
+ 		 * 							values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfFloatValues(const std::string & datasetName, float* values) = 0;
++		/**
++		 * Reads an nd array of float values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfFloatValues(const std::string & datasetName, COMMON_NS::Span<float> values) { readArrayNdOfFloatValues(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Finds the nd array of float values associated with @p datasetName and reads from it
+@@ -719,6 +750,20 @@ namespace EML2_NS
+ 		 * 							values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfInt64Values(const std::string & datasetName, int64_t* values) = 0;
++		/**
++		 * Reads an nd array of int 64 bits values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfInt64Values(const std::string & datasetName, COMMON_NS::Span<int64_t> values) { readArrayNdOfInt64Values(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Finds the nd array of long values associated with @p datasetName and reads from it
+@@ -756,6 +801,20 @@ namespace EML2_NS
+ 		 * 							this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUInt64Values(const std::string & datasetName, uint64_t* values) = 0;
++		/**
++		 * Reads an nd array of unsigned int 64 bits values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUInt64Values(const std::string & datasetName, COMMON_NS::Span<uint64_t> values) { readArrayNdOfUInt64Values(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Reads an nd array of int values stored in a specific dataset
+@@ -767,6 +826,20 @@ namespace EML2_NS
+ 		 * 							values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfIntValues(const std::string & datasetName, int* values) = 0;
++		/**
++		 * Reads an nd array of int values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfIntValues(const std::string & datasetName, COMMON_NS::Span<int> values) { readArrayNdOfIntValues(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Finds the nd array of int values associated with @p datasetName and reads from it
+@@ -804,6 +877,20 @@ namespace EML2_NS
+ 		 * 							The values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUIntValues(const std::string & datasetName, unsigned int* values) = 0;
++		/**
++		 * Reads an nd array of unsigned int values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUIntValues(const std::string & datasetName, COMMON_NS::Span<unsigned int> values) { readArrayNdOfUIntValues(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Reads an nd array of short values stored in a specific dataset
+@@ -815,6 +902,20 @@ namespace EML2_NS
+ 		 * 							values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfShortValues(const std::string & datasetName, short* values) = 0;
++		/**
++		 * Reads an nd array of short values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfShortValues(const std::string & datasetName, COMMON_NS::Span<short> values) { readArrayNdOfShortValues(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Reads an nd array of unsigned short values stored in a specific dataset
+@@ -827,6 +928,20 @@ namespace EML2_NS
+ 		 * 							this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUShortValues(const std::string & datasetName, unsigned short* values) = 0;
++		/**
++		 * Reads an nd array of unsigned short values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUShortValues(const std::string & datasetName, COMMON_NS::Span<unsigned short> values) { readArrayNdOfUShortValues(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Reads an nd array of int 8 bits values stored in a specific dataset
+@@ -838,6 +953,20 @@ namespace EML2_NS
+ 		 * 							values must be pre-allocated and won't be freed by this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfInt8Values(const std::string & datasetName, int8_t* values) = 0;
++		/**
++		 * Reads an nd array of int 8 bits values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfInt8Values(const std::string & datasetName, COMMON_NS::Span<int8_t> values) { readArrayNdOfInt8Values(datasetName, values.data()); }
+ 
+ 		/**
+ 		 * Reads an nd array of unsigned int 8 bits values stored in a specific dataset
+@@ -850,6 +979,44 @@ namespace EML2_NS
+ 		 * 							this method.
+ 		 */
+ 		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUInt8Values(const std::string & datasetName, uint8_t* values) = 0;
++		/**
++		 * Reads an nd array of unsigned int 8 bits values stored in a specific dataset into a buffer of known size.
++		 * The default implementation forwards to the pointer form, so that every existing proxy keeps
++		 * working. A proxy that can make use of the size overrides this one: an HDF5 proxy checks the
++		 * dataset extent against it, an ETP proxy sizes its request without a metadata round trip.
++		 *
++		 * @exception	std::invalid_argument	If the nd array dataset cannot be opened or read.
++		 * @exception	std::range_error		If the proxy finds out that the dataset holds more values than the buffer.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, ordered firstly by fastest direction. Its
++		 * 							size is the value count the caller expects; the buffer won't be freed by this method.
++		 */
++		DLL_IMPORT_OR_EXPORT virtual void readArrayNdOfUInt8Values(const std::string & datasetName, COMMON_NS::Span<uint8_t> values) { readArrayNdOfUInt8Values(datasetName, values.data()); }
++
++		/**
++		 * Reads an nd array of values of type T stored in a specific dataset into a buffer of known size,
++		 * dispatching to the readArrayNdOf...Values sized form of that type: the one entry point for
++		 * generic code. T is one of the ten value types the proxy reads (double, float, int64_t, uint64_t,
++		 * int, unsigned int, short, unsigned short, int8_t, uint8_t); any other type does not compile.
++		 *
++		 * @param 	   	datasetName	The absolute name of the nd array dataset.
++		 * @param [out]	values	   	The buffer receiving the values, its size being the value count expected.
++		 */
++		template<class T>
++		void readArrayNd(const std::string & datasetName, COMMON_NS::Span<T> values) {
++			if constexpr (std::is_same_v<T, double>) { readArrayNdOfDoubleValues(datasetName, values); }
++			else if constexpr (std::is_same_v<T, float>) { readArrayNdOfFloatValues(datasetName, values); }
++			else if constexpr (std::is_same_v<T, int64_t>) { readArrayNdOfInt64Values(datasetName, values); }
++			else if constexpr (std::is_same_v<T, uint64_t>) { readArrayNdOfUInt64Values(datasetName, values); }
++			else if constexpr (std::is_same_v<T, int>) { readArrayNdOfIntValues(datasetName, values); }
++			else if constexpr (std::is_same_v<T, unsigned int>) { readArrayNdOfUIntValues(datasetName, values); }
++			else if constexpr (std::is_same_v<T, short>) { readArrayNdOfShortValues(datasetName, values); }
++			else if constexpr (std::is_same_v<T, unsigned short>) { readArrayNdOfUShortValues(datasetName, values); }
++			else if constexpr (std::is_same_v<T, int8_t>) { readArrayNdOfInt8Values(datasetName, values); }
++			else if constexpr (std::is_same_v<T, uint8_t>) { readArrayNdOfUInt8Values(datasetName, values); }
++			else { static_assert(sizeof(T) == 0, "readArrayNd: no sized read for this value type"); }
++		}
+ 
+ 		/**
+ 		 * Checks whether an absolute path exists in the HDF5 file
+diff --git a/src/eml2/HdfProxy.cpp b/src/eml2/HdfProxy.cpp
+index 4866fea..f3434f7 100644
+--- a/src/eml2/HdfProxy.cpp
++++ b/src/eml2/HdfProxy.cpp
+@@ -281,7 +281,7 @@ void HdfProxy::close()
+ 	}
+ }
+ 
+-void HdfProxy::readArrayNdOfValues(const std::string& datasetName, void* values, hid_t datatype)
++void HdfProxy::readArrayNdOfValues(const std::string& datasetName, void* values, hid_t datatype, uint64_t valueCapacity)
+ {
+ 	if (!isOpened()) {
+ 		open();
+@@ -309,6 +309,11 @@ void HdfProxy::readArrayNdOfValues(const std::string& datasetName, void* values,
+ 		H5Dclose(dataset);
+ 		throw invalid_argument("The dataset " + datasetName + " is empty and consequently cannot be read.");
+ 	}
++	if (valueCapacity != 0 && static_cast<uint64_t>(hdf5ValueCount) > valueCapacity) {
++		H5Sclose(dataspace);
++		H5Dclose(dataset);
++		throw range_error("The dataset " + datasetName + " holds " + std::to_string(hdf5ValueCount) + " values but the buffer receiving them holds " + std::to_string(valueCapacity) + ".");
++	}
+ 	if (H5Sclose(dataspace) < 0) {
+ 		throw invalid_argument("Cannot close the HDF5 dataspace of the HDF5 dataset " + datasetName);
+ 	}
+@@ -837,6 +842,11 @@ void HdfProxy::readArrayNdOfDoubleValues(const std::string & datasetName, double
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_DOUBLE);
+ }
+ 
++void HdfProxy::readArrayNdOfDoubleValues(const std::string & datasetName, COMMON_NS::Span<double> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_DOUBLE, values.size());
++}
++
+ void HdfProxy::readArrayNdOfDoubleValues(
+ 	const std::string & datasetName, double* values,
+ 	uint64_t const * numValuesInEachDimension,
+@@ -875,6 +885,11 @@ void HdfProxy::readArrayNdOfFloatValues(const std::string & datasetName, float*
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_FLOAT);
+ }
+ 
++void HdfProxy::readArrayNdOfFloatValues(const std::string & datasetName, COMMON_NS::Span<float> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_FLOAT, values.size());
++}
++
+ void HdfProxy::readArrayNdOfFloatValues(
+ 	const std::string& datasetName, float* values,
+ 	uint64_t const * numValuesInEachDimension,
+@@ -891,6 +906,11 @@ void HdfProxy::readArrayNdOfInt64Values(const std::string & datasetName, int64_t
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_INT64);
+ }
+ 
++void HdfProxy::readArrayNdOfInt64Values(const std::string & datasetName, COMMON_NS::Span<int64_t> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_INT64, values.size());
++}
++
+ void HdfProxy::readArrayNdOfInt64Values(
+ 	const std::string& datasetName, int64_t* values,
+ 	uint64_t const * numValuesInEachDimension,
+@@ -907,11 +927,21 @@ void HdfProxy::readArrayNdOfUInt64Values(const std::string & datasetName, uint64
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_UINT64);
+ }
+ 
++void HdfProxy::readArrayNdOfUInt64Values(const std::string & datasetName, COMMON_NS::Span<uint64_t> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_UINT64, values.size());
++}
++
+ void HdfProxy::readArrayNdOfIntValues(const std::string & datasetName, int* values)
+ {
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_INT);
+ }
+ 
++void HdfProxy::readArrayNdOfIntValues(const std::string & datasetName, COMMON_NS::Span<int> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_INT, values.size());
++}
++
+ void HdfProxy::readArrayNdOfIntValues(
+ 	const std::string & datasetName, int* values,
+ 	uint64_t const * numValuesInEachDimension,
+@@ -928,26 +958,51 @@ void HdfProxy::readArrayNdOfUIntValues(const std::string & datasetName, unsigned
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_UINT);
+ }
+ 
++void HdfProxy::readArrayNdOfUIntValues(const std::string & datasetName, COMMON_NS::Span<unsigned int> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_UINT, values.size());
++}
++
+  void HdfProxy::readArrayNdOfShortValues(const std::string & datasetName, short* values)
+ {
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_SHORT);
+ }
+ 
++void HdfProxy::readArrayNdOfShortValues(const std::string & datasetName, COMMON_NS::Span<short> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_SHORT, values.size());
++}
++
+ void HdfProxy::readArrayNdOfUShortValues(const std::string & datasetName, unsigned short* values)
+ {
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_USHORT);
+ }
+ 
++void HdfProxy::readArrayNdOfUShortValues(const std::string & datasetName, COMMON_NS::Span<unsigned short> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_USHORT, values.size());
++}
++
+ void HdfProxy::readArrayNdOfInt8Values(const std::string & datasetName, int8_t* values)
+ {
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_CHAR);
+ }
+ 
++void HdfProxy::readArrayNdOfInt8Values(const std::string & datasetName, COMMON_NS::Span<int8_t> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_CHAR, values.size());
++}
++
+ void HdfProxy::readArrayNdOfUInt8Values(const std::string & datasetName, uint8_t* values)
+ {
+ 	readArrayNdOfValues(datasetName, values, H5T_NATIVE_UCHAR);
+ }
+ 
++void HdfProxy::readArrayNdOfUInt8Values(const std::string & datasetName, COMMON_NS::Span<uint8_t> values)
++{
++	readArrayNdOfValues(datasetName, values.data(), H5T_NATIVE_UCHAR, values.size());
++}
++
+ hid_t HdfProxy::openOrCreateGroup(const string & groupName)
+ {
+ 	std::unordered_map< std::string, hdf5_hid_t >::const_iterator alreadyOpened = openedGroups.find(groupName);
+diff --git a/src/eml2/HdfProxy.h b/src/eml2/HdfProxy.h
+index 8c95f58..5bebdc0 100644
+--- a/src/eml2/HdfProxy.h
++++ b/src/eml2/HdfProxy.h
+@@ -146,6 +146,7 @@ namespace EML2_NS
+ 			const std::string& attr_name) const final;
+ 
+ 		void readArrayNdOfDoubleValues(const std::string& datasetName, double* values) final;
++		void readArrayNdOfDoubleValues(const std::string& datasetName, COMMON_NS::Span<double> values) final;
+ 
+ 		void readArrayNdOfDoubleValues(
+ 			const std::string& datasetName,
+@@ -181,6 +182,7 @@ namespace EML2_NS
+ 			uint64_t slabSize) final;
+ 
+ 		void readArrayNdOfFloatValues(const std::string& datasetName, float* values) final;
++		void readArrayNdOfFloatValues(const std::string& datasetName, COMMON_NS::Span<float> values) final;
+ 
+ 		void readArrayNdOfFloatValues(
+ 			const std::string& datasetName,
+@@ -191,6 +193,7 @@ namespace EML2_NS
+ 		) final;
+ 
+ 		void readArrayNdOfInt64Values(const std::string& datasetName, int64_t* values) final;
++		void readArrayNdOfInt64Values(const std::string& datasetName, COMMON_NS::Span<int64_t> values) final;
+ 
+ 		void readArrayNdOfInt64Values(
+ 			const std::string& datasetName,
+@@ -200,8 +203,10 @@ namespace EML2_NS
+ 			unsigned int numDimensions) final;
+ 
+ 		void readArrayNdOfUInt64Values(const std::string& datasetName, uint64_t* values) final;
++		void readArrayNdOfUInt64Values(const std::string& datasetName, COMMON_NS::Span<uint64_t> values) final;
+ 
+ 		void readArrayNdOfIntValues(const std::string& datasetName, int* values) final;
++		void readArrayNdOfIntValues(const std::string& datasetName, COMMON_NS::Span<int> values) final;
+ 
+ 		void readArrayNdOfIntValues(
+ 			const std::string& datasetName,
+@@ -212,14 +217,19 @@ namespace EML2_NS
+ 		) final;
+ 
+ 		void readArrayNdOfUIntValues(const std::string& datasetName, unsigned int* values) final;
++		void readArrayNdOfUIntValues(const std::string& datasetName, COMMON_NS::Span<unsigned int> values) final;
+ 
+ 		void readArrayNdOfShortValues(const std::string& datasetName, short* values) final;
++		void readArrayNdOfShortValues(const std::string& datasetName, COMMON_NS::Span<short> values) final;
+ 
+ 		void readArrayNdOfUShortValues(const std::string& datasetName, unsigned short* values) final;
++		void readArrayNdOfUShortValues(const std::string& datasetName, COMMON_NS::Span<unsigned short> values) final;
+ 
+ 		void readArrayNdOfInt8Values(const std::string& datasetName, int8_t* values) final;
++		void readArrayNdOfInt8Values(const std::string& datasetName, COMMON_NS::Span<int8_t> values) final;
+ 
+ 		void readArrayNdOfUInt8Values(const std::string& datasetName, uint8_t* values) final;
++		void readArrayNdOfUInt8Values(const std::string& datasetName, COMMON_NS::Span<uint8_t> values) final;
+ 
+ 		bool exist(const std::string& absolutePathInHdfFile) const final;
+ 
+@@ -259,7 +269,12 @@ namespace EML2_NS
+ 		 * 								stored in this particular datatype, then hdf library will try to
+ 		 * 								do a conversion.
+ 		 */
+-		void readArrayNdOfValues(const std::string& datasetName, void* values, hdf5_hid_t datatype);
++		/**
++		 * @param valueCapacity	The number of values the buffer can hold, 0 when unknown: when given,
++		 *						a dataset holding more values than that is refused (std::range_error)
++		 *						instead of overrunning the buffer.
++		 */
++		void readArrayNdOfValues(const std::string& datasetName, void* values, hdf5_hid_t datatype, uint64_t valueCapacity = 0);
+ 
+ 		/**
+ 		 * Find the array associated with @p datasetName and read a portion of it.
+diff --git a/test/eml2_test/HdfProxy.cpp b/test/eml2_test/HdfProxy.cpp
+index e619e92..a23bb65 100644
+--- a/test/eml2_test/HdfProxy.cpp
++++ b/test/eml2_test/HdfProxy.cpp
+@@ -20,6 +20,11 @@ under the License.
+ #include "catch.hpp"
+ 
+ #include "eml2/AbstractHdfProxy.h"
++#include "common/Span.h"
++
++#include <algorithm>
++#include <stdexcept>
++#include <vector>
+ #include "eml2/PropertyKind.h"
+ #include "resqml2_0_1/PropertyKind.h"
+ #include "resqml2/AbstractIjkGridRepresentation.h"
+@@ -69,4 +74,87 @@ void HdfProxy::readRepo() {
+ 	REQUIRE(dims[0] == 1);
+ 	REQUIRE(dims[1] == 3);
+ 	REQUIRE(dims[2] == 4);
++
++	// Sized reads: the buffer carries its size
++	std::vector<int64_t> values(24, -1);
++	hdfProxy->readArrayNdOfInt64Values(datasetName, COMMON_NS::Span<int64_t>(values));
++	for (size_t i = 0; i < values.size(); ++i) {
++		REQUIRE(values[i] == static_cast<int64_t>(i));
++	}
++	// the generic dispatch on the value type
++	std::fill(values.begin(), values.end(), -1);
++	hdfProxy->readArrayNd(datasetName, COMMON_NS::Span<int64_t>(values.data(), values.size()));
++	REQUIRE(values[23] == 23);
++	// with a conversion of the stored type
++	std::vector<int> intValues(24, -1);
++	hdfProxy->readArrayNdOfIntValues(datasetName, COMMON_NS::Span<int>(intValues));
++	REQUIRE(intValues[0] == 0);
++	REQUIRE(intValues[23] == 23);
++	// a buffer too small for the dataset is refused before anything is read
++	std::vector<int64_t> tooSmall(23, -1);
++	REQUIRE_THROWS_AS(hdfProxy->readArrayNdOfInt64Values(datasetName, COMMON_NS::Span<int64_t>(tooSmall)), std::range_error);
++	REQUIRE(tooSmall[0] == -1);
++	// a bigger buffer is fine, only its first values are written
++	std::vector<int64_t> bigger(30, -1);
++	hdfProxy->readArrayNdOfInt64Values(datasetName, COMMON_NS::Span<int64_t>(bigger));
++	REQUIRE(bigger[23] == 23);
++	REQUIRE(bigger[24] == -1);
++	// the pointer form is untouched
++	int64_t raw[24];
++	hdfProxy->readArrayNdOfInt64Values(datasetName, raw);
++	REQUIRE(raw[5] == 5);
++}
++
++TEST_CASE("Span view on a buffer", "[span]")
++{
++	std::vector<double> v{ 1.0, 2.0, 3.0, 4.0 };
++	COMMON_NS::Span<double> s(v);
++	REQUIRE(s.size() == 4);
++	REQUIRE(s.size_bytes() == 4 * sizeof(double));
++	REQUIRE(s.data() == v.data());
++	REQUIRE(s[2] == 3.0);
++	REQUIRE(s.front() == 1.0);
++	REQUIRE(s.back() == 4.0);
++	REQUIRE_FALSE(s.empty());
++	REQUIRE(COMMON_NS::Span<double>().empty());
++
++	double sum = 0.0;
++	for (double x : s) {
++		sum += x;
++	}
++	REQUIRE(sum == 10.0);
++
++	// a view on non const values converts to a view on const values, not the other way round
++	COMMON_NS::Span<const double> c = s;
++	REQUIRE(c.size() == 4);
++	REQUIRE(c[3] == 4.0);
++	const std::vector<double>& cv = v;
++	COMMON_NS::Span<const double> fromConst(cv);
++	REQUIRE(fromConst.data() == v.data());
++
++	// pointer and count, C array, std::array
++	COMMON_NS::Span<double> two(v.data() + 1, 2);
++	REQUIRE(two.size() == 2);
++	REQUIRE(two[0] == 2.0);
++	double raw[3] = { 7.0, 8.0, 9.0 };
++	COMMON_NS::Span<double> fromRaw(raw);
++	REQUIRE(fromRaw.size() == 3);
++	std::array<float, 2> arr{ 1.5f, 2.5f };
++	COMMON_NS::Span<float> fromArray(arr);
++	REQUIRE(fromArray[1] == 2.5f);
++
++	// sub views, which refuse to overrun
++	REQUIRE(s.subspan(1).size() == 3);
++	REQUIRE(s.subspan(1).front() == 2.0);
++	REQUIRE(s.subspan(1, 2).size() == 2);
++	REQUIRE(s.subspan(4).empty());
++	REQUIRE(s.first(2).back() == 2.0);
++	REQUIRE(s.last(2).front() == 3.0);
++	REQUIRE_THROWS_AS(s.subspan(5), std::out_of_range);
++	REQUIRE_THROWS_AS(s.subspan(2, 3), std::out_of_range);
++	REQUIRE_THROWS_AS(s.last(5), std::out_of_range);
++
++	// writing through the view writes the buffer
++	s[0] = 42.0;
++	REQUIRE(v[0] == 42.0);
+ }
+-- 
+2.37.1.windows.1
+

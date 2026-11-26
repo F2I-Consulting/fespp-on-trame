@@ -1,0 +1,97 @@
+From f43e61a5980c616951c62f97b21fa0178d5678ed Mon Sep 17 00:00:00 2001
+From: cedricRobert <cedric.robert@f2i-consulting.com>
+Date: Sun, 1 Nov 2026 19:02:16 +0100
+Subject: [PATCH] Sized reads: hand fesapi the size of every property and log
+ buffer
+
+Requires fesapi patched for sized reads (COMMON_NS::Span and the sized
+getArrayOfValuesOfPatch) and fetpapi patched to use them; a patch of the
+fespp-on-trame build, not of FESPP, until fesapi releases sized reads.
+
+Each property, log channel and property-bound read passes its buffer as a
+COMMON_NS::Span: over ETP the proxy sizes its GetDataArrays request
+itself instead of asking the store for the array metadata first, one
+round trip spared per array; an HDF5 proxy checks the dataset extent
+against the buffer. The query's log values take the sized form too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx | 2 +-
+ Plugin/Energistics/Mapping/ResqmlPropertyToVtkDataArray.cxx   | 4 ++--
+ .../Mapping/ResqmlWellboreChannelToVtkPolyData.cxx            | 4 ++--
+ Plugin/Energistics/Query/DataObjectRepositoryQuery.cxx        | 2 +-
+ 4 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/Plugin/Energistics/Mapping/ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx b/Plugin/Energistics/Mapping/ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx
+index 9feb743..36bd388 100644
+--- a/Plugin/Energistics/Mapping/ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx
++++ b/Plugin/Energistics/Mapping/ResqmlDataRepositoryToVtkPartitionedDataSetCollection.cxx
+@@ -3766,7 +3766,7 @@ std::string ResqmlDataRepositoryToVtkPartitionedDataSetCollection::searchRealiza
+ 								if (count > 0)
+ 								{
+ 									std::vector<float> vals(count);
+-									w_prop_cont->getArrayOfValuesOfPatch(0, vals.data());
++									w_prop_cont->getArrayOfValuesOfPatch(0, COMMON_NS::Span<float>(vals.data(), count));
+ 									float localMin = std::numeric_limits<float>::max();
+ 									float localMax = std::numeric_limits<float>::lowest();
+ 									for (uint64_t vi = 0; vi < count; ++vi)
+diff --git a/Plugin/Energistics/Mapping/ResqmlPropertyToVtkDataArray.cxx b/Plugin/Energistics/Mapping/ResqmlPropertyToVtkDataArray.cxx
+--- a/Plugin/Energistics/Mapping/ResqmlPropertyToVtkDataArray.cxx
++++ b/Plugin/Energistics/Mapping/ResqmlPropertyToVtkDataArray.cxx
+@@ -303,7 +303,7 @@
+ 			cellDataDouble->SetNumberOfComponents(static_cast<int>(elementCountPerValue));
+ 			cellDataDouble->SetName(name.c_str());
+ 			cellDataDouble->SetNumberOfTuples(static_cast<vtkIdType>(numberOfValues));
+-			valuesProperty->getArrayOfValuesOfPatch(patch_index, cellDataDouble->GetPointer(0));
++			valuesProperty->getArrayOfValuesOfPatch(patch_index, COMMON_NS::Span<double>(cellDataDouble->GetPointer(0), totalNumberOfValues));
+ 			dataArray = cellDataDouble;
+ 			
+ 			dataArray->Modified();
+@@ -325,7 +325,7 @@
+ 			// from getNullValueOfPatch — no extra HDF5 read). For PVTregionPVTNUM
+ 			// this is INT_MAX on the cells the property does not cover.
+ 			const int64_t w_nullValue =
+-				valuesProperty->getArrayOfValuesOfPatch(patch_index, values.get()).getNullValue();
++				valuesProperty->getArrayOfValuesOfPatch(patch_index, COMMON_NS::Span<int32_t>(values.get(), numberOfValues * elementCountPerValue)).getNullValue();
+ 
+ 			// Emit a vtkDoubleArray mapping the null value -> quiet_NaN so
+ 			// uncovered cells render via the LUT's NanColor/NanOpacity
+diff --git a/Plugin/Energistics/Mapping/ResqmlWellboreChannelToVtkPolyData.cxx b/Plugin/Energistics/Mapping/ResqmlWellboreChannelToVtkPolyData.cxx
+--- a/Plugin/Energistics/Mapping/ResqmlWellboreChannelToVtkPolyData.cxx
++++ b/Plugin/Energistics/Mapping/ResqmlWellboreChannelToVtkPolyData.cxx
+@@ -147,7 +147,7 @@
+ 	{
+ 		std::unique_ptr<double[]> values(new double[_pointCount]);
+ 		std::fill_n(values.get(), _pointCount, UNREAD_DOUBLE);
+-		_abstractProperty->getArrayOfValuesOfPatch(0, values.get());
++		_abstractProperty->getArrayOfValuesOfPatch(0, COMMON_NS::Span<double>(values.get(), _pointCount));
+ 		carryToLastNode(values.get(), _pointCount, UNREAD_DOUBLE);
+ 		for (unsigned int i = 0; i < _pointCount; ++i)
+ 		{
+@@ -166,9 +166,9 @@
+ 	{
+ 		std::unique_ptr<int32_t[]> values(new int32_t[_pointCount]);
+ 		std::fill_n(values.get(), _pointCount, UNREAD_INT);
+ 		// the integer null value the property declares (-999, say) is a sample
+ 		// without a value, as a NaN is for a continuous log
+-		const int64_t w_nullValue = _abstractProperty->getArrayOfValuesOfPatch(0, values.get()).getNullValue();
++		const int64_t w_nullValue = _abstractProperty->getArrayOfValuesOfPatch(0, COMMON_NS::Span<int32_t>(values.get(), _pointCount)).getNullValue();
+ 		carryToLastNode(values.get(), _pointCount, UNREAD_INT);
+ 		for (uint64_t i = 0; i < _pointCount; ++i)
+ 		{
+diff --git a/Plugin/Energistics/Query/DataObjectRepositoryQuery.cxx b/Plugin/Energistics/Query/DataObjectRepositoryQuery.cxx
+index d310669..0cadb8e 100644
+--- a/Plugin/Energistics/Query/DataObjectRepositoryQuery.cxx
++++ b/Plugin/Energistics/Query/DataObjectRepositoryQuery.cxx
+@@ -860,7 +860,7 @@ namespace
+ 		w_field([&]
+ 		{
+ 			std::vector<double> w_values(static_cast<std::size_t>(w_count), std::numeric_limits<double>::quiet_NaN());
+-			p_prop.getArrayOfValuesOfPatch(0, w_values.data());
++			p_prop.getArrayOfValuesOfPatch(0, COMMON_NS::Span<double>(w_values.data(), w_values.size()));
+ 			putText(p_out, "values", w_join(w_values.data(), w_values.size()));
+ 		});
+ 	}
+-- 
+2.37.1.windows.1
+

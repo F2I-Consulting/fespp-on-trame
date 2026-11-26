@@ -1,0 +1,38 @@
+# compose.yaml on an NVIDIA GPU: an override file, read after compose.yaml.
+#
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d
+#
+# Docker must reach an NVIDIA GPU (on Linux: the NVIDIA driver and the NVIDIA
+# Container Toolkit). Both services get it:
+#   - the app renders its 3D views on it, as with `docker run --gpus all`
+#     (README.md, GPU Mode): its image asks the toolkit for the graphics
+#     libraries (NVIDIA_DRIVER_CAPABILITIES in the Dockerfile);
+#   - the AI service runs its model on it, from the image fespp_ia:cuda
+#     (ia/build.ps1 -Cuda, or the docker build line at the top of
+#     ia/Dockerfile); FESPP_IA_IMAGE overrides it here as in compose.yaml.
+# The chat model stays the one compose.yaml names; a GPU has room for the
+# larger one: FESPP_IA_CHAT_MODEL=Ministral-3-8B-Instruct-2512-Q4_K_M.gguf
+# (ia/get-model.ps1 -Name ministral-8b).
+services:
+  app:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ia:
+    image: ${FESPP_IA_IMAGE:-fespp_ia:cuda}
+    environment:
+      # every layer of the model on the GPU, whatever GPU_LAYERS the image
+      # was built with
+      FESPP_IA_GPU_LAYERS: "99"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

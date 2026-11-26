@@ -1,5 +1,48 @@
 trame:
+  # Les bundles JS des widgets V2 externes doivent être bakés dans le www
+  # statique (generate_www.py lit cette liste → trame.tools.www). Le suffixe
+  # `.module` est obligatoire : le tool importe le nom TEL QUEL et cherche
+  # `serve` dans son __dict__ — or `serve` vit dans <paquet>.module, pas à la
+  # racine (sans suffixe il ne copie rien, silencieusement).
+  www_modules:
+    # <fp-icon> pour la barre du haut, que l'application bâtit elle-même
+    # (un bouton Vuetify prend son icône en prop : un nom, jamais un dessin)
+    - trame_fespp_icon.module
+    # les bundles chargés à la demande (app/core/lazy_modules) : servis
+    # comme les autres, injectés par ce petit plugin à la première ouverture
+    - trame_fespp_lazy.module
+    # la page qui embarque FesTrame lui parle par postMessage (S4)
+    - trame_fespp_embed.module
+    - trame_fespp_tree.module
+    - trame_fespp_attributes.module
+    - trame_fespp_view_tools.module
+    - trame_fespp_view_card.module
+    - trame_fespp_upload.module
+    - trame_fespp_slicers.module
+    - trame_fespp_thresholds.module
+    - trame_fespp_colormap.module
+    - trame_fespp_timereal.module
+    - trame_fespp_navigation.module
+    - trame_fespp_calculator.module
+    - trame_fespp_crossplot.module
+    - trame_fespp_stratigraphy.module
+    - trame_fespp_reconcile.module
+    - trame_fespp_health.module
+    - trame_fespp_volumetrics.module
+    - trame_fespp_xmlviewer.module
+    - trame_fespp_compare.module
+    - trame_fespp_globe.module
+    - trame_fespp_camlink.module
+    - trame_fespp_title3dview.module
+    - trame_fespp_newview.module
+    - trame_fespp_session.module
+    - trame_fespp_assistant.module
+    - trame_welllog.module
   cmd:
+    # Lancement en mode repertoire (le dossier du paquet) : avec `-m`,
+    # runpy importe le paquet AVANT l'activation du venv PV_VENV par pvpython
+    # (ModuleNotFoundError: trame_client). PYTHONPATH=/deploy (Dockerfile)
+    # rend les imports absolus `fespp_on_trame.app.*` resolubles.
     - /opt/paraview/bin/pvpython
     - /deploy/fespp_on_trame
     - --host
@@ -10,10 +53,6 @@ trame:
     - ${secret}
     - --server
     - --fespp-plugin-path
-    - /work/ttl/install-fespp/lib/paraview-6.0/plugins/Fespp/Fespp.so
+    - /work/ttl/install-fespp/lib/paraview/plugins/Fespp/Fespp.so
     - --local-epc-file-path
     - /deploy/data/empty.epc
-    - --remote-epc-file-location
-    - ${remote_epc_file_location}
-    - --remote-h5-file-location
-    - ${remote_h5_file_location}

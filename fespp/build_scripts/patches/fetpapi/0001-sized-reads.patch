@@ -1,0 +1,634 @@
+From 14373b37019ea6ecfb76c280fe3aac9ecb3fd508 Mon Sep 17 00:00:00 2001
+From: Cedric Robert <cedric.robert@f2i-consulting.com>
+Date: Tue, 13 Oct 2026 18:53:45 +0200
+Subject: [PATCH] Sized reads: GetDataArrays without the metadata round trip
+ when the caller gives the value count
+
+FesapiHdfProxy::readArrayNdOfValues asks the store for the array metadata
+before every read, one round trip out of two on a remote store (about 150 ms
+each on a hosted RDDMS), only to decide whether the array fits in one message.
+With the sized reads of fesapi (readArrayNdOf...Values taking a
+COMMON_NS::Span<T>), the caller gives the value count it expects and the
+proxy decides alone.
+
+- FesapiHdfProxy overrides the ten sized reads with readArrayNdOfValuesSized:
+  the serialized size of the answer is bounded without asking the store (10
+  bytes per value, the worst case of every transport type the store may
+  choose, plus the Avro block headers); when that bound fits in one message,
+  a single GetDataArrays is sent; otherwise the array is big and the unsized
+  path (metadata, then subarrays) is taken as before. A request the store did
+  not answer with an array (a protocol exception) falls back to the unsized
+  path too. The unsized path takes the capacity as an optional argument.
+- GetFullDataArrayHandlers takes the capacity of the buffer: it never writes
+  past it, counts the values the store sent (getReceivedValueCount) and
+  reports an overflow (hasOverflown), which the proxy turns into a
+  std::range_error on the caller's thread. The six transport-type branches
+  of the two callbacks become one copy routine, copyAnyArray, shared by the
+  full-array and the subarray responses.
+
+Requires the fesapi patches "Sized reads" (Span view and sized virtuals).
+Behaviour of the pointer reads is unchanged.
+---
+ src/fetpapi/etp/fesapi/FesapiHdfProxy.h       |  61 ++++-
+ .../GetFullDataArrayHandlers.h                | 239 ++++++++----------
+ test/unitTest.cpp                             |  98 +++++++
+ 3 files changed, 256 insertions(+), 142 deletions(-)
+
+diff --git a/src/fetpapi/etp/fesapi/FesapiHdfProxy.h b/src/fetpapi/etp/fesapi/FesapiHdfProxy.h
+index 21a5e56..3cbb620 100644
+--- a/src/fetpapi/etp/fesapi/FesapiHdfProxy.h
++++ b/src/fetpapi/etp/fesapi/FesapiHdfProxy.h
+@@ -22,6 +22,7 @@ under the License.
+ #include <type_traits>
+ 
+ #include <fesapi/common/HdfProxyFactory.h>
++#include <fesapi/common/Span.h>
+ 
+ #include "../AbstractSession.h"
+ #include "../protocolHandlers/GetFullDataArrayHandlers.h"
+@@ -303,6 +304,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfDoubleValues(const std::string & datasetName, double* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfDoubleValues(const std::string & datasetName, COMMON_NS::Span<double> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		 * Find the array associated with @p datasetName and read from it.
+@@ -367,6 +369,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfFloatValues(const std::string & datasetName, float* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfFloatValues(const std::string & datasetName, COMMON_NS::Span<float> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Find the array associated with @p datasetName and read from it.
+@@ -389,6 +392,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfInt64Values(const std::string & datasetName, int64_t* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfInt64Values(const std::string & datasetName, COMMON_NS::Span<int64_t> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Find the array associated with datasetName and read from it.
+@@ -411,6 +415,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfUInt64Values(const std::string & datasetName, uint64_t* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfUInt64Values(const std::string & datasetName, COMMON_NS::Span<uint64_t> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Read an array Nd of int values stored in a specific dataset.
+@@ -418,6 +423,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfIntValues(const std::string & datasetName, int* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfIntValues(const std::string & datasetName, COMMON_NS::Span<int> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Find the array associated with datasetName and read from it.
+@@ -441,6 +447,7 @@ namespace ETP_NS
+ 		* @param datasetName	The absolute dataset name where to read the values
+ 		*/
+ 		void readArrayNdOfUIntValues(const std::string & datasetName, unsigned int* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfUIntValues(const std::string & datasetName, COMMON_NS::Span<unsigned int> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Read an array Nd of short values stored in a specific dataset
+@@ -449,6 +456,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfShortValues(const std::string & datasetName, short* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfShortValues(const std::string & datasetName, COMMON_NS::Span<short> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Read an array Nd of unsigned short values stored in a specific dataset.
+@@ -456,6 +464,7 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfUShortValues(const std::string & datasetName, unsigned short* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfUShortValues(const std::string & datasetName, COMMON_NS::Span<unsigned short> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Read an array Nd of int 8 bits values stored in a specific dataset.
+@@ -463,12 +472,14 @@ namespace ETP_NS
+ 		* @param values 		The values must be pre-allocated.
+ 		*/
+ 		void readArrayNdOfInt8Values(const std::string & datasetName, int8_t* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfInt8Values(const std::string & datasetName, COMMON_NS::Span<int8_t> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Read an array Nd of int 8 bits values stored in a specific dataset.
+ 		* @param datasetName	The absolute dataset name where to read the values
+ 		*/
+ 		void readArrayNdOfUInt8Values(const std::string & datasetName, uint8_t* values) final { readArrayNdOfValues(datasetName, values); }
++		void readArrayNdOfUInt8Values(const std::string & datasetName, COMMON_NS::Span<uint8_t> values) final { readArrayNdOfValuesSized(datasetName, values); }
+ 
+ 		/**
+ 		* Check wether an absolute path exists in the hdf file or not.
+@@ -505,7 +516,50 @@ namespace ETP_NS
+ 
+ 		Energistics::Etp::v12::Datatypes::DataArrayTypes::DataArrayMetadata getDataArrayMetadata(const std::string & datasetName) const;
+ 
+-		template<typename T> void readArrayNdOfValues(const std::string & datasetName, T* values)
++		/**
++		* The sized read: the caller gave the number of values it expects, so the serialized size of
++		* the answer is bounded without asking the store (10 bytes per value, the worst case of every
++		* transport type the store may choose, plus the Avro block headers). When that bound fits in
++		* one message, a single GetDataArrays is sent, without the GetDataArrayMetadata round trip;
++		* otherwise the array is big and the unsized path (metadata, then subarrays) is taken. A
++		* request the store did not answer with an array (a protocol exception) also falls back to
++		* the unsized path. The store never writes past the buffer.
++		* @exception std::range_error When the store sent more values than the buffer holds.
++		*/
++		template<typename T> void readArrayNdOfValuesSized(const std::string & datasetName, COMMON_NS::Span<T> values)
++		{
++			const size_t valueCount = values.size();
++			if (valueCount == 0) {
++				return;
++			}
++			constexpr size_t worstValueSize = 10; // arrayOfLong, zig zag encoded, worst case
++			constexpr size_t dimensionCountBound = 16; // the dimensions are not known without the metadata
++			const size_t maxAllowedDataArraySize = session_->getMaxWebSocketMessagePayloadSize()
++				- sizeof(Energistics::Etp::v12::Datatypes::MessageHeader)
++				- (dimensionCountBound * 2 + 1) * 8;
++			if (valueCount * worstValueSize + (valueCount + 1) * 8 <= maxAllowedDataArraySize) {
++				auto specializedHandler = std::make_shared<GetFullDataArrayHandlers<T>>(session_, values.data(), valueCount);
++				session_->sendWithSpecificHandlerAndBlock(
++					buildGetDataArraysMessage(datasetName),
++					specializedHandler,
++					0, 0x02);
++				if (specializedHandler->hasOverflown()) {
++					throw std::range_error("The data array " + datasetName + " holds " + std::to_string(specializedHandler->getReceivedValueCount()) + " values but the buffer receiving them holds " + std::to_string(valueCount) + ".");
++				}
++				if (specializedHandler->getReceivedValueCount() > 0) {
++					return;
++				}
++			}
++			readArrayNdOfValues(datasetName, values.data(), valueCount);
++		}
++
++		/**
++		* The unsized read: the array metadata first, then the whole array in one message when it fits,
++		* otherwise subarrays.
++		* @param valueCapacity	The number of values the buffer can hold, 0 when unknown.
++		* @exception std::range_error When the capacity is known and the store sent more values than it.
++		*/
++		template<typename T> void readArrayNdOfValues(const std::string & datasetName, T* values, size_t valueCapacity = 0)
+ 		{
+ 			// First get metadata about the data array
+ 			const Energistics::Etp::v12::Datatypes::DataArrayTypes::DataArrayMetadata daMetadata = getDataArrayMetadata(datasetName);
+@@ -530,7 +584,7 @@ namespace ETP_NS
+ 				- (daMetadata.dimensions.size() * 2 + 1) * 8; // *2 because the array can contain a maximum of element count block, +1 for the length of the last block : https://avro.apache.org/docs/1.10.2/spec.html#binary_encode_complex
+ 
+ 			// Now get values of the data array
+-			auto specializedHandler = std::make_shared<GetFullDataArrayHandlers<T>>(session_, values);
++			auto specializedHandler = std::make_shared<GetFullDataArrayHandlers<T>>(session_, values, valueCapacity);
+ 			if (wholeSize + (valueCount + 1) * 8 <= maxAllowedDataArraySize) { // There can be valueCount array block and there is the length of the last array block
+ 				// Get all values at once
+ 				session_->sendWithSpecificHandlerAndBlock(
+@@ -601,6 +655,9 @@ namespace ETP_NS
+ 					specializedHandler,
+ 					0, 0x02);
+ 			}
++			if (specializedHandler->hasOverflown()) {
++				throw std::range_error("The data array " + datasetName + " holds " + std::to_string(specializedHandler->getReceivedValueCount()) + " values but the buffer receiving them holds " + std::to_string(valueCapacity) + ".");
++			}
+ 		}
+ 	};
+ 
+diff --git a/src/fetpapi/etp/protocolHandlers/GetFullDataArrayHandlers.h b/src/fetpapi/etp/protocolHandlers/GetFullDataArrayHandlers.h
+index 454ff33..067c6cf 100644
+--- a/src/fetpapi/etp/protocolHandlers/GetFullDataArrayHandlers.h
++++ b/src/fetpapi/etp/protocolHandlers/GetFullDataArrayHandlers.h
+@@ -20,16 +20,32 @@ under the License.
+ 
+ #include "DataArrayHandlers.h"
+ 
++#include <algorithm>
++#include <cstddef>
++#include <functional>
++#include <iterator>
++#include <map>
++#include <numeric>
++#include <stdexcept>
++#include <string>
++
+ namespace ETP_NS
+ {
+ 	/**
+ 	* These specialized protocol handlers offer a way to fill in a provided full data array with the ETP store values thanks to ETP data array protocol.
++	* The buffer may come with its capacity: the handlers then never write past it and tell, once the
++	* answer is in, how many values the store sent, so that the caller can compare with what it expected.
+ 	*/
+ 	template<class T>
+ 	class GetFullDataArrayHandlers : public DataArrayHandlers
+ 	{
+ 	public:
+-		GetFullDataArrayHandlers(AbstractSession* mySession, T* values): DataArrayHandlers(mySession), values(values) {}
++		/**
++		* @param mySession		The session the handlers belong to.
++		* @param values			The buffer receiving the values; it must have been allocated with sufficient size and won't be deallocated by these handlers.
++		* @param valueCapacity	The number of values the buffer can hold, 0 when unknown: when given, the values beyond it are counted but not written.
++		*/
++		GetFullDataArrayHandlers(AbstractSession* mySession, T* values, size_t valueCapacity = 0): DataArrayHandlers(mySession), values(values), valueCapacity(valueCapacity) {}
+ 		virtual ~GetFullDataArrayHandlers() = default;
+ 
+ 		/**
+@@ -37,7 +53,7 @@ namespace ETP_NS
+ 		* @param correlationId	It is the correlation ID to use if a response is needed to this message. It corresponds to the message ID of the received ETP message.
+ 		*/
+ 		void on_GetDataArraysResponse(const Energistics::Etp::v12::Protocol::DataArray::GetDataArraysResponse & msg, int64_t correlationId) final;
+-		
++
+ 		/**
+ 		* @param msg			The ETP message body which has been received and which is to be processed.
+ 		* @param correlationId	It is the correlation ID to use if a response is needed to this message. It corresponds to the message ID of the received ETP message.
+@@ -47,12 +63,10 @@ namespace ETP_NS
+ 			if (msg.arrayMetadata.empty()) {
+ 				return;
+ 			}
+-
+ 			if (msg.arrayMetadata.size() == 1) {
+ 				dataArrayMetadata = msg.arrayMetadata.begin()->second;
+ 				return;
+ 			}
+-			
+ 			throw std::range_error("These handlers cannot work with more than one DataArray in GetDataArrayMetadataResponse");
+ 		}
+ 
+@@ -71,74 +85,86 @@ namespace ETP_NS
+ 			dataSubarrays[key] = dataSubArray;
+ 		}
+ 
++		/**
++		* The number of values the store sent so far, written or not: zero when no array came back
++		* (the store answered with a protocol exception, for example).
++		*/
++		size_t getReceivedValueCount() const { return receivedValueCount; }
++
++		/**
++		* True when the store sent values beyond the capacity of the buffer; those were not written.
++		*/
++		bool hasOverflown() const { return overflown; }
++
++		/**
++		* The number of values an ETP AnyArray carries, whatever its transport type (zero for strings).
++		*/
++		static size_t getValueCount(const Energistics::Etp::v12::Datatypes::AnyArray& data)
++		{
++			switch (data.item.idx()) {
++			case 0: return data.item.get_ArrayOfBoolean().values.size();
++			case 1: return data.item.get_ArrayOfInt().values.size();
++			case 2: return data.item.get_ArrayOfLong().values.size();
++			case 3: return data.item.get_ArrayOfFloat().values.size();
++			case 4: return data.item.get_ArrayOfDouble().values.size();
++			case 6: return data.item.get_bytes().size();
++			default: return 0;
++			}
++		}
++
+ 	private:
+-		/** 
++		/**
+ 		*	The pointer must have been allocated with sufficient size and won't be deallocated by these protocol handlers.
+ 		*/
+ 		T* const values;
++		/** The number of values the buffer can hold, 0 when unknown. */
++		const size_t valueCapacity;
++		size_t receivedValueCount = 0;
++		bool overflown = false;
+ 		Energistics::Etp::v12::Datatypes::DataArrayTypes::DataArrayMetadata dataArrayMetadata;
+ 		std::map<std::string, Energistics::Etp::v12::Datatypes::DataArrayTypes::GetDataSubarraysType> dataSubarrays;
++
++		/**
++		* Copy (and convert) @p count values of a received container, from @p sourceOffset, into the
++		* buffer at @p destinationOffset, clipped to the capacity when there is one.
++		*/
++		template<class Container>
++		void copyValues(const Container& source, size_t sourceOffset, size_t count, size_t destinationOffset)
++		{
++			receivedValueCount += count;
++			if (valueCapacity != 0 && destinationOffset + count > valueCapacity) {
++				overflown = true;
++				count = destinationOffset < valueCapacity ? valueCapacity - destinationOffset : 0;
++			}
++			std::transform(
++				std::next(source.begin(), static_cast<typename Container::difference_type>(sourceOffset)), std::next(source.begin(), static_cast<typename Container::difference_type>(sourceOffset + count)),
++				values + destinationOffset,
++				[](const auto& x) { return static_cast<T>(x); }
++			);
++		}
++
++		/**
++		* Copy @p count values of a received AnyArray, from @p sourceOffset, into the buffer at @p destinationOffset.
++		* Arrays of strings cannot be converted and are ignored.
++		*/
++		void copyAnyArray(const Energistics::Etp::v12::Datatypes::AnyArray& data, size_t sourceOffset, size_t count, size_t destinationOffset)
++		{
++			switch (data.item.idx()) {
++			case 0: copyValues(data.item.get_ArrayOfBoolean().values, sourceOffset, count, destinationOffset); break;
++			case 1: copyValues(data.item.get_ArrayOfInt().values, sourceOffset, count, destinationOffset); break;
++			case 2: copyValues(data.item.get_ArrayOfLong().values, sourceOffset, count, destinationOffset); break;
++			case 3: copyValues(data.item.get_ArrayOfFloat().values, sourceOffset, count, destinationOffset); break;
++			case 4: copyValues(data.item.get_ArrayOfDouble().values, sourceOffset, count, destinationOffset); break;
++			case 6: copyValues(data.item.get_bytes(), sourceOffset, count, destinationOffset); break;
++			default: break;
++			}
++		}
+ 	};
+ 
+ 	template<class T> void GetFullDataArrayHandlers<T>::on_GetDataArraysResponse(const Energistics::Etp::v12::Protocol::DataArray::GetDataArraysResponse & msg, int64_t) {
+ 		if (msg.dataArrays.size() == 1) {
+-			auto dataArray = msg.dataArrays.begin()->second;
+-			if (dataArray.data.item.idx() == 0) {
+-				const Energistics::Etp::v12::Datatypes::ArrayOfBoolean& avroArray = dataArray.data.item.get_ArrayOfBoolean();
+-				std::transform(
+-					avroArray.values.begin(), avroArray.values.end(),
+-					values,
+-					[](const auto& x) { return static_cast<T>(x); }
+-				);
+-			}
+-			else if (dataArray.data.item.idx() == 1) {
+-				const Energistics::Etp::v12::Datatypes::ArrayOfInt& avroArray = dataArray.data.item.get_ArrayOfInt();
+-				std::transform(
+-					avroArray.values.begin(), avroArray.values.end(),
+-					values,
+-					[](const auto& x) { return static_cast<T>(x); }
+-				);
+-			}
+-			else if (dataArray.data.item.idx() == 2) {
+-				const Energistics::Etp::v12::Datatypes::ArrayOfLong& avroArray = dataArray.data.item.get_ArrayOfLong();
+-				std::transform(
+-					avroArray.values.begin(), avroArray.values.end(),
+-					values,
+-					[](const auto& x) { return static_cast<T>(x); }
+-				);
+-			}
+-			else if (dataArray.data.item.idx() == 3) {
+-				const Energistics::Etp::v12::Datatypes::ArrayOfFloat& avroArray = dataArray.data.item.get_ArrayOfFloat();
+-				std::transform(
+-					avroArray.values.begin(), avroArray.values.end(),
+-					values,
+-					[](const auto& x) { return static_cast<T>(x); }
+-				);
+-			}
+-			else if (dataArray.data.item.idx() == 4) {
+-				const Energistics::Etp::v12::Datatypes::ArrayOfDouble& avroArray = dataArray.data.item.get_ArrayOfDouble();
+-				std::transform(
+-					avroArray.values.begin(), avroArray.values.end(),
+-					values,
+-					[](const auto& x) { return static_cast<T>(x); }
+-				);
+-			}
+-			/*
+-			else if (dataArray.data.item.idx() == 5) {
+-				const Energistics::Etp::v12::Datatypes::ArrayOfString& avroArray = dataArray.data.item.get_ArrayOfString();
+-				for (auto i = 0; i < avroArray.values.size(); ++i) {
+-					values[i] = avroArray.values[i];
+-				}
+-			}
+-			*/
+-			else if (dataArray.data.item.idx() == 6) {
+-				const std::string& avroValues = dataArray.data.item.get_bytes();
+-				std::transform(
+-					avroValues.begin(), avroValues.end(),
+-					values,
+-					[](const auto& x) { return static_cast<T>(x); }
+-				);
+-			}
++			const Energistics::Etp::v12::Datatypes::DataArrayTypes::DataArray& dataArray = msg.dataArrays.begin()->second;
++			copyAnyArray(dataArray.data, 0, getValueCount(dataArray.data), 0);
+ 		}
+ 		else {
+ 			throw std::range_error("These handlers can only work with a single DataArray in GetDataArraysResponse");
+@@ -147,94 +173,28 @@ namespace ETP_NS
+ 
+ 	template<class T> void GetFullDataArrayHandlers<T>::on_GetDataSubarraysResponse(const Energistics::Etp::v12::Protocol::DataArray::GetDataSubarraysResponse& msg, int64_t) {
+ 		for (const auto& receivedKeyValue : msg.dataSubarrays) {
+-			std::string receivedKey = receivedKeyValue.first;
+-			auto iterator = dataSubarrays.find(receivedKey);
++			auto iterator = dataSubarrays.find(receivedKeyValue.first);
+ 			if (iterator == dataSubarrays.end()) {
+ 				throw std::invalid_argument("The data sub array has not been registered.");
+ 			}
+-
+-			const auto& dataArray = receivedKeyValue.second;
+-			const auto& currentCounts = iterator->second.counts;
+-			const int64_t dataArrayValueCount = std::accumulate(currentCounts.begin(), currentCounts.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
+-			auto currentStarts = iterator->second.starts;
+-
++			const Energistics::Etp::v12::Datatypes::DataArrayTypes::DataArray& dataArray = receivedKeyValue.second;
++			const std::vector<int64_t>& counts = iterator->second.counts;
++			const int64_t dataArrayValueCount = std::accumulate(counts.begin(), counts.end(), int64_t{1}, std::multiplies<int64_t>());
++			std::vector<int64_t> currentStarts = iterator->second.starts;
+ 			int64_t subarrayOffset = 0;
+ 			while (subarrayOffset < dataArrayValueCount) {
+ 				// Compute the offset in the receiving array
+ 				int64_t arrayOffset = currentStarts.back();
+-				for (int64_t dimIndex = static_cast<int64_t>(currentCounts.size()) - 2; dimIndex >= 0; --dimIndex) {
+-					const int64_t multiplier = std::accumulate(currentCounts.begin() + dimIndex + 1, currentCounts.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
++				for (int64_t dimIndex = static_cast<int64_t>(counts.size()) - 2; dimIndex >= 0; --dimIndex) {
++					const int64_t multiplier = std::accumulate(counts.begin() + dimIndex + 1, counts.end(), int64_t{1}, std::multiplies<int64_t>());
+ 					arrayOffset += currentStarts[static_cast<size_t>(dimIndex)] * multiplier;
+ 				}
+-
+ 				// Copy from the ETP subarray to the receiving array
+-				if (dataArray.data.item.idx() == 0) {
+-					const Energistics::Etp::v12::Datatypes::ArrayOfBoolean& avroArray = dataArray.data.item.get_ArrayOfBoolean();
+-					std::transform(
+-						avroArray.values.begin() + subarrayOffset,
+-						avroArray.values.begin() + subarrayOffset + currentCounts.back(),
+-						values + arrayOffset,
+-						[](const auto& x) { return static_cast<T>(x); }
+-					);
+-				}
+-				else if (dataArray.data.item.idx() == 1) {
+-					const Energistics::Etp::v12::Datatypes::ArrayOfInt& avroArray = dataArray.data.item.get_ArrayOfInt();
+-					std::transform(
+-						avroArray.values.begin() + subarrayOffset,
+-						avroArray.values.begin() + subarrayOffset + currentCounts.back(),
+-						values + arrayOffset,
+-						[](const auto& x) { return static_cast<T>(x); }
+-					);
+-				}
+-				else if (dataArray.data.item.idx() == 2) {
+-					const Energistics::Etp::v12::Datatypes::ArrayOfLong& avroArray = dataArray.data.item.get_ArrayOfLong();
+-					std::transform(
+-						avroArray.values.begin() + subarrayOffset,
+-						avroArray.values.begin() + subarrayOffset + currentCounts.back(),
+-						values + arrayOffset,
+-						[](const auto& x) { return static_cast<T>(x); }
+-					);
+-				}
+-				else if (dataArray.data.item.idx() == 3) {
+-					const Energistics::Etp::v12::Datatypes::ArrayOfFloat& avroArray = dataArray.data.item.get_ArrayOfFloat();
+-					std::transform(
+-						avroArray.values.begin() + subarrayOffset,
+-						avroArray.values.begin() + subarrayOffset + currentCounts.back(),
+-						values + arrayOffset,
+-						[](const auto& x) { return static_cast<T>(x); }
+-					);
+-				}
+-				else if (dataArray.data.item.idx() == 4) {
+-					const Energistics::Etp::v12::Datatypes::ArrayOfDouble& avroArray = dataArray.data.item.get_ArrayOfDouble();
+-					std::transform(
+-						avroArray.values.begin() + subarrayOffset,
+-						avroArray.values.begin() + subarrayOffset + currentCounts.back(),
+-						values + arrayOffset,
+-						[](const auto& x) { return static_cast<T>(x); }
+-					);
+-				}
+-				/*
+-				else if (dataArray.data.item.idx() == 5) {
+-					const Energistics::Etp::v12::Datatypes::ArrayOfString& avroArray = dataArray.data.item.get_ArrayOfString();
+-					for (auto i = 0; i < avroArray.values.size(); ++i) {
+-						values[i] = avroArray.values[i];
+-					}
+-				}
+-				*/
+-				else if (dataArray.data.item.idx() == 6) {
+-					const std::string& avroValues = dataArray.data.item.get_bytes();
+-					std::transform(
+-						avroValues.begin() + subarrayOffset,
+-						avroValues.begin() + subarrayOffset + currentCounts.back(),
+-						values + arrayOffset,
+-						[](const auto& x) { return static_cast<T>(x); }
+-					);
+-				}
+-
++				copyAnyArray(dataArray.data, static_cast<size_t>(subarrayOffset), static_cast<size_t>(counts.back()), static_cast<size_t>(arrayOffset));
+ 				// Compute the new starts in the ETP subarray
+-				for (int64_t dimIndex = static_cast<int64_t>(currentCounts.size()) - 2; dimIndex >= 0; --dimIndex) {
++				for (int64_t dimIndex = static_cast<int64_t>(counts.size()) - 2; dimIndex >= 0; --dimIndex) {
+ 					const size_t uDimIndex = static_cast<size_t>(dimIndex);
+-					if (currentStarts[uDimIndex] + 1 < iterator->second.starts[uDimIndex] + currentCounts[uDimIndex]) {
++					if (currentStarts[uDimIndex] + 1 < iterator->second.starts[uDimIndex] + counts[uDimIndex]) {
+ 						++currentStarts[uDimIndex];
+ 						break;
+ 					}
+@@ -242,8 +202,7 @@ namespace ETP_NS
+ 						currentStarts[uDimIndex] = iterator->second.starts[uDimIndex];
+ 					}
+ 				}
+-
+-				subarrayOffset += currentCounts.back();
++				subarrayOffset += counts.back();
+ 			}
+ 		}
+ 	}
+diff --git a/test/unitTest.cpp b/test/unitTest.cpp
+index 1ed0550..64b81cb 100644
+--- a/test/unitTest.cpp
++++ b/test/unitTest.cpp
+@@ -33,6 +33,9 @@ under the License.
+ 
+ #include "fetpapi/etp/EtpHelpers.h"
+ #include "fetpapi/etp/ClientSessionLaunchers.h"
++#include <fesapi/common/Span.h>
++#include <stdexcept>
++#include <vector>
+ #include "fetpapi/etp/fesapi/FesapiHdfProxy.h"
+ #include "fetpapi/etp/fesapi/FesapiHelpers.h"
+ 
+@@ -206,3 +209,98 @@ TEST_CASE_METHOD(EtpDataspaceFixture, "Put a DataArray", "[DataArray]")
+ 		REQUIRE(receivedXyzPoints[xyzPointIndex * 3 + 2] == xyzPointIndex);
+ 	}
+ }
++
++TEST_CASE("Sized reads of a DataArray", "[DataArray]")
++{
++	std::shared_ptr<ETP_NS::AbstractSession> session = connect();
++	const std::string dataspaceUri = putDataspace(session);
++	REQUIRE(dataspaceUri.size() > 0);
++
++	COMMON_NS::DataObjectRepository repo;
++	repo.setDefaultStandard(COMMON_NS::DataObjectRepository::EnergisticsStandard::RESQML2_0_1);
++	repo.setDefaultStandard(COMMON_NS::DataObjectRepository::EnergisticsStandard::EML2_0);
++	repo.setHdfProxyFactory(new ETP_NS::FesapiHdfProxyFactory(session.get()));
++	auto* crs = repo.createLocalDepth3dCrs("", "Testing local depth Crs",
++		.0, .0, .0, .0, gsoap_resqml2_0_1::eml20__LengthUom::m, "Only for testing purpose", gsoap_resqml2_0_1::eml20__LengthUom::m, "Only for testing purpose", false);
++	EML2_NS::AbstractHdfProxy* etpHdfProxy = repo.createHdfProxy("f31fcc59-b8c4-4fc6-a524-973569b4cca5", "", "", "", COMMON_NS::DataObjectRepository::openingMode::READ_WRITE);
++	etpHdfProxy->setUriSource(dataspaceUri);
++	repo.setDefaultHdfProxy(etpHdfProxy);
++
++	// A small point set, whose sized read fits in one message, and a big one, which does not
++	const std::string smallUuid = "0b6d0c1e-6a1f-4d7a-9a56-3d0a3f2a5b01";
++	const std::string bigUuid = "0b6d0c1e-6a1f-4d7a-9a56-3d0a3f2a5b02";
++	RESQML2_NS::PointSetRepresentation* smallRep = repo.createPointSetRepresentation(smallUuid, "Small point set");
++	smallRep->setUriSource(dataspaceUri);
++	RESQML2_NS::PointSetRepresentation* bigRep = repo.createPointSetRepresentation(bigUuid, "Big point set");
++	bigRep->setUriSource(dataspaceUri);
++	const size_t smallCount = 1000;
++	const size_t bigCount = 1000000;
++	std::vector<double> smallPoints(smallCount * 3);
++	for (size_t i = 0; i < smallPoints.size(); ++i) {
++		smallPoints[i] = static_cast<double>(i);
++	}
++	std::vector<double> bigPoints(bigCount * 3);
++	for (size_t i = 0; i < bigPoints.size(); ++i) {
++		bigPoints[i] = static_cast<double>(i);
++	}
++	std::vector<std::string> dataspaceUris{ dataspaceUri };
++	REQUIRE(session->startTransaction(dataspaceUris, false).empty());
++	smallRep->pushBackXyzGeometryPatch(smallCount, smallPoints.data(), nullptr, crs);
++	bigRep->pushBackXyzGeometryPatch(bigCount, bigPoints.data(), nullptr, crs);
++	repo.setUriSource(dataspaceUri);
++	std::map<std::string, Energistics::Etp::v12::Datatypes::Object::DataObject> dataObjects;
++	int index = 0;
++	for (auto uuid : repo.getUuids()) {
++		dataObjects[std::to_string(index++)] = ETP_NS::FesapiHelpers::buildEtpDataObjectFromEnergisticsObject(repo, uuid);
++	}
++	session->putDataObjects(dataObjects);
++	REQUIRE(session->commitTransaction().empty());
++	const std::string smallDataset = "/resqml20/" + smallUuid + "/points_patch0";
++	const std::string bigDataset = "/resqml20/" + bigUuid + "/points_patch0";
++
++	// The small array: one GetDataArrays, no metadata round trip
++	std::vector<double> received(smallCount * 3, -1.0);
++	auto t_start = std::chrono::high_resolution_clock::now();
++	etpHdfProxy->readArrayNdOfDoubleValues(smallDataset, COMMON_NS::Span<double>(received));
++	std::cout << "Sized read of " << received.size() << " values in : " << std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t_start).count() << " milliseconds." << std::endl;
++	size_t mismatches = 0;
++	for (size_t i = 0; i < received.size(); ++i) {
++		if (received[i] != static_cast<double>(i)) ++mismatches;
++	}
++	REQUIRE(mismatches == 0);
++	// the generic dispatch, with a conversion of the stored type
++	std::vector<float> asFloat(smallCount * 3, -1.f);
++	etpHdfProxy->readArrayNd(smallDataset, COMMON_NS::Span<float>(asFloat));
++	REQUIRE(asFloat[0] == 0.f);
++	REQUIRE(asFloat[smallCount * 3 - 1] == static_cast<float>(smallCount * 3 - 1));
++	// a buffer too small is refused, and nothing is written past it
++	std::vector<double> tooSmall(smallCount * 3 - 1, -1.0);
++	REQUIRE_THROWS_AS(etpHdfProxy->readArrayNdOfDoubleValues(smallDataset, COMMON_NS::Span<double>(tooSmall)), std::range_error);
++	// a bigger buffer is fine, only its first values are written
++	std::vector<double> bigger(smallCount * 3 + 10, -1.0);
++	etpHdfProxy->readArrayNdOfDoubleValues(smallDataset, COMMON_NS::Span<double>(bigger));
++	REQUIRE(bigger[smallCount * 3 - 1] == static_cast<double>(smallCount * 3 - 1));
++	REQUIRE(bigger[smallCount * 3] == -1.0);
++	// an empty view reads nothing
++	etpHdfProxy->readArrayNdOfDoubleValues(smallDataset, COMMON_NS::Span<double>());
++	// the pointer form is untouched
++	std::vector<double> viaPointer(smallCount * 3, -1.0);
++	etpHdfProxy->readArrayNdOfDoubleValues(smallDataset, viaPointer.data());
++	REQUIRE(viaPointer[1] == 1.0);
++
++	// The big array: its bound exceeds a message, the metadata and the subarrays, with the capacity checked
++	std::vector<double> bigReceived(bigCount * 3, -1.0);
++	t_start = std::chrono::high_resolution_clock::now();
++	etpHdfProxy->readArrayNdOfDoubleValues(bigDataset, COMMON_NS::Span<double>(bigReceived));
++	std::cout << "Sized read of " << bigReceived.size() << " values in : " << std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t_start).count() << " milliseconds." << std::endl;
++	mismatches = 0;
++	for (size_t i = 0; i < bigReceived.size(); ++i) {
++		if (bigReceived[i] != static_cast<double>(i)) ++mismatches;
++	}
++	REQUIRE(mismatches == 0);
++	std::vector<double> bigTooSmall(bigCount * 3 - 1, -1.0);
++	REQUIRE_THROWS_AS(etpHdfProxy->readArrayNdOfDoubleValues(bigDataset, COMMON_NS::Span<double>(bigTooSmall)), std::range_error);
++
++	deleteDataspace(session, dataspaceUri);
++	session->close();
++}
+-- 
+2.37.1.windows.1
+
