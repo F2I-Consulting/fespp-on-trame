@@ -1,0 +1,212 @@
+{"text": "Highlight the grid cells intersected by the wellbore trajectories, please.", "intent": "well_cells"}
+{"text": "Which wells actually penetrate the oil zone in Volve?", "intent": "well_cells", "category": "oil"}
+{"text": "Show me the blocked wellbore for 15/9-F-12.", "intent": "well_cells"}
+{"text": "I want to see the cells of the Hugin grid that all the wells go through.", "intent": "well_cells"}
+{"text": "Where does 15/9-F-4 cross the gas cap?", "intent": "well_cells", "category": "gas"}
+{"text": "Mark the cells drilled by NO 15/9-F-5 where porosity exceeds 0.2.", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Cells traversed by the wells in the sandstone facies, please.", "intent": "well_cells", "category": "sandstone"}
+{"text": "List the blocked wellbores of the water zone.", "intent": "well_cells", "category": "water"}
+{"text": "Display the intersection of the well trajectories with the Drogon grid.", "intent": "well_cells"}
+{"text": "Could you light up the blocks penetrated by F-1 C?", "intent": "well_cells"}
+{"text": "Which boreholes reach the shale interval?", "intent": "well_cells", "category": "shale"}
+{"text": "Show the well blocks where permeability is between 100 and 500.", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "Give me the blocked wells for every well in the Norne grid.", "intent": "well_cells"}
+{"text": "I'd like the cells crossed by Well 7 in the limestone.", "intent": "well_cells", "category": "limestone"}
+{"text": "Where do the trajectories hit the reservoir in Geogrid?", "intent": "well_cells"}
+{"text": "Highlight the grid cells along the 15/9-F-11 A wellbore.", "intent": "well_cells"}
+{"text": "Which wells go through the oil leg, and how many cells does each have there?", "intent": "well_cells", "category": "oil"}
+{"text": "Cells penetrated by the wellbores where water saturation is below 0.4.", "intent": "well_cells", "kind": "water saturation", "max": 0.4}
+{"text": "Show the well blocks sitting in the gas zone.", "intent": "well_cells", "category": "gas"}
+{"text": "Intersection of all the wells with the Eclipse grid, please.", "intent": "well_cells"}
+{"text": "Where do the boreholes pass through the coal seams?", "intent": "well_cells", "category": "coal"}
+{"text": "Mark the cells drilled by 15/9-F-12 where net to gross is above 0.6.", "intent": "well_cells", "kind": "net to gross", "min": 0.6}
+{"text": "Display the blocked wellbore cells for the siltstone facies.", "intent": "well_cells", "category": "siltstone"}
+{"text": "I want the cells the wells traverse in the Hugin grid, all of them.", "intent": "well_cells"}
+{"text": "Which of the wells intersect cells where porosity is greater than 0.15?", "intent": "well_cells", "kind": "porosity", "min": 0.15}
+{"text": "Show me where 15/9-F-4 cuts through the sandstone.", "intent": "well_cells", "category": "sandstone"}
+{"text": "Blocked wellbores, please, for the Volve grid.", "intent": "well_cells"}
+{"text": "Cells along the trajectories in the Geogrid model.", "intent": "well_cells"}
+{"text": "Highlight the well blocks where gamma ray reads under 60.", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "Do any of the wells cross the oil zone in Drogon?", "intent": "well_cells", "category": "oil"}
+{"text": "Show the grid cells that the wellbore of F-1 C penetrates.", "intent": "well_cells"}
+{"text": "Trace the cells the wells drill through on the Norne grid.", "intent": "well_cells"}
+{"text": "Please display the blocked wellbores intersecting the gas zone.", "intent": "well_cells", "category": "gas"}
+{"text": "Give me the trajectory-to-grid intersection for all wells in Norne.", "intent": "well_cells"}
+{"text": "Which cells does Well 7 pass through where permeability is over 200?", "intent": "well_cells", "kind": "permeability", "min": 200}
+{"text": "Highlight the grid cells penetrated by 15/9-F-4.", "intent": "well_cells"}
+{"text": "Show me the blocked wellbore for 15/9-F-12.", "intent": "well_cells"}
+{"text": "Which wells go through the oil zone in Hugin?", "intent": "well_cells", "category": "oil"}
+{"text": "I want the cells drilled by all wells where PHIT > 0.2.", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Blocked wellbores, all wells, Volve grid.", "intent": "well_cells"}
+{"text": "Mark the cells crossed by F-1 C where Sw < 0.35.", "intent": "well_cells", "kind": "water saturation", "max": 0.35}
+{"text": "Well blocks of 15/9-F-11 A in the gas cap, please.", "intent": "well_cells", "category": "gas"}
+{"text": "Where does Well 7 intersect the sandstone?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Show the intersection of the trajectories with the Drogon grid.", "intent": "well_cells"}
+{"text": "Cells traversed by NO 15/9-F-5, PERMX between 50 and 500 mD only.", "intent": "well_cells", "kind": "permeability", "min": 50, "max": 500}
+{"text": "Which wellbores reach the water leg?", "intent": "well_cells", "category": "water"}
+{"text": "Display the blocked wells of the Norne grid restricted to NTG >= 0.6.", "intent": "well_cells", "kind": "net to gross", "min": 0.6}
+{"text": "I want a cell count per well — which trajectories pass through Geogrid?", "intent": "well_cells"}
+{"text": "Give me the well blocks for the Eclipse grid, all wells.", "intent": "well_cells"}
+{"text": "Cells hit by 15/9-F-4 with GR below 60 API.", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "How many cells does each well cross in the limestone?", "intent": "well_cells", "category": "limestone"}
+{"text": "Highlight cells along the trajectory of 15/9-F-12 where porosity is above 0.18.", "intent": "well_cells", "kind": "porosity", "min": 0.18}
+{"text": "Blocked wellbore, Geogrid, all trajectories.", "intent": "well_cells"}
+{"text": "List the wells that penetrate the coal seams.", "intent": "well_cells", "category": "coal"}
+{"text": "Cells intersected by the boreholes in Norne — show them.", "intent": "well_cells"}
+{"text": "Which cells does F-1 C drill through below 2800 m TVD?", "intent": "well_cells", "kind": "depth", "min": 2800}
+{"text": "Where do the wells hit the oil-saturated cells?", "intent": "well_cells", "category": "oil"}
+{"text": "Show the trajectory-to-grid intersection for Well 7.", "intent": "well_cells"}
+{"text": "Blocked wellbores in the gas zone only, Hugin.", "intent": "well_cells", "category": "gas"}
+{"text": "Cells penetrated by 15/9-F-11 A — flag them in the Volve grid.", "intent": "well_cells"}
+{"text": "I need the grid cells that the well paths go through, flagged in the 3D view.", "intent": "well_cells"}
+{"text": "Which wells intersect the cells with Sw between 0.2 and 0.5?", "intent": "well_cells", "kind": "water saturation", "min": 0.2, "max": 0.5}
+{"text": "Well blocks for NO 15/9-F-5 — grid cells only, not the trajectory line.", "intent": "well_cells"}
+{"text": "Highlight the cells crossed by the wells in the siltstone and give me the per-well count.", "intent": "well_cells", "category": "siltstone"}
+{"text": "Which cells of the Volve grid are drilled by 15/9-F-4?", "intent": "well_cells"}
+{"text": "Cells along all wellbores with NTG < 0.3 — flag them.", "intent": "well_cells", "kind": "net to gross", "max": 0.3}
+{"text": "Where does the 15/9-F-12 trajectory pass through the reservoir grid?", "intent": "well_cells"}
+{"text": "Display the blocked wellbore cells that sit in the water zone.", "intent": "well_cells", "category": "water"}
+{"text": "Well 7: intersected cells, depth between 2500 and 2700.", "intent": "well_cells", "kind": "depth", "min": 2500, "max": 2700}
+{"text": "Show which grid blocks of Drogon the boreholes penetrate where GR > 90.", "intent": "well_cells", "kind": "gamma ray", "min": 90}
+{"text": "Show me the cells 15/9-F-12 goes through.", "intent": "well_cells"}
+{"text": "Which wells actually hit the oil pay?", "intent": "well_cells", "category": "oil"}
+{"text": "Highlight the blocked wellbore for 15/9-F-4.", "intent": "well_cells"}
+{"text": "Light up every grid block the wells penetrate, all of them.", "intent": "well_cells"}
+{"text": "Where does F-1 C cross the gas cap?", "intent": "well_cells", "category": "gas"}
+{"text": "I want the well blocks sitting in the sandstone, per well.", "intent": "well_cells", "category": "sandstone"}
+{"text": "Give me the cells the wells cut where porosity is above 0.2, that's my completion interval.", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "List the blocked wells in the water leg.", "intent": "well_cells", "category": "water"}
+{"text": "Which cells of Hugin does Well 7 penetrate?", "intent": "well_cells"}
+{"text": "Show all the blocked wellbores on Volve.", "intent": "well_cells"}
+{"text": "How many oil cells does 15/9-F-11 A drill through?", "intent": "well_cells", "category": "oil"}
+{"text": "Mark the grid cells drilled by NO 15/9-F-5.", "intent": "well_cells"}
+{"text": "Intersection of the well trajectories with the Drogon grid, please.", "intent": "well_cells"}
+{"text": "Where do the wells cut the shale?", "intent": "well_cells", "category": "shale"}
+{"text": "Well blocks for every well where permeability is over 100.", "intent": "well_cells", "kind": "permeability", "min": 100}
+{"text": "Do any of the wells reach the limestone?", "intent": "well_cells", "category": "limestone"}
+{"text": "Blocked wellbore of 15/9-F-12 in the gas zone.", "intent": "well_cells", "category": "gas"}
+{"text": "Show me which cells the boreholes pass through on Geogrid.", "intent": "well_cells"}
+{"text": "Highlight the cells each well hits where water saturation is below 0.4.", "intent": "well_cells", "kind": "water saturation", "max": 0.4}
+{"text": "I need the well blocks with net to gross between 0.5 and 0.9.", "intent": "well_cells", "kind": "net to gross", "min": 0.5, "max": 0.9}
+{"text": "Which wells go through the coal seams?", "intent": "well_cells", "category": "coal"}
+{"text": "Cells traversed by F-1 C, highlight them.", "intent": "well_cells"}
+{"text": "Where does the 15/9-F-4 trajectory intersect the reservoir?", "intent": "well_cells"}
+{"text": "Show the blocked wellbores of the oil zone on Norne.", "intent": "well_cells", "category": "oil"}
+{"text": "Pay cells hit by all wells, porosity above 0.15.", "intent": "well_cells", "kind": "porosity", "min": 0.15}
+{"text": "Which grid cells does Well 7 go through in the siltstone?", "intent": "well_cells", "category": "siltstone"}
+{"text": "Mark the blocks the wells penetrate in the Eclipse grid.", "intent": "well_cells"}
+{"text": "How many cells does each well cross on the Hugin grid?", "intent": "well_cells"}
+{"text": "Well 7, where does it hit the sandstone?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Display the intersection of the trajectories with the gas cells.", "intent": "well_cells", "category": "gas"}
+{"text": "Which wells cross the cells where gamma ray is under 60?", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "Cells drilled by 15/9-F-11 A deeper than 2500 m.", "intent": "well_cells", "kind": "depth", "min": 2500}
+{"text": "Just the well blocks, all wells, no filter.", "intent": "well_cells"}
+{"text": "Blocked wellbore intersection with the grid for every well.", "intent": "well_cells"}
+{"text": "What cells does NO 15/9-F-5 go through in the oil leg?", "intent": "well_cells", "category": "oil"}
+{"text": "Highlight the cells hit by the wells where permeability is between 50 and 500.", "intent": "well_cells", "kind": "permeability", "min": 50, "max": 500}
+{"text": "Could you please highlight the cells that the wells go through in the Hugin grid?", "intent": "well_cells"}
+{"text": "Sorry, I'm not sure how to ask this, but could you show me which grid cells are crossed by well 15/9-F-4?", "intent": "well_cells"}
+{"text": "Would it be possible to display the blocked wellbores for all the wells, please?", "intent": "well_cells"}
+{"text": "Which wells actually reach the oil zone? I'd like to see the cells they cross there, if that's okay.", "intent": "well_cells", "category": "oil"}
+{"text": "Could you please mark the cells penetrated by the wells where porosity is above 0.2?", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "I was wondering whether you could show me where the trajectories intersect the gas cells.", "intent": "well_cells", "category": "gas"}
+{"text": "Um, could you please light up the well blocks in the sandstone for well 15/9-F-11 A?", "intent": "well_cells", "category": "sandstone"}
+{"text": "I want to see the cells drilled by all wells in the Volve grid, please.", "intent": "well_cells"}
+{"text": "Would you mind showing me the intersection of the well trajectories with the Drogon grid?", "intent": "well_cells"}
+{"text": "Where do the boreholes pass through the shale, please? I'd like those cells highlighted.", "intent": "well_cells", "category": "shale"}
+{"text": "If it's not too much trouble, could you display the blocked wellbore of Well 7?", "intent": "well_cells"}
+{"text": "I think I need the cells traversed by the wells where permeability is between 100 and 500, could you please show them?", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "Could you please show me the well blocks of the oil zone?", "intent": "well_cells", "category": "oil"}
+{"text": "Sorry to bother you again, but which cells does F-1 C go through in the limestone?", "intent": "well_cells", "category": "limestone"}
+{"text": "Would it be possible to highlight the grid cells crossed by the wellbores in the Norne grid?", "intent": "well_cells"}
+{"text": "I'm not entirely sure this is the right way to phrase it, but where do the wells hit the reservoir in the Geogrid?", "intent": "well_cells"}
+{"text": "Could you please display the cells intersected by NO 15/9-F-5 in the coal seams?", "intent": "well_cells", "category": "coal"}
+{"text": "Erm, the well blocks in the gas zone, please? Sorry, I'm not quite sure how to phrase it.", "intent": "well_cells", "category": "gas"}
+{"text": "Please could you mark the cells along the trajectory of 15/9-F-12 where net to gross is above 0.5?", "intent": "well_cells", "kind": "net to gross", "min": 0.5}
+{"text": "I'd really appreciate it if you could show me the block wellbores in the Eclipse grid.", "intent": "well_cells"}
+{"text": "Could you please show which cells the wells penetrate in the siltstone?", "intent": "well_cells", "category": "siltstone"}
+{"text": "Hmm, could you highlight for me the cells that all the wells traverse, please?", "intent": "well_cells"}
+{"text": "Would you be able to show me where the well trajectories intersect the cells with a gamma ray value above 80?", "intent": "well_cells", "kind": "gamma ray", "min": 80}
+{"text": "I'd like to see the blocked wellbores of the oil zone for the Hugin grid, please.", "intent": "well_cells", "category": "oil"}
+{"text": "Could you please give me the well blocks for well 15/9-F-4 in the water-bearing cells?", "intent": "well_cells", "category": "water"}
+{"text": "Sorry, could you show me the cells the wells drill through below a depth of 2500?", "intent": "well_cells", "kind": "depth", "min": 2500}
+{"text": "Which wells go through the sandstone, and could you please highlight the cells they cross there?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Could you please display the intersection of the trajectories with the grid?", "intent": "well_cells"}
+{"text": "I was hoping you could show me the cells hit by the boreholes where porosity is between 0.15 and 0.25.", "intent": "well_cells", "kind": "porosity", "min": 0.15, "max": 0.25}
+{"text": "Please, if you don't mind, could you mark the cells the wells go through in the Volve grid, for every single well?", "intent": "well_cells"}
+{"text": "Could you please show me the blocked wellbore of 15/9-F-11 A in the shale?", "intent": "well_cells", "category": "shale"}
+{"text": "Would it be possible to see the cells penetrated by the wells in the oil-bearing part of the reservoir, please?", "intent": "well_cells", "category": "oil"}
+{"text": "I'm a bit lost, sorry, but which grid cells does Well 7 pass through?", "intent": "well_cells"}
+{"text": "Could you please show me the grid cells traversed by the trajectories, sort of like the blocked wellbores, if that makes sense?", "intent": "well_cells"}
+{"text": "pls show cells crossed by wells", "intent": "well_cells"}
+{"text": "hilight cells traversed by traj of 15/9-F-4", "intent": "well_cells"}
+{"text": "which wells go thru oil zone?", "intent": "well_cells", "category": "oil"}
+{"text": "blocked wellbore for all wells pls", "intent": "well_cells"}
+{"text": "well blocks in gas cells, quick", "intent": "well_cells", "category": "gas"}
+{"text": "where does 15/9-F-12 hit grid", "intent": "well_cells"}
+{"text": "i want cells penetrated by wells where poro > 0.2", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "show me well blocks of Well 7", "intent": "well_cells"}
+{"text": "cells drilled by wells in sandstone pls", "intent": "well_cells", "category": "sandstone"}
+{"text": "intersection bw traj and Hugin grid", "intent": "well_cells"}
+{"text": "blocked wells in water zone, hw many cells per well", "intent": "well_cells", "category": "water"}
+{"text": "wich wells reach shale", "intent": "well_cells", "category": "shale"}
+{"text": "mark cells that F-1 C goes thru", "intent": "well_cells"}
+{"text": "block wellbores oil zone pls", "intent": "well_cells", "category": "oil"}
+{"text": "cells intersected by all wells where perm between 100 and 500", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "where do boreholes cross Drogon", "intent": "well_cells"}
+{"text": "list blocked wellbores pls", "intent": "well_cells"}
+{"text": "grid cells along traj of 15/9-F-11 A, hilight them", "intent": "well_cells"}
+{"text": "wells crossing limestone? show cells", "intent": "well_cells", "category": "limestone"}
+{"text": "cells where wells hit swat below 0.3", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "show me were wells pass thru gas", "intent": "well_cells", "category": "gas"}
+{"text": "well blocks for NO 15/9-F-5 in oil", "intent": "well_cells", "category": "oil"}
+{"text": "cells drilled by wells, ntg above 0.6", "intent": "well_cells", "kind": "net to gross", "min": 0.6}
+{"text": "does any well go thru coal? light those cells", "intent": "well_cells", "category": "coal"}
+{"text": "blocked wellbore 15/9-F-4 pls", "intent": "well_cells"}
+{"text": "traj intersect w/ Volve reservoir, show blocks", "intent": "well_cells"}
+{"text": "cells that wells traverse in siltstone", "intent": "well_cells", "category": "siltstone"}
+{"text": "wells thru oil zone on Norne, which ones", "intent": "well_cells", "category": "oil"}
+{"text": "hilite well cells where gr under 60", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "all wells, cells they penetrate, quick", "intent": "well_cells"}
+{"text": "wells x-ing sandstone in Geogrid, count cells per well", "intent": "well_cells", "category": "sandstone"}
+{"text": "blocks hit by Well 7 traj", "intent": "well_cells"}
+{"text": "where does traj of 15/9-F-12 cross water zone", "intent": "well_cells", "category": "water"}
+{"text": "give me well blocks deeper than 2500", "intent": "well_cells", "kind": "depth", "min": 2500}
+{"text": "show blocked wells in Eclipse grid", "intent": "well_cells"}
+{"text": "intersection of well traj w/ grid, hilight pls", "intent": "well_cells"}
+{"text": "Can you show me which bits of the map the wells actually go through?", "intent": "well_cells"}
+{"text": "Light up the cells the pipes pass through on the Volve grid.", "intent": "well_cells"}
+{"text": "Where does well 15/9-F-12 hit the oil part of the reservoir?", "intent": "well_cells", "category": "oil"}
+{"text": "I want to see the blocks that all the wells cut through.", "intent": "well_cells"}
+{"text": "Which wells reach the gas? Show me the cells they go through there.", "intent": "well_cells", "category": "gas"}
+{"text": "Show me the blocked wellbores for the oil zone, please.", "intent": "well_cells", "category": "oil"}
+{"text": "Mark the cells drilled by 15/9-F-4.", "intent": "well_cells"}
+{"text": "Where do the pipes cross the sandstone on the Hugin grid?", "intent": "well_cells", "category": "sandstone"}
+{"text": "cells crossed by the wells, all of them", "intent": "well_cells"}
+{"text": "Which of our wells actually go through the oil?", "intent": "well_cells", "category": "oil"}
+{"text": "Could you highlight where the wells pass through the parts where porosity is above 0.2?", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Show me the well blocks for Well 7.", "intent": "well_cells"}
+{"text": "I'd like to see where F-1 C goes through the shale.", "intent": "well_cells", "category": "shale"}
+{"text": "Which cells on the Drogon map does the well NO 15/9-F-5 travel through?", "intent": "well_cells"}
+{"text": "Where do the wells hit the water? Light those cells up.", "intent": "well_cells", "category": "water"}
+{"text": "Give me the list of blocked wells in the gas zone.", "intent": "well_cells", "category": "gas"}
+{"text": "Show the bits of the grid the wells go through where permeability is between 100 and 500.", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "How many cells does each well have in the oil? Show them on the map.", "intent": "well_cells", "category": "oil"}
+{"text": "Where do the wells cut across the Geogrid?", "intent": "well_cells"}
+{"text": "Highlight the cells that 15/9-F-11 A passes through in the limestone.", "intent": "well_cells", "category": "limestone"}
+{"text": "I want the blocked wellbore for 15/9-F-12.", "intent": "well_cells"}
+{"text": "Show me where the pipes go through the coal layers.", "intent": "well_cells", "category": "coal"}
+{"text": "Where on the Norne grid do the wells cross cells with water saturation under 0.3?", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "Can I see where the well paths cross the oil zone?", "intent": "well_cells", "category": "oil"}
+{"text": "mark all the cells the wells drill through on the Eclipse grid", "intent": "well_cells"}
+{"text": "Which wells actually make it into the Hugin grid? Show me the cells they cross.", "intent": "well_cells"}
+{"text": "Light up the cells the wells go through, only the ones with net to gross above 0.5.", "intent": "well_cells", "kind": "net to gross", "min": 0.5}
+{"text": "Do any of the wells reach the gas pocket? Show me where.", "intent": "well_cells", "category": "gas"}
+{"text": "Show me the intersection of the well paths with the Volve grid.", "intent": "well_cells"}
+{"text": "Where does 15/9-F-4 pass through the sandstone?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Give me the well blocks, all wells, oil only.", "intent": "well_cells", "category": "oil"}
+{"text": "I need to see the cells the pipes go through where the gamma ray is below 60.", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "Highlight on the map where the wells cut through the reservoir.", "intent": "well_cells"}
+{"text": "Which cells does the Well 7 pipe touch on its way down?", "intent": "well_cells"}
+{"text": "Show me the blocked well cells, the ones in the water zone.", "intent": "well_cells", "category": "water"}
+{"text": "Where do the wells drill through cells deeper than 2500 metres?", "intent": "well_cells", "kind": "depth", "min": 2500}

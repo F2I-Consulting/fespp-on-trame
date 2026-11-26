@@ -1,0 +1,131 @@
+{"text": "quels puits traversent la zone d'huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "montre moi les mailles traversées par les wells dans la zone gaz", "intent": "well_cells", "category": "gas"}
+{"text": "je veux les block wellbore de la zone eau", "intent": "well_cells", "category": "water"}
+{"text": "enleve les puits qui ne passent pas par l'huile", "intent": "well_cells", "category": "oil"}
+{"text": "cache moi les wells qui traversent le gaz", "intent": "well_cells", "category": "gas"}
+{"text": "ne garde que les puits qui coupent la zone d'huile", "intent": "well_cells", "category": "oil"}
+{"text": "peux tu virer les puits qui restent hors de la zone huile", "intent": "well_cells", "category": "oil"}
+{"text": "y a t il des wells qui traversent le grès ?", "intent": "well_cells", "category": "sandstone"}
+{"text": "montre moi les blocked wellbores", "intent": "well_cells"}
+{"text": "surligne les mailles ou les puits coupent la zone d'huile", "intent": "well_cells", "category": "oil"}
+{"text": "les mailles le long des trajectoires dans l'argile", "intent": "well_cells", "category": "shale"}
+{"text": "combien de puits passent par la zone huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "tu peux enlever les puits qui n'ont pas de block dans le gaz", "intent": "well_cells", "category": "gas"}
+{"text": "quels puits ne traversent pas l'huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "affiche les blocks des wellbores la où la porosité est au dessus de 0,2", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "les mailles traversees par les puits ou watsat est en dessous de 0,3", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "le puits F-12 il passe par l'huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "cache les puits", "intent": "hide"}
+{"text": "je veux voir que les puits", "intent": "isolate"}
+{"text": "masque moi les puits qui coupent la zone d'eau", "intent": "well_cells", "category": "water"}
+{"text": "il reste des puits hors de l'huile, vire les", "intent": "well_cells", "category": "oil"}
+{"text": "annule, remets moi les puits", "intent": "undo"}
+{"text": "ta réponse ne me convient pas, je voulais les puits dans l'huile", "intent": "complain"}
+{"text": "je vois pas les puits", "intent": "complain"}
+{"text": "affiche les zones d'huile puis les wells qui les traversent", "intent": "threshold", "category": "oil"}
+{"text": "garde que les mailles ou passent les puits", "intent": "well_cells"}
+{"text": "quels puits passent par le calcaire ?", "intent": "well_cells", "category": "limestone"}
+{"text": "affiche moi que les puits qui passent par l'huile", "intent": "well_cells", "category": "oil"}
+{"text": "quels puis traversent la zone d'uile", "intent": "well_cells", "category": "oil"}
+{"text": "les wellbore qui ne rentrent pas dans le grès tu les caches", "intent": "well_cells", "category": "sandstone"}
+{"text": "peux tu me montrer la porosité de la grille", "intent": "show", "kind": "porosity"}
+{"text": "affiche moi les zones de gaz", "intent": "threshold", "category": "gas"}
+{"text": "garde que les mailles avec une poro au dessus de 0,15", "intent": "threshold", "kind": "porosity", "min": 0.15}
+{"text": "surligne moi le grès", "intent": "highlight", "category": "sandstone"}
+{"text": "je veux voir que les mailles entre 10 et 30 % de porosité", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": 0.3}
+{"text": "enleve le filtre", "intent": "clear_threshold"}
+{"text": "retire le surlignage stp", "intent": "clear_highlight"}
+{"text": "cache l'huile", "intent": "threshold", "category": "oil"}
+{"text": "fais ressortir les mailles ou la watsat depasse 0,8", "intent": "highlight", "kind": "water saturation", "min": 0.8}
+{"text": "mets la colormap en jet", "intent": "colormap"}
+{"text": "passe en viridis pour la perm", "intent": "colormap", "kind": "permeability"}
+{"text": "plage de couleur de 0 a 500 sur permx", "intent": "color_range", "kind": "permeability", "min": 0, "max": 500}
+{"text": "recale les couleurs sur les valeurs", "intent": "rescale"}
+{"text": "couleurs à plat, sans ombrage", "intent": "flat_colors"}
+{"text": "quelle est la perm max ?", "intent": "value", "kind": "permeability"}
+{"text": "cache les nan", "intent": "hide_nan"}
+{"text": "surligne l'argile et masque le reste", "intent": "highlight", "category": "shale"}
+{"text": "affiche la zone gaz et fais ressortir le gres", "intent": "threshold", "category": "gas"}
+{"text": "ne garde que le calcaire", "intent": "threshold", "category": "limestone"}
+{"text": "vire le filtre sur la poro", "intent": "clear_threshold", "kind": "porosity"}
+{"text": "perm en dessous de 50", "intent": "threshold", "kind": "permeability", "max": 50}
+{"text": "poro entre 0,05 et 0,2", "intent": "threshold", "kind": "porosity", "min": 0.05, "max": 0.2}
+{"text": "fais moi ressortir la porosité supérieure à 20%", "intent": "highlight", "kind": "porosity", "min": 0.2}
+{"text": "garde les mailles dont la saturation en eau est inferieure à 30 %", "intent": "threshold", "kind": "water saturation", "max": 0.3}
+{"text": "surlingne le gaz", "intent": "highlight", "category": "gas"}
+{"text": "filtre sur l'huille", "intent": "threshold", "category": "oil"}
+{"text": "montre moi la porositer", "intent": "show", "kind": "porosity"}
+{"text": "je veux pas voir l'eau", "intent": "threshold", "category": "water"}
+{"text": "c'est quoi le min de porosité ?", "intent": "value", "kind": "porosity"}
+{"text": "tu peux mettre le turbo ?", "intent": "colormap"}
+{"text": "je vois que du gris", "intent": "complain"}
+{"text": "les mailles avec plus de 100 md de perm", "intent": "threshold", "kind": "permeability", "min": 100}
+{"text": "cache moi la perm", "intent": "hide", "kind": "permeability"}
+{"text": "masque les argiles", "intent": "threshold", "category": "shale"}
+{"text": "enleve le surlignage et le filtre", "intent": "clear_highlight"}
+{"text": "recentre la camera", "intent": "reset_camera"}
+{"text": "recadre moi la vue je vois plus rien", "intent": "reset_camera"}
+{"text": "recentr la cam stp", "intent": "reset_camera"}
+{"text": "recentre et mets x3 en z", "intent": "reset_camera"}
+{"text": "exagere la verticale x5", "intent": "z_scale"}
+{"text": "peux tu mettre un facteur 3 en z", "intent": "z_scale"}
+{"text": "c'est tout plat, tu peux etirer en hauteur ?", "intent": "z_scale"}
+{"text": "passe la palette en jet", "intent": "colormap"}
+{"text": "mets moi du viridis sur la poro", "intent": "colormap", "kind": "porosity"}
+{"text": "en noir et blanc", "intent": "colormap"}
+{"text": "palete turbo", "intent": "colormap"}
+{"text": "l'echelle de couleur de 0 a 0.3", "intent": "color_range", "min": 0, "max": 0.3}
+{"text": "la plage de couleur entre 0,1 et 0,25 pour la poro", "intent": "color_range", "kind": "porosity", "min": 0.1, "max": 0.25}
+{"text": "ne change pas la palette, juste la plage 0 a 1", "intent": "color_range", "min": 0, "max": 1}
+{"text": "cale les couleurs sur les donnees", "intent": "rescale"}
+{"text": "remets l'echelle de couleur en auto", "intent": "rescale"}
+{"text": "je veux pas de degradé, des couleurs franches", "intent": "flat_colors"}
+{"text": "ouvre moi une deuxieme vue 3d", "intent": "new_view"}
+{"text": "je veux les stats de la porosité", "intent": "open_panel", "kind": "porosity"}
+{"text": "montre moi le log du puits F-1", "intent": "open_panel"}
+{"text": "cross plot poro perm", "intent": "open_panel"}
+{"text": "tu peux comparer le log et la grille ?", "intent": "open_panel"}
+{"text": "affiche moi les stats de perm", "intent": "open_panel", "kind": "permeability"}
+{"text": "qu'est ce qui est chargé ?", "intent": "list"}
+{"text": "liste moi les puits", "intent": "list"}
+{"text": "c'est quoi Volve_SGrid ?", "intent": "describe"}
+{"text": "decris moi le puits F-12", "intent": "describe"}
+{"text": "quelle est la perm max ?", "intent": "value", "kind": "permeability"}
+{"text": "montre moi la moyenne de poro", "intent": "value", "kind": "porosity"}
+{"text": "anule", "intent": "undo"}
+{"text": "sauvgarde la session", "intent": "save_session"}
+{"text": "enregistre ou j'en suis", "intent": "save_session"}
+{"text": "sauvegarde puis ouvre une nouvelle vue", "intent": "save_session"}
+{"text": "tu sais faire quoi ?", "intent": "help"}
+{"text": "non c'est pas ce que je voulais", "intent": "complain"}
+{"text": "de quel puits tu parles ?", "intent": "complain"}
+{"text": "je ne vois toujours rien", "intent": "complain"}
+{"text": "c'est pas ça", "intent": "complain"}
+{"text": "hein ? valeur de quoi ?", "intent": "complain"}
+{"text": "je comprends pas ta reponse", "intent": "complain"}
+{"text": "poro", "intent": "show", "kind": "porosity"}
+{"text": "les puits", "intent": "show"}
+{"text": "tu sais faire quoi au juste ?", "intent": "help"}
+{"text": "c'est quoi les commandes que tu connais", "intent": "help"}
+{"text": "peux tu me montrer les zone d'huile puis surligne moi le gaz", "intent": "threshold", "category": "oil"}
+{"text": "affiche la poro et masque les puits", "intent": "show", "kind": "porosity"}
+{"text": "surligne l'huile et enleve les puits qui la traversent pas", "intent": "highlight", "category": "oil"}
+{"text": "les puits qui passent pas par l'huile tu les enleves", "intent": "well_cells", "category": "oil"}
+{"text": "cache les puits qui traversent le gaz", "intent": "well_cells", "category": "gas"}
+{"text": "ne garde que les puits qui coupent la zone huile", "intent": "well_cells", "category": "oil"}
+{"text": "quels puits traversent l'argile ?", "intent": "well_cells", "category": "shale"}
+{"text": "j'ai toujours des puits qui coupent pas l'huile", "intent": "well_cells", "category": "oil"}
+{"text": "affiche le facies huile de la grille", "intent": "threshold", "category": "oil"}
+{"text": "montre moi le gaz", "intent": "threshold", "category": "gas"}
+{"text": "je veux voir que le gres", "intent": "threshold", "category": "sandstone"}
+{"text": "cache moi l'argile", "intent": "threshold", "category": "shale"}
+{"text": "je veux pas voir l'eau", "intent": "threshold", "category": "water"}
+{"text": "bonjour, est ce que tu pourrais m'afficher la saturation en eau sur la grille s'il te plait", "intent": "show", "kind": "water saturation"}
+{"text": "quelle est la moyene de la permeabilité ?", "intent": "value", "kind": "permeability"}
+{"text": "surlinge moi la zone d'huil", "intent": "highlight", "category": "oil"}
+{"text": "la porosité entre 0,1 et 0,3 stp", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": 0.3}
+{"text": "garde que les mailles au dessus de 0.25 de poro", "intent": "threshold", "kind": "porosity", "min": 0.25}
+{"text": "enleve le filtre", "intent": "clear_threshold"}
+{"text": "non annule ça", "intent": "undo"}
+{"text": "je vois plus rien, recentre la vue", "intent": "reset_camera"}
+{"text": "ouvre moi les stats de la poro puis masque les puits", "intent": "open_panel", "kind": "porosity"}

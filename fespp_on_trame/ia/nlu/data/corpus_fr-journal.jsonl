@@ -1,0 +1,43 @@
+{"text": "peux-tu m'afficher les zones d'huile de la grille", "intent": "threshold", "category": "oil"}
+{"text": "affiche le faciès huilde de la grille", "intent": "threshold", "category": "oil"}
+{"text": "affiche moi les zones où le fluides est de l'huile", "intent": "threshold", "category": "oil"}
+{"text": "montre moi la lithology de la grille", "intent": "show", "kind": "facies"}
+{"text": "affiche moi les zones d'eau de la grille", "intent": "threshold", "category": "water"}
+{"text": "affiche moi l'eau de la grille", "intent": "threshold", "category": "water"}
+{"text": "qffiche moi l'eau de la grille", "intent": "threshold", "category": "water"}
+{"text": "montre moi les zones d'huile", "intent": "threshold", "category": "oil"}
+{"text": "maintenant masque moi les autres zones", "intent": "threshold"}
+{"text": "peux-tu masquer cette zone", "intent": "threshold"}
+{"text": "je ne peux pas répondre à ta question je ne la comprends pas. Et tu me sors que des Pick... (Depth) donc ca n'aide pas à comprendre", "intent": "complain"}
+{"text": "ta réponse ne me convint pas", "intent": "complain"}
+{"text": "ta réponse précédente ne me convenait pas je voulais que tu masque la zone huile que je t'avais demandé de surligner auparaavant", "intent": "complain"}
+{"text": "la réponse du masquage ne me satisfait pas.", "intent": "complain"}
+{"text": "peux-tu me dire où trouver du pétrole ?", "intent": "threshold", "category": "oil"}
+{"text": "affiche moi les zone eau", "intent": "threshold", "category": "water"}
+{"text": "surligne moi l'huile", "intent": "highlight", "category": "oil"}
+{"text": "peux-tu me surligner où il existe des puits sur ces zones ?", "intent": "well_cells"}
+{"text": "je veux les block wellbore de la zone huile", "intent": "well_cells", "category": "oil"}
+{"text": "oui mais je veux que tu surligne les endroit où lses wellbores les intersecte", "intent": "well_cells"}
+{"text": "c'est une intersection de trajectoire de puit et la zone huile", "intent": "well_cells", "category": "oil"}
+{"text": "montre la porosite de la grille au dessus de 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2}
+{"text": "surligne les mailles où poro dépasse 0,2", "intent": "highlight", "min": 0.2}
+{"text": "quelle est la moyenne de poro ?", "intent": "value"}
+{"text": "peux tu me montrer les zones d'huile", "intent": "threshold", "category": "oil"}
+{"text": "je ne vois rien du tout", "intent": "complain"}
+{"text": "non il n'y a rien du tout sur la vue. J'ai fait un load state je n'avais déjà rien et là avec la demande je n'ai toujours rien", "intent": "complain"}
+{"text": "il n'y a rien sur la vue", "intent": "complain"}
+{"text": "la vue est vide", "intent": "complain"}
+{"text": "rien ne s'affiche", "intent": "complain"}
+{"text": "je ne vois toujours rien", "intent": "complain"}
+{"text": "peux-tu m'afficher les zones d'huile ?", "intent": "threshold", "category": "oil"}
+{"text": "peux tu me montrer tous les blocks des wellbores qui traversent uniqument cette zone", "intent": "well_cells"}
+{"text": "valeur de quoi ?", "intent": "complain"}
+{"text": "quelle valeur ?", "intent": "complain"}
+{"text": "de quoi tu parles ?", "intent": "complain"}
+{"text": "je ne comprends pas ta question", "intent": "complain"}
+{"text": "je ne comprends pas ta demande d'une valeur. J'ai demander les intersection entre les wellbore trajectory et le maillage lié à l'huile", "intent": "well_cells", "category": "oil"}
+{"text": "tu peux enlever les puits qui n'ont pas ce block lié à l'huile", "intent": "well_cells", "category": "oil"}
+{"text": "les trajectoires de puits qui ne passent pas par une zone d'huile tu peux les enlever ?", "intent": "well_cells", "category": "oil"}
+{"text": "j'ai encore des wells qui ne coupent pas la zone d'huile", "intent": "well_cells", "category": "oil"}
+{"text": "enlève les puits qui ne traversent pas la zone d'huile", "intent": "well_cells", "category": "oil"}
+{"text": "ne garde que les puits qui passent dans le gaz", "intent": "well_cells", "category": "gas"}

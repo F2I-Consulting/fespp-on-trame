@@ -1,0 +1,10 @@
+{"text": "I see nothing at all", "intent": "complain"}
+{"text": "nothing shows up in the view", "intent": "complain"}
+{"text": "the view is empty", "intent": "complain"}
+{"text": "I still see nothing", "intent": "complain"}
+{"text": "what value?", "intent": "complain"}
+{"text": "value of what?", "intent": "complain"}
+{"text": "I don't understand your question", "intent": "complain"}
+{"text": "remove the wells that don't go through the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "keep only the wells that reach the gas", "intent": "well_cells", "category": "gas"}
+{"text": "show me all the blocks of the wellbores that cross this zone", "intent": "well_cells"}

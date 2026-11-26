@@ -1,0 +1,342 @@
+{"text": "Bonjour, pourriez-vous m'afficher la grille Hugin dans la vue 3D s'il vous plaît ?", "intent": "show"}
+{"text": "J'aimerais bien voir la porosité sur le modèle, si c'est possible.", "intent": "show", "kind": "porosity"}
+{"text": "est-ce qu'on peut mettre les couleurs de la perméabilité sur Volve ?", "intent": "show", "kind": "permeability"}
+{"text": "Affichez-moi le puits 15/9-F-12, je ne le vois pas sur la carte.", "intent": "show"}
+{"text": "Merci de faire apparaître Top Reservoir à l'écran.", "intent": "show"}
+{"text": "Je voudrais que la grille soit coloriée par PHIT_final maintenant.", "intent": "show"}
+{"text": "Pouvez-vous me montrer le Structural model, j'en ai besoin pour la réunion de 14h.", "intent": "show"}
+{"text": "on peut voir la saturation en eau sur Drogon stp ?", "intent": "show", "kind": "water saturation"}
+{"text": "Montre la Faille nord.", "intent": "show"}
+{"text": "Mettez le puits Well 7 dans la vue, s'il vous plaît.", "intent": "show"}
+{"text": "Je souhaiterais visualiser la carte des fluides sur la grille principale.", "intent": "show", "kind": "fluids"}
+{"text": "Serait-il possible d'allumer l'Horizon H2 pour que je le voie en 3D ?", "intent": "show"}
+{"text": "affiche NTG_2024 sur modele fin", "intent": "show"}
+{"text": "Peut-on charger la lithologie de Sleipner dans la vue, merci d'avance.", "intent": "show", "kind": "facies"}
+{"text": "Je veux voir la carte des épaisseurs du réservoir.", "intent": "show", "kind": "thickness"}
+{"text": "Ajoutez le puits 25/11-15 sur la scène svp", "intent": "show"}
+{"text": "Je n'arrive pas à voir la Base Cretaceous, pourriez-vous l'activer ?", "intent": "show"}
+{"text": "Colorie Norne avec le gamma ray, ça m'aidera à comprendre.", "intent": "show", "kind": "gamma ray"}
+{"text": "Merci de mettre à l'écran la Zone 3 du modèle.", "intent": "show"}
+{"text": "Est-ce que vous pourriez afficher la pression sur Johan pour la présentation de demain ?", "intent": "show", "kind": "pressure"}
+{"text": "vous pouvez rallumer Sw_model ?", "intent": "show"}
+{"text": "Je voudrais bien voir la grille Geogrid avec sa profondeur en couleurs.", "intent": "show", "kind": "depth"}
+{"text": "Montrez-moi Puits A, on doit en parler avec le client cet après-midi.", "intent": "show"}
+{"text": "Cochez la case de Top Draupne pour qu'il apparaisse, s'il vous plaît.", "intent": "show"}
+{"text": "Peut-on voir le volume d'argile sur la grille, ensuite on regardera le reste.", "intent": "show", "kind": "shale volume"}
+{"text": "j'aimerai afficher Facies_SIS sur Heimdal", "intent": "show"}
+{"text": "Mettez-moi la densité sur le puits 15/9-F-4 s'il vous plaît.", "intent": "show", "kind": "bulk density"}
+{"text": "Pourriez-vous remettre la grille Draupne dans la vue, elle a disparu.", "intent": "show"}
+{"text": "Pourriez vous afficher le puit F-1 C en 3D", "intent": "show"}
+{"text": "je voudrais voir la resistivité sur le puits 15/9-F-11 A", "intent": "show", "kind": "resistivity"}
+{"text": "Pourriez-vous me montrer uniquement les zones à pétrole sur Hugin ?", "intent": "threshold", "category": "oil"}
+{"text": "Je voudrais voir où il y a du gaz dans le modèle, s'il vous plaît.", "intent": "threshold", "category": "gas"}
+{"text": "est-ce qu'on peut ne garder que les mailles où la porosité dépasse 20 % ?", "intent": "threshold", "kind": "porosity", "min": 0.2}
+{"text": "Enlevez-moi les zones d'argile, elles n'intéressent pas le client.", "intent": "threshold", "category": "shale"}
+{"text": "Où est l'eau dans Volve ?", "intent": "threshold", "category": "water"}
+{"text": "Merci de ne conserver que le grès sur la grille principale.", "intent": "threshold", "category": "sandstone"}
+{"text": "Je souhaiterais voir les endroits où la perméabilité est entre 100 et 500 mD.", "intent": "threshold", "kind": "permeability", "min": 100, "max": 500}
+{"text": "affiche les zones à petrole de Drogon", "intent": "threshold", "category": "oil"}
+{"text": "Peut-on cacher les mailles de calcaire, ca encombre la vue.", "intent": "threshold", "category": "limestone"}
+{"text": "Je voudrais garder seulement les cellules avec un NTG au-dessus de 0,6, merci.", "intent": "threshold", "kind": "net to gross", "min": 0.6}
+{"text": "montre moi les zones de charbon svp", "intent": "threshold", "category": "coal"}
+{"text": "Pourriez-vous filtrer la saturation en eau en dessous de 0,4 sur Norne ?", "intent": "threshold", "kind": "water saturation", "max": 0.4}
+{"text": "Est-ce qu'on peut voir uniquement les parties du modèle qui sont dans le silt ?", "intent": "threshold", "category": "siltstone"}
+{"text": "J'aimerais bien ne voir que les mailles entre 2000 et 2500 m de profondeur.", "intent": "threshold", "kind": "depth", "min": 2000, "max": 2500}
+{"text": "Gardez les zones où il y a du gaz et retirez le reste, s'il vous plaît.", "intent": "threshold", "category": "gas"}
+{"text": "les mailles avec un gamma ray sous 60, on peut les garder seulement ?", "intent": "threshold", "kind": "gamma ray", "max": 60}
+{"text": "Où se trouve le pétrole dans Sleipner ?", "intent": "threshold", "category": "oil"}
+{"text": "Je voudrais voir les cellules dont la pression dépasse 250 bar sur Johan.", "intent": "threshold", "kind": "pressure", "min": 250}
+{"text": "Merci de masquer les zones d'eau, on ne s'y intéresse pas aujourd'hui.", "intent": "threshold", "category": "water"}
+{"text": "Pouvez-vous ne garder que le sable dans fine grid ?", "intent": "threshold", "category": "sandstone"}
+{"text": "limite la porosité de Geogrid entre 0.1 et 0.3", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": 0.3}
+{"text": "garde que les mailles ou la permeabilité dépasse 50 mD", "intent": "threshold", "kind": "permeability", "min": 50}
+{"text": "Il me faudrait uniquement les zones à huile de la grille pr la réunion.", "intent": "threshold", "category": "oil"}
+{"text": "Enlève les cases où il y a du charbon stp", "intent": "threshold", "category": "coal"}
+{"text": "Je voudrais voir les cellules de Heimdal qui ont moins de 8 % de porosité.", "intent": "threshold", "kind": "porosity", "max": 0.08}
+{"text": "cache les zones d'argile de Draupne", "intent": "threshold", "category": "shale"}
+{"text": "Peut-on ne montrer que les endroits où l'épaisseur dépasse 15 m ?", "intent": "threshold", "kind": "thickness", "min": 15}
+{"text": "Montrez-moi où le fluide est du gaz, s'il vous plaît, sur Grid 1.", "intent": "threshold", "category": "gas"}
+{"text": "Ne gardez que les mailles où la saturation en gaz dépasse 0,5, merci.", "intent": "threshold", "kind": "gas saturation", "min": 0.5}
+{"text": "Je souhaite voir les zones de calcaire du modèle, rien que celles-là.", "intent": "threshold", "category": "limestone"}
+{"text": "Pourriez-vous surligner les zones à pétrole sur Hugin, sans cacher le reste ?", "intent": "highlight", "category": "oil"}
+{"text": "Mettez en évidence les mailles où la porosité dépasse 0,25 s'il vous plaît.", "intent": "highlight", "kind": "porosity", "min": 0.25}
+{"text": "j'aimerais que le gaz ressorte en couleur sur la grille", "intent": "highlight", "category": "gas"}
+{"text": "Faites ressortir les zones d'eau de Volve, merci.", "intent": "highlight", "category": "water"}
+{"text": "Peut-on colorer en rouge les cellules dont la perméabilité est au-dessus de 200 mD ?", "intent": "highlight", "kind": "permeability", "min": 200}
+{"text": "Marquez les mailles de grès sur Drogon, je veux les repérer facilement.", "intent": "highlight", "category": "sandstone"}
+{"text": "surligne l'argile stp", "intent": "highlight", "category": "shale"}
+{"text": "Je voudrais que les endroits avec un NTG entre 0,5 et 0,8 soient mis en évidence.", "intent": "highlight", "kind": "net to gross", "min": 0.5, "max": 0.8}
+{"text": "Pouvez-vous allumer les zones de calcaire dans le modèle, en gardant tout le reste visible ?", "intent": "highlight", "category": "limestone"}
+{"text": "Faites-moi ressortir le charbon sur Norne, s'il vous plaît.", "intent": "highlight", "category": "coal"}
+{"text": "Mettez en couleur les mailles où la saturation en eau est sous 0,2.", "intent": "highlight", "kind": "water saturation", "max": 0.2}
+{"text": "Est-ce qu'on peut signaler les cellules de Heimdal dont le gamma ray dépasse 90 ?", "intent": "highlight", "kind": "gamma ray", "min": 90}
+{"text": "surligner les zones a petrole de Sleipner", "intent": "highlight", "category": "oil"}
+{"text": "Je souhaiterais voir en surbrillance le silt sur la grille principale.", "intent": "highlight", "category": "siltstone"}
+{"text": "Merci de repérer les mailles entre 1800 et 2200 m de profondeur avec une couleur bien visible.", "intent": "highlight", "kind": "depth", "min": 1800, "max": 2200}
+{"text": "Pourriez-vous flagger les zones de gaz sur Johan pour la présentation ?", "intent": "highlight", "category": "gas"}
+{"text": "Mets en évidence les cellules de Geogrid où la pression dépasse 300 bar.", "intent": "highlight", "kind": "pressure", "min": 300}
+{"text": "On peut faire ressortir le sable sans enlever les autres mailles ?", "intent": "highlight", "category": "sandstone"}
+{"text": "Surlignez le pétrole sur modele fin, s'il vous plaît.", "intent": "highlight", "category": "oil"}
+{"text": "Je voudrais que les mailles avec moins de 10 % de porosité soient marquées en couleur.", "intent": "highlight", "kind": "porosity", "max": 0.1}
+{"text": "mettez-moi en lumière les zones d'eau de Draupne", "intent": "highlight", "category": "water"}
+{"text": "Serait-il possible de surligner les cellules où la saturation en huile est supérieure à 0,6 ?", "intent": "highlight", "kind": "oil saturation", "min": 0.6}
+{"text": "Pourriez-vous cacher la grille Hugin, elle me gêne pour voir les puits.", "intent": "hide"}
+{"text": "Enlevez le puits 15/9-F-11 A de la vue, s'il vous plait.", "intent": "hide"}
+{"text": "je ne veux plus voir Top Reservoir", "intent": "hide"}
+{"text": "Décochez la Faille nord, merci.", "intent": "hide"}
+{"text": "Peut-on retirer la porosité de l'écran pour l'instant ?", "intent": "hide", "kind": "porosity"}
+{"text": "Masquez la surface Base Hugin, on n'en a pas besoin aujourd'hui.", "intent": "hide"}
+{"text": "cache le puits Well 7 stp", "intent": "hide"}
+{"text": "Je voudrais que le Structural model disparaisse de la vue 3D.", "intent": "hide"}
+{"text": "Éteignez la grille Volve s'il vous plaît, on la remettra plus tard.", "intent": "hide"}
+{"text": "Pouvez-vous enlever les couleurs de perméabilité sur Drogon ?", "intent": "hide", "kind": "permeability"}
+{"text": "Merci de faire disparaître l'Horizon H2.", "intent": "hide"}
+{"text": "retire le puits 25/11-15 de la scene", "intent": "hide"}
+{"text": "Je n'ai plus besoin de voir la Zone 3, vous pouvez la masquer.", "intent": "hide"}
+{"text": "Est-ce qu'on peut cacher Fault F1 le temps de la réunion ?", "intent": "hide"}
+{"text": "Enlève Layer 12 de la vue", "intent": "hide"}
+{"text": "Pourriez-vous décocher la grille Sleipner, s'il vous plaît, elle prend toute la place.", "intent": "hide"}
+{"text": "masquer Puits A", "intent": "hide"}
+{"text": "Je souhaiterais retirer la carte des fluides de la grille.", "intent": "hide", "kind": "fluids"}
+{"text": "Vous pouvez enlever GR_norm de l'affichage ?", "intent": "hide"}
+{"text": "Merci de cacher le puits NO 15/9-F-5 pour le moment.", "intent": "hide"}
+{"text": "Pourriez-vous ne garder que la grille Hugin à l'écran et cacher tout le reste ?", "intent": "isolate"}
+{"text": "je veux voir seulement le puits 15/9-F-12, rien d autre", "intent": "isolate"}
+{"text": "Isolez Top Reservoir s'il vous plaît, ça sera plus lisible.", "intent": "isolate"}
+{"text": "Uniquement Volve dans la vue, merci.", "intent": "isolate"}
+{"text": "Est-ce qu'on peut n'afficher que le Structural model et masquer les autres objets ?", "intent": "isolate"}
+{"text": "Ne laissez que le puits Well 7 sur la scène, s'il vous plaît.", "intent": "isolate"}
+{"text": "juste Drogon, enlève le reste", "intent": "isolate"}
+{"text": "J'aimerais bien voir la Faille nord toute seule, sans les grilles ni les puits.", "intent": "isolate"}
+{"text": "Gardez seulement Base Cretaceous à l'écran, merci d'avance.", "intent": "isolate"}
+{"text": "Pouvez-vous isoler la grille principale pour la capture d'écran ?", "intent": "isolate"}
+{"text": "Rien que le puits 15/9-19 BT2, svp.", "intent": "isolate"}
+{"text": "Montrez uniquement Geogrid et cachez tout ce qui n'est pas Geogrid.", "intent": "isolate"}
+{"text": "Pourriez-vous couper la grille Hugin selon les couches 10 à 25 ?", "intent": "slice", "axis": "k", "min": 10, "max": 25}
+{"text": "je voudrais une coupe en K sur Volve", "intent": "slice", "axis": "k"}
+{"text": "Ne gardez que les colonnes 5 à 30, s'il vous plaît.", "intent": "slice", "axis": "i", "min": 5, "max": 30}
+{"text": "Peut-on faire une tranche selon J dans le modèle ?", "intent": "slice", "axis": "j"}
+{"text": "Montrez-moi seulement les couches 1 à 12 de Drogon, merci.", "intent": "slice", "axis": "k", "min": 1, "max": 12}
+{"text": "coupe Norne suivant les rangees 20 à 40", "intent": "slice", "axis": "j", "min": 20, "max": 40}
+{"text": "Est-ce qu'on peut découper la grille en I entre 15 et 45 ?", "intent": "slice", "axis": "i", "min": 15, "max": 45}
+{"text": "Faites une coupe verticale de Geogrid le long de J s'il vous plaît.", "intent": "slice", "axis": "j"}
+{"text": "J'aimerais voir la couche 30 seulement sur Sleipner.", "intent": "slice", "axis": "k", "min": 30, "max": 30}
+{"text": "une tranche en K de 5 à 15 stp", "intent": "slice", "axis": "k", "min": 5, "max": 15}
+{"text": "Pouvez-vous limiter la grille aux lignes 8 à 22 ?", "intent": "slice", "axis": "j", "min": 8, "max": 22}
+{"text": "Je souhaiterais couper Heimdal en couches, disons de 40 à 60.", "intent": "slice", "axis": "k", "min": 40, "max": 60}
+{"text": "On peut avoir une section selon les colonnes de la grille principale ?", "intent": "slice", "axis": "i"}
+{"text": "Merci de ne conserver que les couches du haut, de 1 à 6, sur Johan.", "intent": "slice", "axis": "k", "min": 1, "max": 6}
+{"text": "Pourriez-vous changer les couleurs pour une palette viridis ?", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "mets l'arc en ciel sur la grille stp", "intent": "colormap", "preset": "Rainbow Uniform"}
+{"text": "Je préférerais une échelle en noir et blanc pour l'impression.", "intent": "colormap", "preset": "Grayscale"}
+{"text": "Peut-on passer en bleu-rouge pour la saturation ?", "intent": "colormap", "preset": "Cool to Warm", "kind": "saturation"}
+{"text": "Mettez la palette inferno, s'il vous plaît, c'est plus joli sur les slides.", "intent": "colormap", "preset": "Inferno (matplotlib)"}
+{"text": "changez les couleurs en turbo", "intent": "colormap", "preset": "Turbo"}
+{"text": "Est-ce qu'on peut utiliser jet pour la perméabilité, comme dans l'ancien logiciel ?", "intent": "colormap", "preset": "Jet", "kind": "permeability"}
+{"text": "J'aimerais bien la palette plasma sur Hugin.", "intent": "colormap", "preset": "Plasma (matplotlib)"}
+{"text": "Merci de passer sur une palette divergente pour la pression.", "intent": "colormap", "preset": "Cool to Warm", "kind": "pressure"}
+{"text": "une palette qualitative pour les faciès svp", "intent": "colormap", "preset": "Brewer Qualitative Set1", "kind": "facies"}
+{"text": "Pourriez-vous mettre du bleu orange à la place de ces couleurs ?", "intent": "colormap", "preset": "Blue Orange (divergent)"}
+{"text": "Les couleurs actuelles sont illisibles, mettez des gris s'il vous plaît.", "intent": "colormap", "preset": "Grayscale"}
+{"text": "Je voudrais une autre palette pour la carte, viridis par exemple.", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "peux-tu changer la table de couleurs en rainbow ?", "intent": "colormap", "preset": "Rainbow Uniform"}
+{"text": "Pourriez-vous régler la légende de 0 à 0,3 pour la porosité ?", "intent": "color_range", "kind": "porosity", "min": 0, "max": 0.3}
+{"text": "Mettez l'échelle de couleurs entre 50 et 150 pour le gamma ray, s'il vous plaît.", "intent": "color_range", "kind": "gamma ray", "min": 50, "max": 150}
+{"text": "je voudrais que la barre de couleurs aille de 0 à 1", "intent": "color_range", "min": 0, "max": 1}
+{"text": "Peut-on plafonner la légende à 500 mD ?", "intent": "color_range", "max": 500}
+{"text": "Bornez les couleurs de la perméabilité entre 1 et 1000, merci.", "intent": "color_range", "kind": "permeability", "min": 1, "max": 1000}
+{"text": "La légende part trop haut, mettez le maximum à 0,35 s'il vous plaît.", "intent": "color_range", "max": 0.35}
+{"text": "Fixez le bas de l'échelle à 0,05 et le haut à 0,25 pour la porosité de Hugin.", "intent": "color_range", "kind": "porosity", "min": 0.05, "max": 0.25}
+{"text": "echelle de couleur de 1500 à 3000 m pour la profondeur svp", "intent": "color_range", "kind": "depth", "min": 1500, "max": 3000}
+{"text": "Est-ce qu'on peut caler la légende entre 0,2 et 0,8 pour le NTG ?", "intent": "color_range", "kind": "net to gross", "min": 0.2, "max": 0.8}
+{"text": "Merci de mettre le minimum de la barre de couleurs à 100 bar.", "intent": "color_range", "min": 100}
+{"text": "Pourriez-vous recaler les couleurs sur les valeurs réelles de la grille ?", "intent": "rescale"}
+{"text": "remets l'échelle automatique stp", "intent": "rescale"}
+{"text": "La légende ne correspond plus aux données, pouvez-vous la réajuster ?", "intent": "rescale"}
+{"text": "Merci de réinitialiser la plage de couleurs.", "intent": "rescale"}
+{"text": "Est-ce qu'on peut ajuster la barre de couleurs aux vraies valeurs de Volve ?", "intent": "rescale"}
+{"text": "reajuste la légende sur les données", "intent": "rescale"}
+{"text": "Je voudrais que l'échelle de couleurs s'adapte toute seule aux valeurs, s'il vous plaît.", "intent": "rescale"}
+{"text": "Recalez la légende, elle est décalée depuis le filtre.", "intent": "rescale"}
+{"text": "Pourriez-vous enlever les ombres, je veux les couleurs exactes pour le rapport ?", "intent": "flat_colors", "on": true}
+{"text": "mets les couleurs à plat stp", "intent": "flat_colors", "on": true}
+{"text": "Remettez l'éclairage sur la grille, c'est plus joli.", "intent": "flat_colors", "on": false}
+{"text": "Est-ce qu'on peut couper l'ombrage sur Hugin ?", "intent": "flat_colors", "on": true}
+{"text": "Je préfère avec le relief, vous pouvez rallumer les ombres ?", "intent": "flat_colors", "on": false}
+{"text": "Merci de desactiver la lumière 3D, les teintes sont faussées.", "intent": "flat_colors", "on": true}
+{"text": "couleurs exactes sans éclairage svp", "intent": "flat_colors", "on": true}
+{"text": "Rallumez l'ombrage s'il vous plaît, on ne voit plus le relief de la surface.", "intent": "flat_colors", "on": false}
+{"text": "Pourriez-vous cacher les mailles sans valeur ?", "intent": "hide_nan", "on": true}
+{"text": "masque les valeurs manquantes stp", "intent": "hide_nan", "on": true}
+{"text": "Remettez les cellules vides, s'il vous plaît, elles font partie du modèle.", "intent": "hide_nan", "on": false}
+{"text": "Est-ce qu'on peut enlever les trous, les endroits où il n'y a pas de donnée ?", "intent": "hide_nan", "on": true}
+{"text": "Je voudrais revoir les mailles sans données sur Drogon.", "intent": "hide_nan", "on": false}
+{"text": "cachez les NaN svp", "intent": "hide_nan", "on": true}
+{"text": "Les zones non renseignées me gênent, vous pouvez les retirer de la vue ?", "intent": "hide_nan", "on": true}
+{"text": "Réaffichez les valeurs indéfinies, merci.", "intent": "hide_nan", "on": false}
+{"text": "peut-on masquer les mailles non définies de Hugin ?", "intent": "hide_nan", "on": true}
+{"text": "Faites réapparaître les cellules sans valeur, s'il vous plaît.", "intent": "hide_nan", "on": false}
+{"text": "Pourriez-vous enlever le filtre et remettre toutes les mailles ?", "intent": "clear_threshold"}
+{"text": "retire le seuil stp", "intent": "clear_threshold"}
+{"text": "Je voudrais revoir la grille entière, sans le filtre sur la porosité.", "intent": "clear_threshold"}
+{"text": "Merci d'annuler la coupure sur les valeurs.", "intent": "clear_threshold"}
+{"text": "On peut remettre toutes les cellules de Hugin, s'il vous plaît ?", "intent": "clear_threshold"}
+{"text": "supprimez les filtres de valeurs", "intent": "clear_threshold"}
+{"text": "Est-ce qu'on peut enlever la sélection par valeur et tout réafficher ?", "intent": "clear_threshold"}
+{"text": "je ne veux plus de filtre sur Volve", "intent": "clear_threshold"}
+{"text": "enleve le filtre sur la perméabilité, je veux la grille complète", "intent": "clear_threshold"}
+{"text": "Enlevez tous les filtres, s'il vous plaît, on repart de zéro sur les mailles.", "intent": "clear_threshold"}
+{"text": "Pourriez-vous enlever le surlignage ?", "intent": "clear_highlight"}
+{"text": "retire la mise en evidence stp", "intent": "clear_highlight"}
+{"text": "Merci d'éteindre les zones surlignées sur Hugin.", "intent": "clear_highlight"}
+{"text": "on peut enlever la couleur rouge des mailles marquées ?", "intent": "clear_highlight"}
+{"text": "Je n'ai plus besoin de la sélection en surbrillance, vous pouvez la retirer.", "intent": "clear_highlight"}
+{"text": "Désactivez le surlignage des zones à pétrole, s'il vous plaît.", "intent": "clear_highlight"}
+{"text": "enlève la surbrillance", "intent": "clear_highlight"}
+{"text": "Est-ce qu'on peut retirer les marques de couleur sur la grille, merci ?", "intent": "clear_highlight"}
+{"text": "Je ne vois plus rien à l'écran, pourriez-vous remettre la vue en place ?", "intent": "reset_camera"}
+{"text": "recadre sur Hugin stp", "intent": "reset_camera"}
+{"text": "Merci de remettre la caméra comme au début.", "intent": "reset_camera"}
+{"text": "Est-ce qu'on peut zoomer sur le puits 15/9-F-4 ?", "intent": "reset_camera"}
+{"text": "Centrez la vue sur Top Reservoir, s'il vous plaît.", "intent": "reset_camera"}
+{"text": "je suis perdu dans la 3D, remettez la vue d'ensemble", "intent": "reset_camera"}
+{"text": "Pouvez-vous ajuster le zoom pour que tout rentre dans l'écran ?", "intent": "reset_camera"}
+{"text": "Zoome sur Volve", "intent": "reset_camera"}
+{"text": "La grille est sortie de l'écran, vous pouvez la recadrer ?", "intent": "reset_camera"}
+{"text": "recentre la camera stp", "intent": "reset_camera"}
+{"text": "j'aimerais bien centrer la vue sur la Faille nord", "intent": "reset_camera"}
+{"text": "Faites rentrer tout le modèle dans la fenêtre, s'il vous plaît.", "intent": "reset_camera"}
+{"text": "Pourriez-vous exagérer la verticale par 5 ?", "intent": "z_scale", "factor": 5}
+{"text": "mets une échelle verticale de 3 stp", "intent": "z_scale", "factor": 3}
+{"text": "Le modèle est trop plat, étirez-le en hauteur d'un facteur 10 s'il vous plaît.", "intent": "z_scale", "factor": 10}
+{"text": "Remettez la hauteur à l'échelle normale, facteur 1.", "intent": "z_scale", "factor": 1}
+{"text": "Est-ce qu'on peut multiplier la profondeur par 4 pour mieux voir les couches ?", "intent": "z_scale", "factor": 4}
+{"text": "exagération en vertical x2", "intent": "z_scale", "factor": 2}
+{"text": "Je voudrais étirer Hugin verticalement, disons fois 6.", "intent": "z_scale", "factor": 6}
+{"text": "Pouvez-vous mettre le z à 8 ?", "intent": "z_scale", "factor": 8}
+{"text": "augmente l'echelle en z, facteur 15", "intent": "z_scale", "factor": 15}
+{"text": "Merci de réduire l'exagération verticale à 2, c'est trop déformé.", "intent": "z_scale", "factor": 2}
+{"text": "Pourriez-vous ouvrir une deuxième vue 3D ?", "intent": "new_view"}
+{"text": "ouvre une autre fenetre stp", "intent": "new_view"}
+{"text": "J'aimerais bien avoir deux vues côte à côte pour comparer Hugin et Volve.", "intent": "new_view"}
+{"text": "Est-ce qu'on peut diviser l'écran en deux ?", "intent": "new_view"}
+{"text": "Merci de créer une nouvelle vue à côté de celle-ci.", "intent": "new_view"}
+{"text": "une seconde vue svp", "intent": "new_view"}
+{"text": "Serait-il possible d'ajouter une autre vue 3D pour la présentation ?", "intent": "new_view"}
+{"text": "Je voudrais une vue supplémentaire, s'il vous plaît.", "intent": "new_view"}
+{"text": "Pourriez-vous m'ouvrir les statistiques de la porosité de Hugin ?", "intent": "open_panel", "panel": "stats", "kind": "porosity"}
+{"text": "je voudrais un histograme de la perméabilité", "intent": "open_panel", "panel": "stats", "kind": "permeability"}
+{"text": "Ouvrez les stats de NTG_2024, s'il vous plaît.", "intent": "open_panel", "panel": "stats"}
+{"text": "Est-ce qu'on peut voir les diagraphies du puits 15/9-F-4 ?", "intent": "open_panel", "panel": "welllog"}
+{"text": "montre les logs de Well 7 stp", "intent": "open_panel", "panel": "welllog"}
+{"text": "J'aimerais bien la vue des courbes du puits 15/9-F-12, merci.", "intent": "open_panel", "panel": "welllog"}
+{"text": "Pourriez-vous ouvrir la comparaison entre les logs du puits et la grille ?", "intent": "open_panel", "panel": "reconcile"}
+{"text": "ouvre le panneau Log ↔ Grid pour 15/9-19 BT2", "intent": "open_panel", "panel": "reconcile"}
+{"text": "Je voudrais confronter les diagraphies de Puits A avec les valeurs de la grille.", "intent": "open_panel", "panel": "reconcile"}
+{"text": "Peut-on comparer PHIT_final et Poro_cleaned ?", "intent": "open_panel", "panel": "compare"}
+{"text": "ouvrez l'outil de comparaison des proprietes svp", "intent": "open_panel", "panel": "compare"}
+{"text": "J'aimerais mettre en regard la porosité et le NTG sur Volve.", "intent": "open_panel", "panel": "compare"}
+{"text": "Pourriez-vous faire un nuage de points porosité contre perméabilité ?", "intent": "open_panel", "panel": "crossplot"}
+{"text": "un crossplot entre Sw_model et PHIT_final stp", "intent": "open_panel", "panel": "crossplot"}
+{"text": "Je voudrais un graphique croisé de la densité et du gamma ray, s'il vous plaît.", "intent": "open_panel", "panel": "crossplot"}
+{"text": "Montrez-moi la distribution de la porosité sur Drogon.", "intent": "open_panel", "panel": "distribution", "kind": "porosity"}
+{"text": "ouvre la distribution de Perm_log", "intent": "open_panel", "panel": "distribution"}
+{"text": "Pourriez-vous ouvrir le XML de la grille Hugin ?", "intent": "open_panel", "panel": "xml"}
+{"text": "je voudrais voir le fichier xml de Top Reservoir", "intent": "open_panel", "panel": "xml"}
+{"text": "Est-ce qu'on peut explorer le XML du puits 15/9-F-11 A ?", "intent": "open_panel", "panel": "xml"}
+{"text": "Merci d'ouvrir la colonne stratigraphique.", "intent": "open_panel", "panel": "stratigraphy"}
+{"text": "on peut voir la strati du modèle ?", "intent": "open_panel", "panel": "stratigraphy"}
+{"text": "Pourriez-vous ouvrir la calculatrice pour créer une propriété dérivée ?", "intent": "open_panel", "panel": "calculator"}
+{"text": "je voudrais calculer une nouvelle propriété à partir de la porosité et du NTG", "intent": "open_panel", "panel": "calculator"}
+{"text": "Est-ce qu'on peut lancer le contrôle qualité des données ?", "intent": "open_panel", "panel": "health"}
+{"text": "Ouvrez le bilan de santé du fichier, s'il vous plaît.", "intent": "open_panel", "panel": "health"}
+{"text": "Pourriez-vous me dire ce qu'est Hugin ?", "intent": "describe"}
+{"text": "c'est quoi Top Reservoir ?", "intent": "describe"}
+{"text": "Qui a créé la grille Volve, et quand ?", "intent": "describe"}
+{"text": "Parlez-moi du puits 15/9-F-4, s'il vous plaît.", "intent": "describe"}
+{"text": "D'où vient le Structural model ?", "intent": "describe"}
+{"text": "Je voudrais les détails de PHIT_final, merci.", "intent": "describe"}
+{"text": "donne moi les infos sur Drogon stp", "intent": "describe"}
+{"text": "Est-ce que vous pouvez m'expliquer ce qu'est Facies_SIS, en deux mots ?", "intent": "describe"}
+{"text": "Quelle est l'origine de la Faille nord ?", "intent": "describe"}
+{"text": "Decrivez-moi la Zone 3, s'il vous plaît.", "intent": "describe"}
+{"text": "j'aimerais en savoir plus sur le puits Well 7", "intent": "describe"}
+{"text": "Les métadonnées de Sleipner, vous pouvez me les donner ?", "intent": "describe"}
+{"text": "Pouvez-vous me raconter l'historique de Base Cretaceous ?", "intent": "describe"}
+{"text": "Que savez-vous de NTG_2024 ?", "intent": "describe"}
+{"text": "Pourriez-vous me lister les puits chargés ?", "intent": "list"}
+{"text": "qu'est-ce qu'il y a dans le fichier ?", "intent": "list"}
+{"text": "Combien de grilles avons-nous, s'il vous plaît ?", "intent": "list"}
+{"text": "Quelles proprietes existent sur Hugin ?", "intent": "list"}
+{"text": "liste les surfaces stp", "intent": "list"}
+{"text": "Je voudrais voir la liste des puits qui ont des diagraphies.", "intent": "list"}
+{"text": "Est-ce qu'on peut avoir un inventaire de tout ce qui est chargé ?", "intent": "list"}
+{"text": "quelles sont les failles du modèle ?", "intent": "list"}
+{"text": "Montrez-moi les propriétés disponibles sur Volve, merci.", "intent": "list"}
+{"text": "Combien de puits dans le projet ?", "intent": "list"}
+{"text": "Qu'est-ce qui est disponible comme horizons ?", "intent": "list"}
+{"text": "donne moi la liste des grilles svp", "intent": "list"}
+{"text": "Je souhaiterais connaître les propriétés du puits 15/9-F-12.", "intent": "list"}
+{"text": "quels objets sont chargés pour l'instant ?", "intent": "list"}
+{"text": "Quelle est la porosité moyenne sur Hugin ?", "intent": "value", "kind": "porosity"}
+{"text": "c'est quoi le max de perméabilité sur Volve ?", "intent": "value", "kind": "permeability"}
+{"text": "Pourriez-vous me donner la valeur minimale du NTG ?", "intent": "value", "kind": "net to gross"}
+{"text": "Jusqu'où monte la saturation en eau sur Drogon ?", "intent": "value", "kind": "water saturation"}
+{"text": "la médiane de la porosité de Geogrid svp", "intent": "value", "kind": "porosity"}
+{"text": "Quel est le P10 de PHIT_final ?", "intent": "value"}
+{"text": "Est-ce que vous pouvez me dire la moyenne de la pression dans le modèle ?", "intent": "value", "kind": "pressure"}
+{"text": "combien vaut le gamma ray en moyenne sur le puits 15/9-F-4 ?", "intent": "value", "kind": "gamma ray"}
+{"text": "Quelle est la plage de valeurs de la perméabilité sur Norne, s'il vous plaît ?", "intent": "value", "kind": "permeability"}
+{"text": "ecart-type de NTG_2024 ?", "intent": "value"}
+{"text": "Le P90 de la porosité, vous l'avez ?", "intent": "value", "kind": "porosity"}
+{"text": "Jusqu'à quelle profondeur descend la grille Hugin ?", "intent": "value", "kind": "depth"}
+{"text": "Je voudrais connaître la valeur maximale de Sw_model.", "intent": "value"}
+{"text": "quelle est la temperature moyenne sur Johan", "intent": "value", "kind": "temperature"}
+{"text": "Pourriez-vous me donner le minimum et le maximum de l'épaisseur sur Sleipner ?", "intent": "value", "kind": "thickness"}
+{"text": "À combien s'élève le NTG moyen dans Heimdal ?", "intent": "value", "kind": "net to gross"}
+{"text": "Quel est le volume moyen des mailles de la grille ?", "intent": "value", "kind": "cell volume"}
+{"text": "donne moi la moyenne de Poro_cleaned stp", "intent": "value"}
+{"text": "La densité maximale sur le puits Well 7, c'est combien ?", "intent": "value", "kind": "bulk density"}
+{"text": "Quelle est la valeur moyenne du sonic sur le puits 15/9-19 BT2 ?", "intent": "value", "kind": "sonic"}
+{"text": "Pourriez-vous annuler la dernière action ?", "intent": "undo"}
+{"text": "annule stp", "intent": "undo"}
+{"text": "Oups, revenez en arrière s'il vous plaît.", "intent": "undo"}
+{"text": "ctrl+z stp", "intent": "undo"}
+{"text": "Je me suis trompé, remettez comme c'était avant.", "intent": "undo"}
+{"text": "Défaites ce que vous venez de faire, merci.", "intent": "undo"}
+{"text": "on revient d'un cran ?", "intent": "undo"}
+{"text": "Annulez ça, s'il vous plaît, ce n'était pas voulu.", "intent": "undo"}
+{"text": "retour en arriere svp", "intent": "undo"}
+{"text": "Merci de revenir à l'état précédent.", "intent": "undo"}
+{"text": "Pourriez-vous sauvegarder mon travail ?", "intent": "save_session"}
+{"text": "enregistre la session stp", "intent": "save_session"}
+{"text": "Merci de faire une sauvegarde avant que je parte en réunion.", "intent": "save_session"}
+{"text": "Est-ce qu'on peut exporter l'état actuel de la vue pour le reprendre demain ?", "intent": "save_session"}
+{"text": "sauvegarde", "intent": "save_session"}
+{"text": "Je voudrais garder cette configuration, vous pouvez l'enregistrer ?", "intent": "save_session"}
+{"text": "Faites un backup de la session, s'il vous plaît.", "intent": "save_session"}
+{"text": "save la session svp", "intent": "save_session"}
+{"text": "Bonjour, que pouvez-vous faire pour moi ?", "intent": "help"}
+{"text": "aide", "intent": "help"}
+{"text": "Comment ça marche, cet outil ?", "intent": "help"}
+{"text": "Bonjour, vous êtes là ?", "intent": "help"}
+{"text": "Quelles sont les commandes disponibles, s'il vous plaît ?", "intent": "help"}
+{"text": "Je ne sais pas par où commencer, pouvez-vous m'aider ?", "intent": "help"}
+{"text": "salut, tu sais faire quoi ?", "intent": "help"}
+{"text": "Hello, un petit mode d'emploi serait le bienvenu.", "intent": "help"}
+{"text": "besoin d'aide svp", "intent": "help"}
+{"text": "Est-ce que vous pouvez m'expliquer comment vous utiliser ?", "intent": "help"}
+{"text": "Ce n'est pas du tout ce que je vous avais demandé.", "intent": "complain"}
+{"text": "Non, je voulais autre chose.", "intent": "complain"}
+{"text": "Votre dernière réponse ne me satisfait pas, désolé.", "intent": "complain"}
+{"text": "vous avez mal compris ma question", "intent": "complain"}
+{"text": "Ce que vous venez de faire est incorrect.", "intent": "complain"}
+{"text": "Ça ne m'aide pas, franchement.", "intent": "complain"}
+{"text": "réponse à côté de la plaque", "intent": "complain"}
+{"text": "Non, ce n'est pas ce que je voulais voir.", "intent": "complain"}
+{"text": "Je crois que vous n'avez pas saisi ma demande.", "intent": "complain"}
+{"text": "c pas ça du tout !", "intent": "complain"}
+{"text": "Hmm, ce résultat ne correspond pas à ce que j'attendais.", "intent": "complain"}
+{"text": "Vous vous êtes trompé de grille, là.", "intent": "complain"}
+{"text": "non non, pas comme ça", "intent": "complain"}
+{"text": "Desolé mais ce n'est pas la bonne réponse.", "intent": "complain"}

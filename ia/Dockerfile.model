@@ -1,0 +1,19 @@
+# fespp_ia with ONE chat model baked in: a self-contained image per model,
+# told apart by its tag (ia\build-models.ps1):
+#
+#   docker build -f ia/Dockerfile.model --build-arg MODEL=Ministral-3-3B-Instruct-2512-Q4_K_M.gguf -t fespp_ia:ministral-3b ia/models
+#
+# The build context is ia\models: the chat model, the embedding model and
+# the RAG index are copied under /opt/models (NOT /models: that path is a
+# VOLUME of the base image, and Docker drops what a build writes there).
+# Run it without any volume:  docker run -d -p 127.0.0.1:8000:8000 fespp_ia:ministral-3b
+ARG BASE=fespp_ia:cpu
+FROM ${BASE}
+ARG MODEL
+COPY embed /opt/models/embed
+COPY index /opt/models/index
+COPY ${MODEL} /opt/models/${MODEL}
+ENV FESPP_IA_MODELS=/opt/models \
+    FESPP_IA_INDEX=/opt/models/index \
+    FESPP_IA_EMBED=/opt/models/embed/bilingual-embedding-small \
+    FESPP_IA_CHAT_MODEL=${MODEL}

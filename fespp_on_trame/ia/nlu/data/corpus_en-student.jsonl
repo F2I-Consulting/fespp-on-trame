@@ -1,0 +1,342 @@
+{"text": "um, can you show me the Hugin grid?", "intent": "show"}
+{"text": "how do I get PHIT_final to appear on the grid", "intent": "show"}
+{"text": "i want to see the porosty on Volve please", "intent": "show", "kind": "porosity"}
+{"text": "could you put well 15/9-F-12 in the view?", "intent": "show"}
+{"text": "is there a way to display Top Reservoir?", "intent": "show"}
+{"text": "turn on the Geogrid pls", "intent": "show"}
+{"text": "sorry, how do I load the permeability into the 3D view?", "intent": "show", "kind": "permeability"}
+{"text": "can we look at the water saturation of Drogon now", "intent": "show", "kind": "water saturation"}
+{"text": "show me the porosité on Drogon stp", "intent": "show", "kind": "porosity"}
+{"text": "colour the grid by NTG_2024 maybe?", "intent": "show"}
+{"text": "I'd like to see the gamma ray along 15/9-F-4", "intent": "show", "kind": "gamma ray"}
+{"text": "display the Structural model", "intent": "show"}
+{"text": "put Sw_model on the fine grid", "intent": "show"}
+{"text": "can you make the Base Cretaceous surface visible?", "intent": "show"}
+{"text": "let me see the facies on the Eclipse grid", "intent": "show", "kind": "facies"}
+{"text": "next, add Horizon H2 to the view", "intent": "show"}
+{"text": "how would I view the net to gross on Sleipner?", "intent": "show", "kind": "net to gross"}
+{"text": "hmm can i get the depth colored on the grid", "intent": "show", "kind": "depth"}
+{"text": "please bring up the well Puits A", "intent": "show"}
+{"text": "I think I need to see the pressure in Norne", "intent": "show", "kind": "pressure"}
+{"text": "can we look at the resistivity on 15/9-F-11 A?", "intent": "show", "kind": "resistivity"}
+{"text": "can the Draupne grid be shown too?", "intent": "show"}
+{"text": "so how do you display a well log like GR_norm here", "intent": "show"}
+{"text": "make the grille principale appear", "intent": "show"}
+{"text": "activate Layer 12 please", "intent": "show"}
+{"text": "i'd really like to see the temperature on the model", "intent": "show", "kind": "temperature"}
+{"text": "open Perm_log on well 25/11-15", "intent": "show"}
+{"text": "can you swich on the Faille nord?", "intent": "show"}
+{"text": "not sure how, but I want the bulk density displayed on the well", "intent": "show", "kind": "bulk density"}
+{"text": "just show the grid", "intent": "show"}
+{"text": "can you only keep the cells where porosity is above 0.2?", "intent": "threshold", "kind": "porosity", "min": 0.2}
+{"text": "where is the gas in Hugin?", "intent": "threshold", "category": "gas"}
+{"text": "I only want to see cells with NTG over 0.5", "intent": "threshold", "kind": "net to gross", "min": 0.5}
+{"text": "show me the oil zones please", "intent": "threshold", "category": "oil"}
+{"text": "is it possible to keep just the sandstone cells?", "intent": "threshold", "category": "sandstone"}
+{"text": "filter the permeability between 100 and 500 mD", "intent": "threshold", "kind": "permeability", "min": 100, "max": 500}
+{"text": "hide the shale cells on Volve", "intent": "threshold", "category": "shale"}
+{"text": "um where is the water in the Fluids property", "intent": "threshold", "kind": "fluids", "category": "water"}
+{"text": "keep the cells with water saturation under 0.3", "intent": "threshold", "kind": "water saturation", "max": 0.3}
+{"text": "can I see only where the porosity is between 10 and 25 %?", "intent": "threshold", "kind": "porosity", "min": 0.1, "max": 0.25}
+{"text": "cut out everything below 50 mD of perm", "intent": "threshold", "kind": "permeability", "min": 50}
+{"text": "display the limestone parts of the grid", "intent": "threshold", "category": "limestone"}
+{"text": "show me where the fluid is oil", "intent": "threshold", "kind": "fluids", "category": "oil"}
+{"text": "cells with GR above 80 only pls", "intent": "threshold", "kind": "gamma ray", "min": 80}
+{"text": "remove the coal cells from the view", "intent": "threshold", "category": "coal"}
+{"text": "can you filter Geogrid on net to gross > 0.7", "intent": "threshold", "kind": "net to gross", "min": 0.7}
+{"text": "wich cells are gas? show them", "intent": "threshold", "category": "gas"}
+{"text": "keep porosity higer than 15 percent", "intent": "threshold", "kind": "porosity", "min": 0.15}
+{"text": "i want to keep only the siltstone", "intent": "threshold", "category": "siltstone"}
+{"text": "filter out cells deeper than 3000 m", "intent": "threshold", "kind": "depth", "max": 3000}
+{"text": "so, can we look at the water zones on Drogon?", "intent": "threshold", "category": "water"}
+{"text": "just the cells with Sw below 0.4 please", "intent": "threshold", "kind": "water saturation", "max": 0.4}
+{"text": "hide the gas cells on the fine grid", "intent": "threshold", "category": "gas"}
+{"text": "show the cells where shale volume is less than 0.3", "intent": "threshold", "kind": "shale volume", "max": 0.3}
+{"text": "where's the sand in Norne", "intent": "threshold", "category": "sandstone"}
+{"text": "threshold PHIT_final from 0.12 to 0.3", "intent": "threshold", "min": 0.12, "max": 0.3}
+{"text": "how do I filter the grid to porosity above 0.25 ?", "intent": "threshold", "kind": "porosity", "min": 0.25}
+{"text": "keep the shale cells only", "intent": "threshold", "category": "shale"}
+{"text": "can you show me the cells with a pressure over 300 bar", "intent": "threshold", "kind": "pressure", "min": 300}
+{"text": "filter on temprature between 80 and 120 degrees", "intent": "threshold", "kind": "temperature", "min": 80, "max": 120}
+{"text": "can you highlight the cells with porosity above 0.3?", "intent": "highlight", "kind": "porosity", "min": 0.3}
+{"text": "light up the oil zones but keep the rest visible", "intent": "highlight", "category": "oil"}
+{"text": "mark the cells where NTG is over 0.8 pls", "intent": "highlight", "kind": "net to gross", "min": 0.8}
+{"text": "could you flag the gas cells in red?", "intent": "highlight", "category": "gas"}
+{"text": "highlight the sandstone on Hugin", "intent": "highlight", "category": "sandstone"}
+{"text": "make the high permeability cells stand out, say above 1000 mD", "intent": "highlight", "kind": "permeability", "min": 1000}
+{"text": "i want the water cells highlighted", "intent": "highlight", "category": "water"}
+{"text": "is there a way to highlight where Sw is under 0.2?", "intent": "highlight", "kind": "water saturation", "max": 0.2}
+{"text": "colour the shale cells in red without hiding anything", "intent": "highlight", "category": "shale"}
+{"text": "highlight cells with GR between 60 and 100", "intent": "highlight", "kind": "gamma ray", "min": 60, "max": 100}
+{"text": "can you make the limestone cells glow or something", "intent": "highlight", "category": "limestone"}
+{"text": "hmm, highlight the porosity between 0.2 and 0.3 on Volve", "intent": "highlight", "kind": "porosity", "min": 0.2, "max": 0.3}
+{"text": "flag the cells below 1800 m depth", "intent": "highlight", "kind": "depth", "max": 1800}
+{"text": "mark where the fluid is oil, don't remove the other cells", "intent": "highlight", "kind": "fluids", "category": "oil"}
+{"text": "highlite the coal cells please", "intent": "highlight", "category": "coal"}
+{"text": "can u highlight the siltstone in Geogrid?", "intent": "highlight", "category": "siltstone"}
+{"text": "put a highlight on cells with shale volume over 0.5", "intent": "highlight", "kind": "shale volume", "min": 0.5}
+{"text": "I'd like the gas zones to stand out on the fine grid", "intent": "highlight", "category": "gas"}
+{"text": "highlight the cells with net to gross under 0.3", "intent": "highlight", "kind": "net to gross", "max": 0.3}
+{"text": "select and light up the cells above 0.25 porosity", "intent": "highlight", "kind": "porosity", "min": 0.25}
+{"text": "make the water zones red but keep everything else", "intent": "highlight", "category": "water"}
+{"text": "can we highlight the permeability above 200 mD in Drogon", "intent": "highlight", "kind": "permeability", "min": 200}
+{"text": "can you hide the Hugin grid?", "intent": "hide"}
+{"text": "remove Top Reservoir from the view please", "intent": "hide"}
+{"text": "i don't need well 15/9-F-11 A anymore, take it off", "intent": "hide"}
+{"text": "uncheck the Geogrid", "intent": "hide"}
+{"text": "switch off the porosity on the grid", "intent": "hide", "kind": "porosity"}
+{"text": "could you make Fault F1 dissapear?", "intent": "hide"}
+{"text": "hide Sw_model", "intent": "hide"}
+{"text": "take the Structural model out of the view", "intent": "hide"}
+{"text": "how do I hide the well Well 7?", "intent": "hide"}
+{"text": "turn off Base Hugin", "intent": "hide"}
+{"text": "pls hide the fine grid", "intent": "hide"}
+{"text": "get rid of the facies dispaly on Volve", "intent": "hide", "kind": "facies"}
+{"text": "can you remove Horizon H2 from the screen?", "intent": "hide"}
+{"text": "hide the wells, all of them", "intent": "hide"}
+{"text": "i want to hide the Draupne grid now", "intent": "hide"}
+{"text": "make the surface invisible", "intent": "hide"}
+{"text": "stop showing the gamma ray on 15/9-F-4", "intent": "hide", "kind": "gamma ray"}
+{"text": "remove Zone 3 pls", "intent": "hide"}
+{"text": "hide the Perm_log", "intent": "hide"}
+{"text": "can you hide NO 15/9-F-5?", "intent": "hide"}
+{"text": "can I see the statistcs of the porosity?", "intent": "open_panel", "panel": "stats", "kind": "porosity"}
+{"text": "show me a histogram of PHIT_final", "intent": "open_panel", "panel": "stats"}
+{"text": "open the stats panel for Hugin please", "intent": "open_panel", "panel": "stats"}
+{"text": "how do I open the well logs for 15/9-F-12?", "intent": "open_panel", "panel": "welllog"}
+{"text": "can you show the log view of well 15/9-F-4?", "intent": "open_panel", "panel": "welllog"}
+{"text": "i want to look at the logs of Puits A", "intent": "open_panel", "panel": "welllog"}
+{"text": "compare the well logs with the grid, is there a panel for that?", "intent": "open_panel", "panel": "reconcile"}
+{"text": "open the Log vs Grid thing for 15/9-19 BT2", "intent": "open_panel", "panel": "reconcile"}
+{"text": "can you check the logs against the grid values please", "intent": "open_panel", "panel": "reconcile"}
+{"text": "i'd like to compare PHIT_final and Poro_cleaned", "intent": "open_panel", "panel": "compare"}
+{"text": "is there a way to compare two properties?", "intent": "open_panel", "panel": "compare"}
+{"text": "open the compare panel", "intent": "open_panel", "panel": "compare"}
+{"text": "can you do a crossplot of porosity vs permeability?", "intent": "open_panel", "panel": "crossplot"}
+{"text": "show a scatter plot of NTG_2024 against Sw_model", "intent": "open_panel", "panel": "crossplot"}
+{"text": "cross plot plz", "intent": "open_panel", "panel": "crossplot"}
+{"text": "what does the distribution of the water saturation look like?", "intent": "open_panel", "panel": "distribution", "kind": "water saturation"}
+{"text": "open the distribution panel for GR_norm", "intent": "open_panel", "panel": "distribution"}
+{"text": "can I see the xml of Hugin?", "intent": "open_panel", "panel": "xml"}
+{"text": "open the XML explorer please", "intent": "open_panel", "panel": "xml"}
+{"text": "show me the raw xml behind Top Draupne", "intent": "open_panel", "panel": "xml"}
+{"text": "is there a stratigraphic column somewhere?", "intent": "open_panel", "panel": "stratigraphy"}
+{"text": "open the stratigraphy panel for Volve", "intent": "open_panel", "panel": "stratigraphy"}
+{"text": "how do I make a new property from PHIT_final times NTG_2024?", "intent": "open_panel", "panel": "calculator"}
+{"text": "open the calculator so i can compute a derived property", "intent": "open_panel", "panel": "calculator"}
+{"text": "can you run a quality check on the data?", "intent": "open_panel", "panel": "health"}
+{"text": "show me the data health panel", "intent": "open_panel", "panel": "health"}
+{"text": "what's the average porosity in Hugin?", "intent": "value", "kind": "porosity"}
+{"text": "how high does the permeability go on Volve?", "intent": "value", "kind": "permeability"}
+{"text": "can you tell me the min of NTG_2024", "intent": "value"}
+{"text": "what is the max water saturation in the grid?", "intent": "value", "kind": "water saturation"}
+{"text": "median of the gamma ray on 15/9-F-4 please", "intent": "value", "kind": "gamma ray"}
+{"text": "what's the mean NTG in Drogon", "intent": "value", "kind": "net to gross"}
+{"text": "how low does Sw_model get?", "intent": "value"}
+{"text": "give me the P10 of the porosity", "intent": "value", "kind": "porosity"}
+{"text": "what is the range of PHIT_final?", "intent": "value"}
+{"text": "standard deviaton of the perm in Geogrid?", "intent": "value", "kind": "permeability"}
+{"text": "whats the average depth of the Top Reservoir", "intent": "value", "kind": "depth"}
+{"text": "how thick is the reservoir on average? i mean the thickness property", "intent": "value", "kind": "thickness"}
+{"text": "P90 of net to gross on the fine grid", "intent": "value", "kind": "net to gross"}
+{"text": "what's the highest bulk density on the well?", "intent": "value", "kind": "bulk density"}
+{"text": "can you give me the minimum porosity in Norne", "intent": "value", "kind": "porosity"}
+{"text": "what's the mean gas saturation in Heimdal?", "intent": "value", "kind": "gas saturation"}
+{"text": "what's the max of Perm_log", "intent": "value"}
+{"text": "how much is the mean pressure in the model", "intent": "value", "kind": "pressure"}
+{"text": "tell me the median GR_norm", "intent": "value"}
+{"text": "what is the biggest cell volume in Hugin?", "intent": "value", "kind": "cell volume"}
+{"text": "what is Hugin exacly?", "intent": "describe"}
+{"text": "can you tell me about well 15/9-F-12?", "intent": "describe"}
+{"text": "who created the Geogrid?", "intent": "describe"}
+{"text": "where does Top Reservoir come from?", "intent": "describe"}
+{"text": "details on PHIT_final please", "intent": "describe"}
+{"text": "what's the metadata of Fault F1", "intent": "describe"}
+{"text": "hmm what is this Structural model thing", "intent": "describe"}
+{"text": "tell me more about Facies_SIS", "intent": "describe"}
+{"text": "describe the Volve grid", "intent": "describe"}
+{"text": "any info about Base Cretaceous?", "intent": "describe"}
+{"text": "what do you know about 25/11-15", "intent": "describe"}
+{"text": "what is Sw_model, i don't get it", "intent": "describe"}
+{"text": "origin of the Drogon grid?", "intent": "describe"}
+{"text": "can you describe Horizon H2 for me", "intent": "describe"}
+{"text": "what propreties are there on Hugin?", "intent": "list"}
+{"text": "which wells are loaded?", "intent": "list"}
+{"text": "can you list the grids please", "intent": "list"}
+{"text": "how many wells do we have?", "intent": "list"}
+{"text": "what is in this file?", "intent": "list"}
+{"text": "list the logs of 15/9-F-4", "intent": "list"}
+{"text": "what surfaces are available?", "intent": "list"}
+{"text": "which properties does the Volve grid have", "intent": "list"}
+{"text": "um, what can I look at here? what's loaded", "intent": "list"}
+{"text": "give me the list of horizons", "intent": "list"}
+{"text": "are there any faults in the model?", "intent": "list"}
+{"text": "what's on Geogrid?", "intent": "list"}
+{"text": "show me everything that is loaded", "intent": "list"}
+{"text": "how many grids are in the file", "intent": "list"}
+{"text": "can you show only Hugin and nothing else?", "intent": "isolate"}
+{"text": "just keep well 15/9-F-12 on screen", "intent": "isolate"}
+{"text": "hide everything except the Geogrid", "intent": "isolate"}
+{"text": "only Top Reservoir please", "intent": "isolate"}
+{"text": "i want to see just the Volve grid, hide the rest", "intent": "isolate"}
+{"text": "isolate Fault F1", "intent": "isolate"}
+{"text": "nothing but the fine grid pls", "intent": "isolate"}
+{"text": "keep only the Structural model visible", "intent": "isolate"}
+{"text": "can we see the well 15/9-F-4 alone?", "intent": "isolate"}
+{"text": "leave only Base Hugin in the view", "intent": "isolate"}
+{"text": "hide all the others and keep Drogon", "intent": "isolate"}
+{"text": "just the grid, remove everything else", "intent": "isolate"}
+{"text": "can you cut the grid along K?", "intent": "slice", "axis": "k"}
+{"text": "keep layers 5 to 12 only", "intent": "slice", "axis": "k", "min": 5, "max": 12}
+{"text": "how do I slice Hugin along I?", "intent": "slice", "axis": "i"}
+{"text": "show me a J section through the grid", "intent": "slice", "axis": "j"}
+{"text": "slice the Volve grid in K between 10 and 20", "intent": "slice", "axis": "k", "min": 10, "max": 20}
+{"text": "can I just see layer 8?", "intent": "slice", "axis": "k", "min": 8, "max": 8}
+{"text": "cut along the columns please", "intent": "slice", "axis": "i"}
+{"text": "i want to see rows 20 to 40 of Geogrid", "intent": "slice", "axis": "j", "min": 20, "max": 40}
+{"text": "make a slice in J from 15 to 30", "intent": "slice", "axis": "j", "min": 15, "max": 30}
+{"text": "keep only the top 10 layers", "intent": "slice", "axis": "k", "min": 1, "max": 10}
+{"text": "slice along I between 30 and 45", "intent": "slice", "axis": "i", "min": 30, "max": 45}
+{"text": "can we cut the model along K somewhere in the middle", "intent": "slice", "axis": "k"}
+{"text": "show layers 25 to 35 of the fine grid pls", "intent": "slice", "axis": "k", "min": 25, "max": 35}
+{"text": "a section in I please", "intent": "slice", "axis": "i"}
+{"text": "can you use viridis for the colours?", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "swich the palette to inferno", "intent": "colormap", "preset": "Inferno (matplotlib)"}
+{"text": "i'd like the rainbow colour table", "intent": "colormap", "preset": "Rainbow Uniform"}
+{"text": "put it in grayscale please", "intent": "colormap", "preset": "Grayscale"}
+{"text": "change the colormap to jet", "intent": "colormap", "preset": "Jet"}
+{"text": "can we have blue to red colours instead?", "intent": "colormap", "preset": "Cool to Warm"}
+{"text": "use turbo for the porosity", "intent": "colormap", "preset": "Turbo", "kind": "porosity"}
+{"text": "make it black and white", "intent": "colormap", "preset": "Grayscale"}
+{"text": "plasma colours pls", "intent": "colormap", "preset": "Plasma (matplotlib)"}
+{"text": "how do I change the colour table to blue orange?", "intent": "colormap", "preset": "Blue Orange (divergent)"}
+{"text": "the facies need a categorical palette", "intent": "colormap", "preset": "Brewer Qualitative Set1", "kind": "facies"}
+{"text": "a diverging colormap would be nice here", "intent": "colormap", "preset": "Cool to Warm"}
+{"text": "can you change the colors? something like viridis maybe", "intent": "colormap", "preset": "Viridis (matplotlib)"}
+{"text": "use a different palette, cool to warm", "intent": "colormap", "preset": "Cool to Warm"}
+{"text": "can you set the legend from 0 to 0.3?", "intent": "color_range", "min": 0, "max": 0.3}
+{"text": "clamp the colour scale betwen 50 and 500 mD", "intent": "color_range", "min": 50, "max": 500}
+{"text": "cap the legend at 150", "intent": "color_range", "max": 150}
+{"text": "set the colorbar min to 0.05 please", "intent": "color_range", "min": 0.05}
+{"text": "i want the colour range to go from 0.1 to 0.25", "intent": "color_range", "min": 0.1, "max": 0.25}
+{"text": "make the scale start at 20 and stop at 120 for GR", "intent": "color_range", "kind": "gamma ray", "min": 20, "max": 120}
+{"text": "colour bounds 1500 to 3000 m please", "intent": "color_range", "min": 1500, "max": 3000}
+{"text": "can the legend go up to 1 only?", "intent": "color_range", "max": 1}
+{"text": "fix the palette between 0 and 0.35", "intent": "color_range", "min": 0, "max": 0.35}
+{"text": "lower the top of the colour scale to 0.2", "intent": "color_range", "max": 0.2}
+{"text": "can you fit the colour scale to the data again?", "intent": "rescale"}
+{"text": "auto range please", "intent": "rescale"}
+{"text": "reset the colour range", "intent": "rescale"}
+{"text": "rescale the legend to the actual values", "intent": "rescale"}
+{"text": "the legend looks wrong, can you refit it to the data?", "intent": "rescale"}
+{"text": "put the colorbar back to automatic", "intent": "rescale"}
+{"text": "rescale to data pls", "intent": "rescale"}
+{"text": "hmm, can you recompute the colour bounds from the property", "intent": "rescale"}
+{"text": "can you turn off the shading? i want exact colours", "intent": "flat_colors", "on": true}
+{"text": "flat colours please", "intent": "flat_colors", "on": true}
+{"text": "put the lighting back on", "intent": "flat_colors", "on": false}
+{"text": "remove the lighting on the grid", "intent": "flat_colors", "on": true}
+{"text": "i'd like shading back, it looks flat", "intent": "flat_colors", "on": false}
+{"text": "exact colors without light effects", "intent": "flat_colors", "on": true}
+{"text": "turn the shading on again", "intent": "flat_colors", "on": false}
+{"text": "no shading pls, just the real colours", "intent": "flat_colors", "on": true}
+{"text": "can you hide the empty cells?", "intent": "hide_nan", "on": true}
+{"text": "show the NaN values again", "intent": "hide_nan", "on": false}
+{"text": "hide the undefined values plese", "intent": "hide_nan", "on": true}
+{"text": "i don't want to see the missing values", "intent": "hide_nan", "on": true}
+{"text": "bring back the cells with no value", "intent": "hide_nan", "on": false}
+{"text": "remove the nan cells", "intent": "hide_nan", "on": true}
+{"text": "put the missing values back in the view", "intent": "hide_nan", "on": false}
+{"text": "can we hide the cells where the value is missing", "intent": "hide_nan", "on": true}
+{"text": "hide NaNs", "intent": "hide_nan", "on": true}
+{"text": "make the undefined cells visible again pls", "intent": "hide_nan", "on": false}
+{"text": "can you remove the filtre?", "intent": "clear_threshold"}
+{"text": "show all the cells again", "intent": "clear_threshold"}
+{"text": "drop the cutoff please", "intent": "clear_threshold"}
+{"text": "take off the threshold on Hugin", "intent": "clear_threshold"}
+{"text": "i want all cells back, no filter", "intent": "clear_threshold"}
+{"text": "clear the value filters", "intent": "clear_threshold"}
+{"text": "stop filtering and show the whole grid", "intent": "clear_threshold"}
+{"text": "remove the porosity cutoff", "intent": "clear_threshold", "kind": "porosity"}
+{"text": "can we get the full grid back please", "intent": "clear_threshold"}
+{"text": "no more threshold pls", "intent": "clear_threshold"}
+{"text": "can you remove the highlight?", "intent": "clear_highlight"}
+{"text": "unhighlight the cells please", "intent": "clear_highlight"}
+{"text": "turn off the red cells", "intent": "clear_highlight"}
+{"text": "clear the selection", "intent": "clear_highlight"}
+{"text": "take the highlighting away pls", "intent": "clear_highlight"}
+{"text": "i don't need the highlighted cells anymore", "intent": "clear_highlight"}
+{"text": "stop highlighting", "intent": "clear_highlight"}
+{"text": "remove the marked cells from the view? i mean un-mark them", "intent": "clear_highlight"}
+{"text": "i can't see anything, can you recenter?", "intent": "reset_camera"}
+{"text": "reset the camrea please", "intent": "reset_camera"}
+{"text": "zoom to fit", "intent": "reset_camera"}
+{"text": "center the view on Hugin", "intent": "reset_camera"}
+{"text": "can you zoom on well 15/9-F-12?", "intent": "reset_camera"}
+{"text": "the view is lost, put it back", "intent": "reset_camera"}
+{"text": "reframe everything pls", "intent": "reset_camera"}
+{"text": "focus on Top Reservoir", "intent": "reset_camera"}
+{"text": "where did the grid go? bring the view back", "intent": "reset_camera"}
+{"text": "fit the whole model in the window", "intent": "reset_camera"}
+{"text": "can you centre on the fine grid", "intent": "reset_camera"}
+{"text": "reset view", "intent": "reset_camera"}
+{"text": "can you stretch the z axis by 3?", "intent": "z_scale", "factor": 3}
+{"text": "vertical exageration 5 please", "intent": "z_scale", "factor": 5}
+{"text": "make it taller, z scale x10", "intent": "z_scale", "factor": 10}
+{"text": "set the z scale to 2", "intent": "z_scale", "factor": 2}
+{"text": "exaggerate the vertical by 4", "intent": "z_scale", "factor": 4}
+{"text": "put the z scale back to 1", "intent": "z_scale", "factor": 1}
+{"text": "can we have a vertical exaggeration of 8?", "intent": "z_scale", "factor": 8}
+{"text": "z scale 5 pls", "intent": "z_scale", "factor": 5}
+{"text": "the model is too flat, stretch it vertically by 6", "intent": "z_scale", "factor": 6}
+{"text": "how do I set the vertical exaggeration to 3?", "intent": "z_scale", "factor": 3}
+{"text": "can you open a second 3D view?", "intent": "new_view"}
+{"text": "split the view please", "intent": "new_view"}
+{"text": "i'd like another view next to this one", "intent": "new_view"}
+{"text": "add a new 3d window", "intent": "new_view"}
+{"text": "open another view", "intent": "new_view"}
+{"text": "is it possible to have two views side by side?", "intent": "new_view"}
+{"text": "new view pls", "intent": "new_view"}
+{"text": "make a second viewer for me", "intent": "new_view"}
+{"text": "oops, can you undo that?", "intent": "undo"}
+{"text": "go back please", "intent": "undo"}
+{"text": "ctrl z", "intent": "undo"}
+{"text": "revert the last thing", "intent": "undo"}
+{"text": "cancel that", "intent": "undo"}
+{"text": "undo", "intent": "undo"}
+{"text": "hmm no, put it back like before", "intent": "undo"}
+{"text": "can we go back one step?", "intent": "undo"}
+{"text": "undo the last action pls", "intent": "undo"}
+{"text": "i didn't mean that, revert", "intent": "undo"}
+{"text": "can you save my work?", "intent": "save_session"}
+{"text": "save the session please", "intent": "save_session"}
+{"text": "how do I make a backup of this?", "intent": "save_session"}
+{"text": "export the session", "intent": "save_session"}
+{"text": "save the state so i can come back later", "intent": "save_session"}
+{"text": "pls save everything", "intent": "save_session"}
+{"text": "can I keep this setup for tomorrow? save it", "intent": "save_session"}
+{"text": "backup pls", "intent": "save_session"}
+{"text": "hello", "intent": "help"}
+{"text": "hi, what can u do?", "intent": "help"}
+{"text": "help", "intent": "help"}
+{"text": "how does this work?", "intent": "help"}
+{"text": "which commands can I use?", "intent": "help"}
+{"text": "i'm new here, what should I type?", "intent": "help"}
+{"text": "hey, can you help me?", "intent": "help"}
+{"text": "what are you able to do", "intent": "help"}
+{"text": "good morning, how do i use this chat", "intent": "help"}
+{"text": "list the commands you understand", "intent": "help"}
+{"text": "that's not what I wanted", "intent": "complain"}
+{"text": "wrong answer", "intent": "complain"}
+{"text": "no, you misunderstod me", "intent": "complain"}
+{"text": "this doesn't help at all", "intent": "complain"}
+{"text": "hmm that's not it", "intent": "complain"}
+{"text": "that is not right", "intent": "complain"}
+{"text": "nope, not that", "intent": "complain"}
+{"text": "you got it wrong", "intent": "complain"}
+{"text": "that answer is useless sorry", "intent": "complain"}
+{"text": "i don't think that's correct", "intent": "complain"}
+{"text": "no no, not what i meant", "intent": "complain"}
+{"text": "bad answer", "intent": "complain"}
+{"text": "that's wrong", "intent": "complain"}
+{"text": "you didn't understand my question", "intent": "complain"}

@@ -1,0 +1,16 @@
+# The build context of ia/Dockerfile (docker build ... ia): the image copies
+# only requirements.txt, fespp_ia/ and tests/, so what else this folder holds
+# stays out of the context, above all the models (gigabytes each), which the
+# service reads from its /models volume and never from the image.
+# ia/Dockerfile.model builds from ia/models itself, a context this file does
+# not apply to: ia/build-models.ps1 writes that context's own .dockerignore.
+# Each folder is named with and without /**, as in the root .dockerignore, so
+# that a builder reading the bare name as the folder alone drops its content
+# too.
+models
+models/**
+corpus
+corpus/**
+corpus_cache
+corpus_cache/**
+**/__pycache__

@@ -1,0 +1,361 @@
+{"text": "ferme les stats", "intent": "close_panel", "panel": "stats"}
+{"text": "Ferme le panneau des statistiques, merci.", "intent": "close_panel", "panel": "stats"}
+{"text": "tu peux fermer l'histogramme ?", "intent": "close_panel", "panel": "stats"}
+{"text": "ferme la vue des logs", "intent": "close_panel", "panel": "welllog"}
+{"text": "fermez le panneau de comparaison s'il vous plaît", "intent": "close_panel", "panel": "compare"}
+{"text": "ferme le cross-plot", "intent": "close_panel", "panel": "crossplot"}
+{"text": "je n'ai plus besoin de la distribution, ferme-la", "intent": "close_panel", "panel": "distribution"}
+{"text": "ferme l'explorateur XML", "intent": "close_panel", "panel": "xml"}
+{"text": "ferme la colonne stratigraphique", "intent": "close_panel", "panel": "stratigraphy"}
+{"text": "ferme la calculatrice", "intent": "close_panel", "panel": "calculator"}
+{"text": "ferme le panneau santé des données", "intent": "close_panel", "panel": "health"}
+{"text": "fermer le nuage de points stp", "intent": "close_panel", "panel": "crossplot"}
+{"text": "enlève le panneau des stats", "intent": "close_panel", "panel": "stats"}
+{"text": "vire l'onglet de la comparaison puits grille", "intent": "close_panel", "panel": "reconcile"}
+{"text": "ferme le graphique de distribution", "intent": "close_panel", "panel": "distribution"}
+{"text": "on peut fermer la comparaison ?", "intent": "close_panel", "panel": "compare"}
+{"text": "ferme le panneau log-grille", "intent": "close_panel", "panel": "reconcile"}
+{"text": "ferme les courbes du puits", "intent": "close_panel", "panel": "welllog"}
+{"text": "ferme ce panneau de stats", "intent": "close_panel", "panel": "stats"}
+{"text": "referme la calculette", "intent": "close_panel", "panel": "calculator"}
+{"text": "cache le panneau de santé", "intent": "close_panel", "panel": "health"}
+{"text": "j'ai fini avec l'histogramme, tu peux le fermer", "intent": "close_panel", "panel": "stats"}
+{"text": "ferme stp le panneau stratigraphie", "intent": "close_panel", "panel": "stratigraphy"}
+{"text": "Fermez la fenêtre de distribution, je n'en ai plus besoin.", "intent": "close_panel", "panel": "distribution"}
+{"text": "ferme les diagraphies", "intent": "close_panel", "panel": "welllog"}
+{"text": "ferme le contrôle qualité", "intent": "close_panel", "panel": "health"}
+{"text": "fermme les stats", "intent": "close_panel", "panel": "stats"}
+{"text": "ferme le xml de Hugin", "intent": "close_panel", "panel": "xml"}
+{"text": "vue de dessus", "intent": "camera_view", "direction": "top"}
+{"text": "passe en vue de dessus stp", "intent": "camera_view", "direction": "top"}
+{"text": "montre-moi la grille vue du dessus", "intent": "camera_view", "direction": "top"}
+{"text": "je veux voir le modèle d'en haut", "intent": "camera_view", "direction": "top"}
+{"text": "vue en plan", "intent": "camera_view", "direction": "top"}
+{"text": "vue carte s'il te plaît", "intent": "camera_view", "direction": "top"}
+{"text": "mets la caméra au nord", "intent": "camera_view", "direction": "north"}
+{"text": "regarde depuis le sud", "intent": "camera_view", "direction": "south"}
+{"text": "vue depuis l'est", "intent": "camera_view", "direction": "east"}
+{"text": "place la caméra à l'ouest", "intent": "camera_view", "direction": "west"}
+{"text": "vue de dessous", "intent": "camera_view", "direction": "bottom"}
+{"text": "montre le réservoir par en dessous", "intent": "camera_view", "direction": "bottom"}
+{"text": "oriente la caméra vers le nord", "intent": "camera_view", "direction": "south"}
+{"text": "regarde le modèle depuis le nord", "intent": "camera_view", "direction": "north"}
+{"text": "vue aérienne", "intent": "camera_view", "direction": "top"}
+{"text": "Pourriez-vous me donner une vue zénithale du champ ?", "intent": "camera_view", "direction": "top"}
+{"text": "caméra côté ouest", "intent": "camera_view", "direction": "west"}
+{"text": "bascule en vue du dessous", "intent": "camera_view", "direction": "bottom"}
+{"text": "vue nord stp", "intent": "camera_view", "direction": "north"}
+{"text": "je voudrais regarder la scène depuis l'est", "intent": "camera_view", "direction": "east"}
+{"text": "vue de haut de Hugin", "intent": "camera_view", "direction": "top"}
+{"text": "remets la vue de dessus", "intent": "camera_view", "direction": "top"}
+{"text": "vue plongeante sur la grille", "intent": "camera_view", "direction": "top"}
+{"text": "regarde vers le bas", "intent": "camera_view", "direction": "top"}
+{"text": "vu d'en bas", "intent": "camera_view", "direction": "bottom"}
+{"text": "positionne la caméra au sud du modèle", "intent": "camera_view", "direction": "south"}
+{"text": "pase en vu de dessus", "intent": "camera_view", "direction": "top"}
+{"text": "affiche tout depuis l'ouest", "intent": "camera_view", "direction": "west"}
+{"text": "Montre la scène vue du ciel", "intent": "camera_view", "direction": "top"}
+{"text": "depuis le nord stp", "intent": "camera_view", "direction": "north"}
+{"text": "tourne la caméra pour regarder depuis le sud", "intent": "camera_view", "direction": "south"}
+{"text": "zoome", "intent": "zoom", "direction": "in"}
+{"text": "zoome un peu", "intent": "zoom", "direction": "in"}
+{"text": "zoom avant", "intent": "zoom", "direction": "in"}
+{"text": "dézoome", "intent": "zoom", "direction": "out"}
+{"text": "dézoome un peu stp", "intent": "zoom", "direction": "out"}
+{"text": "zoom arrière", "intent": "zoom", "direction": "out"}
+{"text": "rapproche-toi un peu", "intent": "zoom", "direction": "in"}
+{"text": "éloigne la caméra", "intent": "zoom", "direction": "out"}
+{"text": "plus près", "intent": "zoom", "direction": "in"}
+{"text": "plus loin stp", "intent": "zoom", "direction": "out"}
+{"text": "un peu plus près s'il te plaît", "intent": "zoom", "direction": "in"}
+{"text": "recule la caméra un peu", "intent": "zoom", "direction": "out"}
+{"text": "tu peux zoomer un peu ?", "intent": "zoom", "direction": "in"}
+{"text": "je voudrais dézoomer", "intent": "zoom", "direction": "out"}
+{"text": "zoome encore", "intent": "zoom", "direction": "in"}
+{"text": "dezoom", "intent": "zoom", "direction": "out"}
+{"text": "fais un zoom arrière", "intent": "zoom", "direction": "out"}
+{"text": "Pourriez-vous zoomer légèrement ?", "intent": "zoom", "direction": "in"}
+{"text": "agrandis un peu", "intent": "zoom", "direction": "in"}
+{"text": "prends du recul", "intent": "zoom", "direction": "out"}
+{"text": "zoom un cran", "intent": "zoom", "direction": "in"}
+{"text": "dézoomez s'il vous plaît", "intent": "zoom", "direction": "out"}
+{"text": "approche la caméra", "intent": "zoom", "direction": "in"}
+{"text": "on voit trop petit, zoome", "intent": "zoom", "direction": "in"}
+{"text": "c'est trop serré, dézoome un peu", "intent": "zoom", "direction": "out"}
+{"text": "zoome davantage", "intent": "zoom", "direction": "in"}
+{"text": "zoome un ptit peu", "intent": "zoom", "direction": "in"}
+{"text": "un peu plus loin la caméra", "intent": "zoom", "direction": "out"}
+{"text": "grossis l'image", "intent": "zoom", "direction": "in"}
+{"text": "éloigne-toi un peu", "intent": "zoom", "direction": "out"}
+{"text": "va au pas de temps 5", "intent": "time_step", "step": 5}
+{"text": "passe au pas de temps suivant", "intent": "time_step", "step": "next"}
+{"text": "pas de temps précédent", "intent": "time_step", "step": "previous"}
+{"text": "reviens au premier pas de temps", "intent": "time_step", "step": "first"}
+{"text": "va au dernier pas de temps", "intent": "time_step", "step": "last"}
+{"text": "affiche le pas de temps 12", "intent": "time_step", "step": 12}
+{"text": "montre l'année 2015", "intent": "time_step", "step": 2015}
+{"text": "passe à la date du 01/06/2020", "intent": "time_step", "step": "01/06/2020"}
+{"text": "avance d'un pas de temps", "intent": "time_step", "step": "next"}
+{"text": "recule d'un pas de temps", "intent": "time_step", "step": "previous"}
+{"text": "pas de temps 3 stp", "intent": "time_step", "step": 3}
+{"text": "saute au pas de temps 20", "intent": "time_step", "step": 20}
+{"text": "montre la porosité au pas de temps 4", "intent": "time_step", "kind": "porosity", "step": 4}
+{"text": "je veux voir le pas de temps suivant", "intent": "time_step", "step": "next"}
+{"text": "Pourriez-vous passer au pas de temps suivant, s'il vous plaît ?", "intent": "time_step", "step": "next"}
+{"text": "on passe à l'instant d'après", "intent": "time_step", "step": "next"}
+{"text": "reviens au début de la série temporelle", "intent": "time_step", "step": "first"}
+{"text": "va à la fin de la série", "intent": "time_step", "step": "last"}
+{"text": "pas de temps numéro 7", "intent": "time_step", "step": 7}
+{"text": "le troisième pas de temps", "intent": "time_step", "step": 3}
+{"text": "passe au 2e pas de temps", "intent": "time_step", "step": 2}
+{"text": "affiche la date suivante", "intent": "time_step", "step": "next"}
+{"text": "retourne au pas de temps précédent", "intent": "time_step", "step": "previous"}
+{"text": "avance dans le temps", "intent": "time_step", "step": "next"}
+{"text": "recule dans le temps stp", "intent": "time_step", "step": "previous"}
+{"text": "passe au pas de tmps suivant", "intent": "time_step", "step": "next"}
+{"text": "montre l'année 2018 sur la grille", "intent": "time_step", "step": 2018}
+{"text": "va à l'année 2010", "intent": "time_step", "step": 2010}
+{"text": "le dernier pas de temps stp", "intent": "time_step", "step": "last"}
+{"text": "premier pas de temps", "intent": "time_step", "step": "first"}
+{"text": "passe au pas de temps d'avant", "intent": "time_step", "step": "previous"}
+{"text": "on regarde le pas de temps 8", "intent": "time_step", "step": 8}
+{"text": "lance l'animation", "intent": "time_play", "on": true}
+{"text": "joue les pas de temps", "intent": "time_play", "on": true}
+{"text": "arrête l'animation", "intent": "time_play", "on": false}
+{"text": "mets l'animation en pause", "intent": "time_play", "on": false}
+{"text": "démarre l'animation des pas de temps", "intent": "time_play", "on": true}
+{"text": "stoppe la lecture", "intent": "time_play", "on": false}
+{"text": "anime la série temporelle", "intent": "time_play", "on": true}
+{"text": "fais défiler les pas de temps", "intent": "time_play", "on": true}
+{"text": "pause", "intent": "time_play", "on": false}
+{"text": "relance l'animation", "intent": "time_play", "on": true}
+{"text": "reprends l'animation stp", "intent": "time_play", "on": true}
+{"text": "arrête le défilement", "intent": "time_play", "on": false}
+{"text": "coupe l'animation", "intent": "time_play", "on": false}
+{"text": "Pourriez-vous lancer l'animation dans le temps ?", "intent": "time_play", "on": true}
+{"text": "je veux voir l'évolution dans le temps", "intent": "time_play", "on": true}
+{"text": "fige l'animation", "intent": "time_play", "on": false}
+{"text": "stop l'animation", "intent": "time_play", "on": false}
+{"text": "lance le film des pas de temps", "intent": "time_play", "on": true}
+{"text": "on arrête l'animation là", "intent": "time_play", "on": false}
+{"text": "suspends l'animation", "intent": "time_play", "on": false}
+{"text": "fais tourner les pas de temps", "intent": "time_play", "on": true}
+{"text": "lance la lecture", "intent": "time_play", "on": true}
+{"text": "interromps l'animation stp", "intent": "time_play", "on": false}
+{"text": "montre-moi l'animation des pas de temps", "intent": "time_play", "on": true}
+{"text": "démarre la lecture des pas de temps", "intent": "time_play", "on": true}
+{"text": "arrete l'anim", "intent": "time_play", "on": false}
+{"text": "joue l'animation de la saturation", "intent": "time_play", "on": true}
+{"text": "mets en pause stp", "intent": "time_play", "on": false}
+{"text": "lance l'anim", "intent": "time_play", "on": true}
+{"text": "stoppe le film", "intent": "time_play", "on": false}
+{"text": "montre la réalisation 3", "intent": "realization", "step": 3}
+{"text": "passe à la réalisation suivante", "intent": "realization", "step": "next"}
+{"text": "réalisation précédente", "intent": "realization", "step": "previous"}
+{"text": "affiche la réalisation 2 de la porosité", "intent": "realization", "kind": "porosity", "step": 2}
+{"text": "va à la réalisation 10", "intent": "realization", "step": 10}
+{"text": "montre la première réalisation", "intent": "realization", "step": "first"}
+{"text": "montre la dernière réalisation de PHIT_final", "intent": "realization", "step": "last"}
+{"text": "réalisation numéro 5", "intent": "realization", "step": 5}
+{"text": "une autre réalisation de la perméabilité", "intent": "realization", "kind": "permeability", "step": "next"}
+{"text": "change de réalisation", "intent": "realization"}
+{"text": "tirage 4", "intent": "realization", "step": 4}
+{"text": "charge la réalisation 7", "intent": "realization", "step": 7}
+{"text": "Pourriez-vous afficher la réalisation suivante ?", "intent": "realization", "step": "next"}
+{"text": "je voudrais voir la réalisation 1 de la saturation en eau", "intent": "realization", "kind": "water saturation", "step": 1}
+{"text": "réalisation 6 stp", "intent": "realization", "step": 6}
+{"text": "passe à la réalisation d'avant", "intent": "realization", "step": "previous"}
+{"text": "la troisième réalisation", "intent": "realization", "step": 3}
+{"text": "montre le NTG réalisation 2", "intent": "realization", "kind": "net to gross", "step": 2}
+{"text": "affiche la 4e réalisation", "intent": "realization", "step": 4}
+{"text": "réalisation suivante du faciès", "intent": "realization", "kind": "facies", "step": "next"}
+{"text": "prends la réalisation 8", "intent": "realization", "step": 8}
+{"text": "réalisaton 2", "intent": "realization", "step": 2}
+{"text": "montre une autre réalisation", "intent": "realization", "step": "next"}
+{"text": "la réalisation précédente de la porosité", "intent": "realization", "kind": "porosity", "step": "previous"}
+{"text": "dernière réalisation", "intent": "realization", "step": "last"}
+{"text": "passe sur la réalisation 9", "intent": "realization", "step": 9}
+{"text": "va à la réalisation suivante stp", "intent": "realization", "step": "next"}
+{"text": "réalisation 3 de Hugin", "intent": "realization", "step": 3}
+{"text": "montre-moi la réalisation 12", "intent": "realization", "step": 12}
+{"text": "reviens à la première réalisation", "intent": "realization", "step": "first"}
+{"text": "passe en fil de fer", "intent": "rep_style", "style": "Wireframe"}
+{"text": "affiche les arêtes", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "cache les arêtes", "intent": "rep_style", "style": "Surface"}
+{"text": "mode filaire", "intent": "rep_style", "style": "Wireframe"}
+{"text": "montre la grille en points", "intent": "rep_style", "style": "Points"}
+{"text": "juste le contour", "intent": "rep_style", "style": "Outline"}
+{"text": "affiche la boîte englobante", "intent": "rep_style", "style": "Outline"}
+{"text": "remets en surface pleine", "intent": "rep_style", "style": "Surface"}
+{"text": "surface avec arêtes stp", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "enlève les arêtes des mailles", "intent": "rep_style", "style": "Surface"}
+{"text": "je veux voir les arêtes de la grille", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "rends le maillage visible", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "passe Hugin en filaire", "intent": "rep_style", "style": "Wireframe"}
+{"text": "affiche le modèle sans les arêtes", "intent": "rep_style", "style": "Surface"}
+{"text": "représentation en points", "intent": "rep_style", "style": "Points"}
+{"text": "dessine la grille en fil de fer", "intent": "rep_style", "style": "Wireframe"}
+{"text": "mode surface", "intent": "rep_style", "style": "Surface"}
+{"text": "montre seulement le contour", "intent": "rep_style", "style": "Outline"}
+{"text": "Pourriez-vous afficher les arêtes des mailles ?", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "repasse en surface simple", "intent": "rep_style", "style": "Surface"}
+{"text": "active les arêtes", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "désactive les arêtes", "intent": "rep_style", "style": "Surface"}
+{"text": "fil de fer stp", "intent": "rep_style", "style": "Wireframe"}
+{"text": "mets tout en points", "intent": "rep_style", "style": "Points"}
+{"text": "style contour", "intent": "rep_style", "style": "Outline"}
+{"text": "affiche la grille avec les arêtes", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "arêtes visibles stp", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "vire les arêtes", "intent": "rep_style", "style": "Surface"}
+{"text": "pase en mode filaire", "intent": "rep_style", "style": "Wireframe"}
+{"text": "rendu fil de fer", "intent": "rep_style", "style": "Wireframe"}
+{"text": "passe la perméabilité en log", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "échelle logarithmique", "intent": "color_scale", "scale": "log"}
+{"text": "mets l'échelle des couleurs en log", "intent": "color_scale", "scale": "log"}
+{"text": "repasse en linéaire", "intent": "color_scale", "scale": "linear"}
+{"text": "palette en échelle log pour la perméabilité", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "utilise une échelle logarithmique sur la perméabilité", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "remets l'échelle en linéaire", "intent": "color_scale", "scale": "linear"}
+{"text": "enlève l'échelle log", "intent": "color_scale", "scale": "linear"}
+{"text": "échelle linéaire stp", "intent": "color_scale", "scale": "linear"}
+{"text": "affiche la perméabilité en échelle logarithmique", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "la perm en log stp", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "Pourriez-vous passer les couleurs en logarithmique ?", "intent": "color_scale", "scale": "log"}
+{"text": "couleurs en log", "intent": "color_scale", "scale": "log"}
+{"text": "légende en log pour la perméabilité", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "désactive l'échelle logarithmique", "intent": "color_scale", "scale": "linear"}
+{"text": "je veux la perméabilité en échelle log", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "passe l'échelle en linéaire", "intent": "color_scale", "scale": "linear"}
+{"text": "échelle log sur Hugin", "intent": "color_scale", "scale": "log"}
+{"text": "mets la colormap en log", "intent": "color_scale", "scale": "log"}
+{"text": "palette logarithmique", "intent": "color_scale", "scale": "log"}
+{"text": "reviens à une échelle linéaire", "intent": "color_scale", "scale": "linear"}
+{"text": "passe la résistivité en log", "intent": "color_scale", "kind": "resistivity", "scale": "log"}
+{"text": "échelle des couleurs linéaire", "intent": "color_scale", "scale": "linear"}
+{"text": "log sur la palette stp", "intent": "color_scale", "scale": "log"}
+{"text": "passe en logarithmique", "intent": "color_scale", "scale": "log"}
+{"text": "la perméabilité serait mieux en log", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "mets en échelle logarithmique la perméabilité de Hugin", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "echelle log stp", "intent": "color_scale", "scale": "log"}
+{"text": "retire le log de l'échelle des couleurs", "intent": "color_scale", "scale": "linear"}
+{"text": "passe la perm en lineaire", "intent": "color_scale", "kind": "permeability", "scale": "linear"}
+{"text": "affiche la légende", "intent": "color_bar", "on": true}
+{"text": "cache la légende", "intent": "color_bar", "on": false}
+{"text": "montre la barre de couleurs", "intent": "color_bar", "on": true}
+{"text": "enlève la barre de couleurs", "intent": "color_bar", "on": false}
+{"text": "masque la colorbar", "intent": "color_bar", "on": false}
+{"text": "remets la légende", "intent": "color_bar", "on": true}
+{"text": "sans légende stp", "intent": "color_bar", "on": false}
+{"text": "je ne veux plus voir la légende", "intent": "color_bar", "on": false}
+{"text": "affiche la légende de la porosité", "intent": "color_bar", "kind": "porosity", "on": true}
+{"text": "Pourriez-vous masquer la barre de couleurs ?", "intent": "color_bar", "on": false}
+{"text": "réaffiche la barre de couleur", "intent": "color_bar", "on": true}
+{"text": "retire la légende de la vue", "intent": "color_bar", "on": false}
+{"text": "j'aimerais voir la légende", "intent": "color_bar", "on": true}
+{"text": "légende off", "intent": "color_bar", "on": false}
+{"text": "vire la colorbar", "intent": "color_bar", "on": false}
+{"text": "active la légende", "intent": "color_bar", "on": true}
+{"text": "désactive la barre de couleurs", "intent": "color_bar", "on": false}
+{"text": "plus de légende stp", "intent": "color_bar", "on": false}
+{"text": "montre-moi la légende des couleurs", "intent": "color_bar", "on": true}
+{"text": "cache la barre de couleurs de la perméabilité", "intent": "color_bar", "kind": "permeability", "on": false}
+{"text": "mets la légende", "intent": "color_bar", "on": true}
+{"text": "supprime la légende", "intent": "color_bar", "on": false}
+{"text": "la légende est gênante, enlève-la", "intent": "color_bar", "on": false}
+{"text": "affiche la colorbar stp", "intent": "color_bar", "on": true}
+{"text": "allume la légende", "intent": "color_bar", "on": true}
+{"text": "éteins la barre de couleurs", "intent": "color_bar", "on": false}
+{"text": "pas de barre de couleurs", "intent": "color_bar", "on": false}
+{"text": "afiche la légende", "intent": "color_bar", "on": true}
+{"text": "je veux la barre de couleurs", "intent": "color_bar", "on": true}
+{"text": "masque la légende stp", "intent": "color_bar", "on": false}
+{"text": "ouvre la carte des seuils", "intent": "open_tool", "tool": "thresholds"}
+{"text": "ouvre l'explorateur de données", "intent": "open_tool", "tool": "tree"}
+{"text": "affiche les attributs", "intent": "open_tool", "tool": "attributes"}
+{"text": "ouvre la navigation", "intent": "open_tool", "tool": "navigation"}
+{"text": "ouvre la volumétrie", "intent": "open_tool", "tool": "volumetrics"}
+{"text": "ouvre les seuils", "intent": "open_tool", "tool": "thresholds"}
+{"text": "ouvre la carte des coupes", "intent": "open_tool", "tool": "slicers"}
+{"text": "ouvre les coupes", "intent": "open_tool", "tool": "slicers"}
+{"text": "ouvre la carte temps et réalisations", "intent": "open_tool", "tool": "timereal"}
+{"text": "ouvre les pas de temps", "intent": "open_tool", "tool": "timereal"}
+{"text": "ouvre la carte des couleurs", "intent": "open_tool", "tool": "colormap"}
+{"text": "ouvre la synchronisation des caméras", "intent": "open_tool", "tool": "camlink"}
+{"text": "montre l'arbre des données", "intent": "open_tool", "tool": "tree"}
+{"text": "Pourriez-vous ouvrir la carte de navigation ?", "intent": "open_tool", "tool": "navigation"}
+{"text": "ouvre l'outil de coupe", "intent": "open_tool", "tool": "slicers"}
+{"text": "affiche la carte des attributs", "intent": "open_tool", "tool": "attributes"}
+{"text": "ouvre les réglages des couleurs", "intent": "open_tool", "tool": "colormap"}
+{"text": "ouvre les slicers", "intent": "open_tool", "tool": "slicers"}
+{"text": "déplie l'arborescence", "intent": "open_tool", "tool": "tree"}
+{"text": "j'aimerais la carte des seuils", "intent": "open_tool", "tool": "thresholds"}
+{"text": "ouvre la colormap", "intent": "open_tool", "tool": "colormap"}
+{"text": "carte de volumétrie stp", "intent": "open_tool", "tool": "volumetrics"}
+{"text": "ouvre le panneau des seuils", "intent": "open_tool", "tool": "thresholds"}
+{"text": "affiche l'explorateur", "intent": "open_tool", "tool": "tree"}
+{"text": "ouvre les réalisations", "intent": "open_tool", "tool": "timereal"}
+{"text": "montre-moi les attributs de Hugin", "intent": "open_tool", "tool": "attributes"}
+{"text": "ouvre l'arbre", "intent": "open_tool", "tool": "tree"}
+{"text": "ouvre la carte du temps", "intent": "open_tool", "tool": "timereal"}
+{"text": "ouvre stp la navigation", "intent": "open_tool", "tool": "navigation"}
+{"text": "ouvre la carte de synchronisation des caméras", "intent": "open_tool", "tool": "camlink"}
+{"text": "cache tout", "intent": "hide_all"}
+{"text": "masque tout", "intent": "hide_all"}
+{"text": "vide la vue", "intent": "hide_all"}
+{"text": "enlève tout de la vue", "intent": "hide_all"}
+{"text": "cache tout ce qui est affiché", "intent": "hide_all"}
+{"text": "je veux une vue vide", "intent": "hide_all"}
+{"text": "masque tous les objets", "intent": "hide_all"}
+{"text": "éteins tout", "intent": "hide_all"}
+{"text": "retire tout de l'écran", "intent": "hide_all"}
+{"text": "nettoie la scène", "intent": "hide_all"}
+{"text": "Pourriez-vous tout masquer ?", "intent": "hide_all"}
+{"text": "vire tout", "intent": "hide_all"}
+{"text": "fais le vide dans la vue", "intent": "hide_all"}
+{"text": "décoche tout", "intent": "hide_all"}
+{"text": "tout masquer stp", "intent": "hide_all"}
+{"text": "cache tout dans la vue 3D", "intent": "hide_all"}
+{"text": "vide l'écran", "intent": "hide_all"}
+{"text": "masque toute la scène", "intent": "hide_all"}
+{"text": "on repart d'une vue vide", "intent": "hide_all"}
+{"text": "efface tout de la vue", "intent": "hide_all"}
+{"text": "cache tous les éléments", "intent": "hide_all"}
+{"text": "coupe tout l'affichage", "intent": "hide_all"}
+{"text": "enlève tout stp", "intent": "hide_all"}
+{"text": "masque tout ce qui est visible", "intent": "hide_all"}
+{"text": "plus aucun objet à l'écran stp", "intent": "hide_all"}
+{"text": "vide la vue 3d stp", "intent": "hide_all"}
+{"text": "tout cacher", "intent": "hide_all"}
+{"text": "Merci de vider la vue.", "intent": "hide_all"}
+{"text": "cahce tout", "intent": "hide_all"}
+{"text": "masque l'ensemble des objets", "intent": "hide_all"}
+{"text": "fais une capture d'écran", "intent": "unsupported"}
+{"text": "prends une capture de la vue", "intent": "unsupported"}
+{"text": "exporte les statistiques en CSV", "intent": "unsupported"}
+{"text": "copie le tableau des valeurs dans Excel", "intent": "unsupported"}
+{"text": "ouvre un fichier EPC", "intent": "unsupported"}
+{"text": "charge le fichier de Drogon", "intent": "unsupported"}
+{"text": "connecte-toi au serveur OSDU", "intent": "unsupported"}
+{"text": "récupère les données depuis le serveur ETP", "intent": "unsupported"}
+{"text": "rends la grille transparente", "intent": "unsupported"}
+{"text": "mets l'opacité à 50 %", "intent": "unsupported"}
+{"text": "change la couleur du fond en noir", "intent": "unsupported"}
+{"text": "fond blanc stp", "intent": "unsupported"}
+{"text": "montre les piliers de la grille", "intent": "unsupported"}
+{"text": "sélectionne les piliers qui longent la faille", "intent": "unsupported"}
+{"text": "lie les caméras des deux vues", "intent": "unsupported"}
+{"text": "synchronise les deux vues", "intent": "unsupported"}
+{"text": "ouvre le globe", "intent": "unsupported"}
+{"text": "place le champ sur la carte du monde", "intent": "unsupported"}
+{"text": "décharge la grille Hugin", "intent": "unsupported"}
+{"text": "ferme le fichier", "intent": "unsupported"}
+{"text": "imprime la vue", "intent": "unsupported"}
+{"text": "enregistre une image de la vue", "intent": "unsupported"}
+{"text": "importe un epc depuis mon ordinateur", "intent": "unsupported"}
+{"text": "rends le modèle semi-transparent", "intent": "unsupported"}
+{"text": "mets l'arrière-plan en gris", "intent": "unsupported"}
+{"text": "affiche la terre en 3D", "intent": "unsupported"}
+{"text": "relie les caméras entre les vues", "intent": "unsupported"}
+{"text": "exporte les valeurs du panneau stats en csv", "intent": "unsupported"}
+{"text": "donne-moi les piliers de la faille F1", "intent": "unsupported"}
+{"text": "baisse la transparence de la grille à 30 %", "intent": "unsupported"}

@@ -1,0 +1,213 @@
+{"text": "Surligne les mailles traversées par la trajectoire du puits 15/9-F-4.", "intent": "well_cells"}
+{"text": "Quelles mailles de la grille Volve sont recoupées par l'ensemble des puits ?", "intent": "well_cells"}
+{"text": "Je voudrais voir les puits bloqués de la zone à huile.", "intent": "well_cells", "category": "oil"}
+{"text": "Montre-moi où les forages traversent le réservoir dans la zone à gaz.", "intent": "well_cells", "category": "gas"}
+{"text": "Quels puits atteignent la zone à huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "Affiche les cellules percées par le puits F-1 C dans les grès.", "intent": "well_cells", "category": "sandstone"}
+{"text": "Où les trajectoires de puits recoupent-elles les mailles dont la porosité dépasse 0,2 ?", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Liste les mailles du Geogrid traversées par le puits NO 15/9-F-5.", "intent": "well_cells"}
+{"text": "Marque les mailles forées par tous les puits de la grille Drogon.", "intent": "well_cells"}
+{"text": "L'intersection des trajectoires avec la grille Hugin, s'il te plaît.", "intent": "well_cells"}
+{"text": "Je veux les puits bloqués du réservoir Norne, restreints aux argiles.", "intent": "well_cells", "category": "shale"}
+{"text": "Combien de mailles le puits 15/9-F-12 traverse-t-il dans la grille Volve ?", "intent": "well_cells"}
+{"text": "Mets en évidence les mailles pénétrées par les forages là où la perméabilité est comprise entre 100 et 500 mD.", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "Dans quelles mailles de l'Eclipse grid le puits Well 7 passe-t-il ?", "intent": "well_cells"}
+{"text": "Les mailles recoupées par le puits 15/9-F-11 A dans les calcaires, je les voudrais surlignées.", "intent": "well_cells", "category": "limestone"}
+{"text": "Montre les well blocks des puits qui traversent la zone à pétrole.", "intent": "well_cells", "category": "oil"}
+{"text": "Quels forages traversent les mailles de charbon de la grille Norne ?", "intent": "well_cells", "category": "coal"}
+{"text": "Affiche les blocked wellbores de la grille Hugin.", "intent": "well_cells"}
+{"text": "Où les puits traversent-ils les mailles dont la saturation en eau est inférieure à 0,3 ?", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "Fais ressortir les cellules percées par la trajectoire du puits 15/9-F-4 dans les siltites.", "intent": "well_cells", "category": "siltstone"}
+{"text": "Je souhaite visualiser les mailles traversées par l'ensemble des trajectoires de forage.", "intent": "well_cells"}
+{"text": "Quelles sont les mailles de la grille Volve recoupées par le 15/9-F-12 ?", "intent": "well_cells"}
+{"text": "Surligne l'intersection des puits avec la zone à gaz de la grille Drogon.", "intent": "well_cells", "category": "gas"}
+{"text": "À quel endroit le puits F-1 C rencontre-t-il les mailles du réservoir ?", "intent": "well_cells"}
+{"text": "Mailles forées dans la zone à huile, tous puits confondus.", "intent": "well_cells", "category": "oil"}
+{"text": "Donne-moi les puits bloqués là où le net to gross est supérieur à 0,6.", "intent": "well_cells", "kind": "net to gross", "min": 0.6}
+{"text": "Montre les mailles traversées par les puits là où le gamma ray reste sous 60 API.", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "Dans le faciès gréseux, quels puits présentent des mailles bloquées ?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Où les trajectoires de forage traversent-elles la zone aquifère ?", "intent": "well_cells", "category": "water"}
+{"text": "Colorie les mailles de la grille Geogrid pénétrées par le puits Well 7.", "intent": "well_cells"}
+{"text": "Je voudrais la liste des blocs de puits de la zone à huile, avec le nombre de mailles par forage.", "intent": "well_cells", "category": "oil"}
+{"text": "Quelles mailles du réservoir sont percées par les puits entre 2 000 et 2 500 m de profondeur ?", "intent": "well_cells", "kind": "depth", "min": 2000, "max": 2500}
+{"text": "Affiche les mailles traversées par le puits NO 15/9-F-5 sur la grille Hugin.", "intent": "well_cells"}
+{"text": "Intersection de la trajectoire du 15/9-F-11 A avec la grille Norne.", "intent": "well_cells"}
+{"text": "Montre-moi les cellules bloquées de tous les puits de l'Eclipse grid.", "intent": "well_cells"}
+{"text": "Quels puits traversent les mailles dont la porosité est comprise entre 0,15 et 0,25 ?", "intent": "well_cells", "kind": "porosity", "min": 0.15, "max": 0.25}
+{"text": "Surligne les mailles traversées par le puits 15/9-F-4 dans la grille Volve.", "intent": "well_cells"}
+{"text": "Mailles percées par tous les puits, affiche-les.", "intent": "well_cells"}
+{"text": "Où les trajectoires de puits coupent-elles la zone à huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "Je veux les blocs de grille traversés par 15/9-F-11 A là où PHIT > 0,18.", "intent": "well_cells", "kind": "porosity", "min": 0.18}
+{"text": "Puits bloqués de la zone gaz, liste-les.", "intent": "well_cells", "category": "gas"}
+{"text": "Quels puits atteignent les grès ?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Blocked wellbore du 15/9-F-12 sur Hugin, montre-moi ça.", "intent": "well_cells"}
+{"text": "Cellules traversées par les puits avec Sw < 0,35 — surligne.", "intent": "well_cells", "kind": "water saturation", "max": 0.35}
+{"text": "Intersection des trajectoires avec la grille Drogon, s'il te plaît.", "intent": "well_cells"}
+{"text": "Montre les mailles de la grille que les puits percent dans les argiles.", "intent": "well_cells", "category": "shale"}
+{"text": "Well blocks de F-1 C, NTG > 0,6.", "intent": "well_cells", "kind": "net to gross", "min": 0.6}
+{"text": "Marque les cellules de Norne intersectées par Well 7.", "intent": "well_cells"}
+{"text": "Où le NO 15/9-F-5 croise-t-il le réservoir ?", "intent": "well_cells"}
+{"text": "Mailles traversées par les forages là où PERMX est entre 50 et 500 mD.", "intent": "well_cells", "kind": "permeability", "min": 50, "max": 500}
+{"text": "Affiche les blocs bloqués de tous les puits sur Norne.", "intent": "well_cells"}
+{"text": "Est-ce que le 15/9-F-4 passe par la zone à eau ?", "intent": "well_cells", "category": "water"}
+{"text": "Je voudrais voir les mailles percées par les trajectoires dans les siltites.", "intent": "well_cells", "category": "siltstone"}
+{"text": "Cellules traversées par les puits, PHIT entre 0,12 et 0,25, grille Geogrid.", "intent": "well_cells", "kind": "porosity", "min": 0.12, "max": 0.25}
+{"text": "Surligne les mailles que les wellbores traversent plus profond que 2 800 m.", "intent": "well_cells", "kind": "depth", "min": 2800}
+{"text": "Dans quelles mailles de l'Eclipse grid le 15/9-F-12 est-il bloqué ?", "intent": "well_cells"}
+{"text": "Trajectoires × grille Hugin : mailles intersectées, affiche.", "intent": "well_cells"}
+{"text": "Montre les cellules à charbon que les puits traversent.", "intent": "well_cells", "category": "coal"}
+{"text": "Quels puits traversent la zone à pétrole ?", "intent": "well_cells", "category": "oil"}
+{"text": "Blocked wellbores sur Volve, s'il te plaît.", "intent": "well_cells"}
+{"text": "Mailles percées par 15/9-F-11 A avec gamma ray inférieur à 60 API.", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "Cellules traversées par tous les puits, affiche-moi ça vite.", "intent": "well_cells"}
+{"text": "Fais ressortir les mailles forées par le F-1 C.", "intent": "well_cells"}
+{"text": "Intersection des puits avec les mailles de la grille, je veux la voir.", "intent": "well_cells"}
+{"text": "Où les puits rencontrent-ils les grès dans la grille Drogon ?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Mailles traversées par les puits avec PERMX > 100 mD.", "intent": "well_cells", "kind": "permeability", "min": 100}
+{"text": "Well blocks du Well 7, faciès entre 2 et 4 seulement.", "intent": "well_cells", "kind": "facies", "min": 2, "max": 4}
+{"text": "Affiche les mailles où les puits croisent une saturation en eau au-dessus de 0,6.", "intent": "well_cells", "kind": "water saturation", "min": 0.6}
+{"text": "Quelles mailles de Norne les trajectoires percent-elles ?", "intent": "well_cells"}
+{"text": "Puits bloqués, tous les puits, affiche.", "intent": "well_cells"}
+{"text": "Montre-moi les mailles traversées par les puits.", "intent": "well_cells"}
+{"text": "Quelles mailles de Volve le 15/9-F-12 traverse-t-il ?", "intent": "well_cells"}
+{"text": "Surligne les mailles à huile que le 15/9-F-4 touche, je veux caler sa complétion.", "intent": "well_cells", "category": "oil"}
+{"text": "Où est-ce que les puits touchent le réservoir ?", "intent": "well_cells"}
+{"text": "Je veux voir les puits bloqués de la zone à gaz.", "intent": "well_cells", "category": "gas"}
+{"text": "Liste-moi les blocked wellbores de Drogon.", "intent": "well_cells"}
+{"text": "Intersection des trajectoires avec les grès, s'il te plaît.", "intent": "well_cells", "category": "sandstone"}
+{"text": "Quels puits traversent la zone productrice, celle à huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "Affiche les mailles percées par tous les puits sur la grille Hugin.", "intent": "well_cells"}
+{"text": "Combien de mailles le F-1 C traverse-t-il dans le calcaire ?", "intent": "well_cells", "category": "limestone"}
+{"text": "Marque les mailles traversées par les puits là où la porosité dépasse 0,2.", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Je voudrais l'intervalle de mailles que le 15/9-F-11 A traverse dans le réservoir.", "intent": "well_cells"}
+{"text": "Mailles forées par le Well 7, tu me les surlignes ?", "intent": "well_cells"}
+{"text": "Quels puits atteignent la zone à eau ?", "intent": "well_cells", "category": "water"}
+{"text": "Fais-moi voir où les trajectoires coupent la grille Norne.", "intent": "well_cells"}
+{"text": "Les well blocks du NO 15/9-F-5, on peut les afficher ?", "intent": "well_cells"}
+{"text": "Où les puits traversent-ils des mailles de perméabilité entre 100 et 500 mD ?", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "Pour préparer les complétions : les mailles à huile que chaque puits traverse, avec le nombre par puits.", "intent": "well_cells", "category": "oil"}
+{"text": "Puits bloqués sur l'Eclipse grid, tous les puits.", "intent": "well_cells"}
+{"text": "Quelles mailles de la zone à gaz sont traversées par le 15/9-F-12 ?", "intent": "well_cells", "category": "gas"}
+{"text": "Je veux uniquement les mailles que les puits touchent, pas toute la grille.", "intent": "well_cells"}
+{"text": "Sur Geogrid, quels puits passent par les mailles où la saturation en eau est sous 0,3 ?", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "Affiche l'intersection du 15/9-F-4 avec le réservoir.", "intent": "well_cells"}
+{"text": "Où est-ce que tous les puits percent la couche de charbon ?", "intent": "well_cells", "category": "coal"}
+{"text": "Surligne les mailles traversées par les puits dont le net to gross est supérieur à 0,5.", "intent": "well_cells", "kind": "net to gross", "min": 0.5}
+{"text": "Est-ce que le F-1 C touche la zone à huile, et sur combien de mailles ?", "intent": "well_cells", "category": "oil"}
+{"text": "Donne-moi les blocked wells de Volve.", "intent": "well_cells"}
+{"text": "Mailles traversées par le 15/9-F-11 A au-delà de 2 800 m de profondeur.", "intent": "well_cells", "kind": "depth", "min": 2800}
+{"text": "Quels puits touchent le réservoir ? Montre-moi les mailles concernées.", "intent": "well_cells"}
+{"text": "Je veux voir les mailles de Drogon percées par les puits là où le gamma ray est inférieur à 60.", "intent": "well_cells", "kind": "gamma ray", "max": 60}
+{"text": "Trajectoires contre grille : surligne les mailles interceptées.", "intent": "well_cells"}
+{"text": "Par puits, les mailles traversées dans les argiles, avec le compte.", "intent": "well_cells", "category": "shale"}
+{"text": "Montre-moi les intervalles où le Well 7 traverse la grille.", "intent": "well_cells"}
+{"text": "Où le 15/9-F-12 pénètre-t-il la grille Hugin ?", "intent": "well_cells"}
+{"text": "Affiche les mailles de faciès 3 traversées par les puits.", "intent": "well_cells", "kind": "facies", "min": 3, "max": 3}
+{"text": "Les mailles traversées par tous les puits, tu me les mets en évidence ?", "intent": "well_cells"}
+{"text": "Est-ce que tu pourrais surligner les mailles de la grille Hugin que les puits traversent, s'il te plaît ?", "intent": "well_cells"}
+{"text": "Bonjour, je voudrais voir les cellules traversées par le puits 15/9-F-12, si ce n'est pas trop demander.", "intent": "well_cells"}
+{"text": "Excuse-moi, est-ce que tu saurais me dire où les trajectoires des puits croisent la zone d'huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "Je me demandais… quels puits passent à travers les mailles de grès ? Est-ce que tu pourrais me les indiquer ?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Serait-il possible d'afficher les puits bloqués de la zone à gaz ?", "intent": "well_cells", "category": "gas"}
+{"text": "Pourrais-tu me montrer les mailles percées par tous les puits, sur toute la grille Volve ?", "intent": "well_cells"}
+{"text": "Euh, je ne suis pas sûr de bien formuler, mais j'aimerais voir les cellules que le forage 15/9-F-4 intersecte dans les argiles.", "intent": "well_cells", "category": "shale"}
+{"text": "Est-ce que tu pourrais mettre en évidence les mailles traversées par les puits là où la porosité dépasse 0,2 ?", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Dis-moi, quels puits atteignent la zone d'eau ? Et combien de mailles chacun y traverse ?", "intent": "well_cells", "category": "water"}
+{"text": "Les blocked wellbores de la grille Drogon, s'il te plaît, si tu peux me les lister.", "intent": "well_cells"}
+{"text": "Je voudrais bien comprendre : où est-ce que le puits F-1 C rencontre le réservoir ? Peux-tu marquer les cellules concernées ?", "intent": "well_cells"}
+{"text": "Pourrais-tu m'afficher les well blocks du puits Well 7 dans la zone de calcaire ?", "intent": "well_cells", "category": "limestone"}
+{"text": "Est-ce qu'il serait possible de voir l'intersection des trajectoires avec la grille Geogrid ?", "intent": "well_cells"}
+{"text": "Bonjour, pour mon rapport j'aurais besoin de voir les mailles que traversent les puits dans les cellules où la perméabilité est comprise entre 100 et 500.", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "Pardon de te déranger encore, mais est-ce que tu pourrais surligner les cellules de la zone pétrole percées par le puits 15/9-F-11 A ?", "intent": "well_cells", "category": "oil"}
+{"text": "Je ne sais pas si c'est clair, mais j'aimerais que tu me montres les mailles forées par tous les puits de la grille Norne.", "intent": "well_cells"}
+{"text": "Tu pourrais me donner la liste des puits bloqués, s'il te plaît ? Tous les puits, pas seulement un.", "intent": "well_cells"}
+{"text": "Où est-ce que les puits croisent les mailles de silt ? Est-ce que tu pourrais me les surligner ?", "intent": "well_cells", "category": "siltstone"}
+{"text": "Est-ce que le puits NO 15/9-F-5 passe par la zone à gaz ? Si oui, montre-moi les mailles traversées, s'il te plaît.", "intent": "well_cells", "category": "gas"}
+{"text": "Hmm, je me demandais si tu pouvais afficher les cellules traversées par les puits là où la saturation en eau est inférieure à 0,3.", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "S'il te plaît, marque les blocs de la grille Eclipse grid intersectés par les trajectoires des puits.", "intent": "well_cells"}
+{"text": "Serait-ce possible de voir les puits bloqués dans la zone de charbon ? Je ne sais pas si la grille en contient.", "intent": "well_cells", "category": "coal"}
+{"text": "Je voudrais savoir quels puits traversent le réservoir Hugin et par quelles cellules exactement, si tu pouvais me l'afficher.", "intent": "well_cells"}
+{"text": "Pourrais-tu surligner les mailles où les forages rencontrent du grès, dans la grille Volve ?", "intent": "well_cells", "category": "sandstone"}
+{"text": "Est-ce que tu pourrais me montrer les cellules pénétrées par le puits 15/9-F-12 quand le net to gross est supérieur à 0,6 ?", "intent": "well_cells", "kind": "net to gross", "min": 0.6}
+{"text": "Les mailles traversées par le puits F-1 C, s'il te plaît — je crois que c'est ce qu'on appelle un blocked wellbore, non ?", "intent": "well_cells"}
+{"text": "Excuse-moi, je débute un peu : est-ce que tu pourrais m'indiquer où les trajectoires des puits passent à travers la zone d'huile de la grille Drogon ?", "intent": "well_cells", "category": "oil"}
+{"text": "Est-ce qu'il y a un moyen de voir les mailles que les puits traversent là où le gamma ray est au-dessus de 80 ?", "intent": "well_cells", "kind": "gamma ray", "min": 80}
+{"text": "Pourrais-tu me dire quels puits traversent la grille Drogon et combien de mailles chacun d'eux perce ?", "intent": "well_cells"}
+{"text": "Je voudrais l'intersection des trajectoires avec la zone d'eau, si ce n'est pas trop compliqué à afficher.", "intent": "well_cells", "category": "water"}
+{"text": "Peux-tu afficher les well blocks de tous les puits sur la grille Geogrid, s'il te plaît ?", "intent": "well_cells"}
+{"text": "Euh, est-ce que tu pourrais surligner les cellules traversées par les puits qui sont entre 2000 et 2500 mètres de profondeur ?", "intent": "well_cells", "kind": "depth", "min": 2000, "max": 2500}
+{"text": "Est-ce que tu saurais me montrer les mailles que le puits Well 7 perce dans la grille Eclipse grid ?", "intent": "well_cells"}
+{"text": "Je me demandais, pour la grille Norne, quels puits atteignent les cellules dont le faciès est égal à 2 ? Pourrais-tu me les afficher ?", "intent": "well_cells", "kind": "facies", "min": 2, "max": 2}
+{"text": "Bonjour, j'aimerais voir les puits bloqués de la zone à pétrole sur la grille Volve, avec le nombre de mailles par puits si possible.", "intent": "well_cells", "category": "oil"}
+{"text": "Est-ce que tu pourrais me marquer les mailles où le puits 15/9-F-4 traverse la grille Hugin, s'il te plaît ? Toutes ses mailles, pas seulement une zone.", "intent": "well_cells"}
+{"text": "montre mailles traversées par les puits stp", "intent": "well_cells"}
+{"text": "surligne les cellules ou passe le puit 15/9-F-4", "intent": "well_cells"}
+{"text": "ou est ce que les traj coupent la zone huile ?", "intent": "well_cells", "category": "oil"}
+{"text": "puits bloqués svp", "intent": "well_cells"}
+{"text": "mailles percées par tous les puits sur Volve", "intent": "well_cells"}
+{"text": "quels puits traverse la zone gaz", "intent": "well_cells", "category": "gas"}
+{"text": "cellules traversé par F-1 C dans le grès", "intent": "well_cells", "category": "sandstone"}
+{"text": "affiche intersection traj / grille Hugin", "intent": "well_cells"}
+{"text": "bw bloqués zone huile stp", "intent": "well_cells", "category": "oil"}
+{"text": "mailles ou les puits passent avec porosité > 0.2", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "je veux voir les blocs de puits sur Drogon", "intent": "well_cells"}
+{"text": "montre moi ou les forages tapent la grille", "intent": "well_cells"}
+{"text": "cellule traversées par Well 7 ds les argiles", "intent": "well_cells", "category": "shale"}
+{"text": "puits qui atteignent le pétrole ?", "intent": "well_cells", "category": "oil"}
+{"text": "marque les mailles que les puits traversent, perm entre 100 et 500", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "well blocks de 15/9-F-12 svp", "intent": "well_cells"}
+{"text": "liste puits bloqués ds l'eau", "intent": "well_cells", "category": "water"}
+{"text": "ou 15/9-F-11 A croise le reservoir ?", "intent": "well_cells"}
+{"text": "mailles forées ds le calcaire par ts les puits", "intent": "well_cells", "category": "limestone"}
+{"text": "intersection des traj avec la zone huile stp", "intent": "well_cells", "category": "oil"}
+{"text": "cellules percées par NO 15/9-F-5", "intent": "well_cells"}
+{"text": "montre les mailles traversés par les bw ou sw < 0.3", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "cellules le long des puits, geogrid", "intent": "well_cells"}
+{"text": "quel puit passe par le charbon", "intent": "well_cells", "category": "coal"}
+{"text": "surligne mailles traj puits ds silt", "intent": "well_cells", "category": "siltstone"}
+{"text": "blocked wellbore de tous les puits", "intent": "well_cells"}
+{"text": "ou les puits touchent la grille eclipse ?", "intent": "well_cells"}
+{"text": "mailles traversées par les puits avec ntg > 0.5", "intent": "well_cells", "kind": "net to gross", "min": 0.5}
+{"text": "je veux les cellules que Well 7 traverse ds zone gaz", "intent": "well_cells", "category": "gas"}
+{"text": "puits bloqués norne", "intent": "well_cells"}
+{"text": "cellules ou passent les traj, facies grès uniquement", "intent": "well_cells", "category": "sandstone"}
+{"text": "montre ou 15/9-F-4 perce les mailles a gamma ray > 80", "intent": "well_cells", "kind": "gamma ray", "min": 80}
+{"text": "mailles traversées par F-1 C, profondeur > 2500", "intent": "well_cells", "kind": "depth", "min": 2500}
+{"text": "affiche cellules percées sur Hugin, tt les puits", "intent": "well_cells"}
+{"text": "ou est ce que les traj rentrent ds la grille ?", "intent": "well_cells"}
+{"text": "Montre-moi les cases de la carte où les puits passent.", "intent": "well_cells"}
+{"text": "Là où les tuyaux traversent le réservoir, tu peux me colorier ça ?", "intent": "well_cells"}
+{"text": "Je veux voir les cases que traverse le puits 15/9-F-4.", "intent": "well_cells"}
+{"text": "Quels puits passent dans la zone à pétrole ?", "intent": "well_cells", "category": "oil"}
+{"text": "Fais ressortir les cases traversées par tous les puits.", "intent": "well_cells"}
+{"text": "Sur la grille Volve, où est-ce que les puits tapent dans le gaz ?", "intent": "well_cells", "category": "gas"}
+{"text": "Les puits bloqués de la zone huile, tu me les listes ?", "intent": "well_cells", "category": "oil"}
+{"text": "Montre les cases où le puits F-1 C passe dans le grès.", "intent": "well_cells", "category": "sandstone"}
+{"text": "Où les tuyaux rencontrent-ils le réservoir ? Colorie-moi les cases.", "intent": "well_cells"}
+{"text": "Je voudrais juste voir les blocs traversés par les puits là où la porosité dépasse 0,2.", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "Donne-moi les puits bloqués, tous les puits, toute la grille.", "intent": "well_cells"}
+{"text": "Est-ce que le puits Well 7 traverse de l'argile quelque part ? Montre-moi les cases.", "intent": "well_cells", "category": "shale"}
+{"text": "Les cases par lesquelles passe 15/9-F-11 A, en surbrillance s'il te plaît.", "intent": "well_cells"}
+{"text": "Quels puits atteignent la couche d'eau ?", "intent": "well_cells", "category": "water"}
+{"text": "Montre-moi les cases où les puits passent avec un gamma ray au-dessus de 80.", "intent": "well_cells", "kind": "gamma ray", "min": 80}
+{"text": "Sur Hugin, mets en couleur là où les puits passent.", "intent": "well_cells"}
+{"text": "Je veux les well blocks de la grille Drogon.", "intent": "well_cells"}
+{"text": "Les tuyaux, où est-ce qu'ils croisent le calcaire ? Montre les cases.", "intent": "well_cells", "category": "limestone"}
+{"text": "Fais voir les mailles traversées par les puits quand la perméabilité est entre 100 et 500.", "intent": "well_cells", "kind": "permeability", "min": 100, "max": 500}
+{"text": "Cases traversées par NO 15/9-F-5 dans la zone pétrole.", "intent": "well_cells", "category": "oil"}
+{"text": "Où les puits passent-ils dans le charbon ?", "intent": "well_cells", "category": "coal"}
+{"text": "Marque-moi les endroits de la carte où le puits 15/9-F-12 rentre dans le réservoir.", "intent": "well_cells"}
+{"text": "Tu me sors les blocked wellbores de Norne ?", "intent": "well_cells"}
+{"text": "Les cases où les puits passent et où la saturation en eau est sous 0,3, tu peux me les montrer ?", "intent": "well_cells", "kind": "water saturation", "max": 0.3}
+{"text": "Là où le tracé des puits rencontre la zone gaz, en clair sur la carte.", "intent": "well_cells", "category": "gas"}
+{"text": "Là où tous les puits passent, je veux ça en couleur.", "intent": "well_cells"}
+{"text": "Quels puits traversent la couche de silt ?", "intent": "well_cells", "category": "siltstone"}
+{"text": "Montre les cases de la Eclipse grid traversées par les puits.", "intent": "well_cells"}
+{"text": "Le puits 15/9-F-4, il tape dans le grès où exactement ? Colorie les cases.", "intent": "well_cells", "category": "sandstone"}
+{"text": "Je voudrais voir les cases où les tuyaux passent en dessous de 2 500 m.", "intent": "well_cells", "kind": "depth", "min": 2500}
+{"text": "Les puits bloqués dans la zone à huile de Geogrid, ça donne quoi ?", "intent": "well_cells", "category": "oil"}
+{"text": "Où est-ce que les tuyaux touchent le réservoir sur Volve ?", "intent": "well_cells"}
+{"text": "Montre-moi par où passent les puits dans les cases avec un net to gross au-dessus de 0,5.", "intent": "well_cells", "kind": "net to gross", "min": 0.5}
+{"text": "Est-ce que le puits F-1 C passe dans le gaz ? Si oui montre-moi les cases.", "intent": "well_cells", "category": "gas"}
+{"text": "Fais-moi ressortir les cases où les puits croisent l'argile, tous les puits.", "intent": "well_cells", "category": "shale"}
+{"text": "Les blocs traversés par 15/9-F-12 là où la porosité est entre 0,1 et 0,3.", "intent": "well_cells", "kind": "porosity", "min": 0.1, "max": 0.3}

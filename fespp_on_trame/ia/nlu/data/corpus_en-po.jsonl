@@ -1,0 +1,63 @@
+{"text": "show me the wells that go through the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "which wells cross the gas zone ?", "intent": "well_cells", "category": "gas"}
+{"text": "can you remove the wells that dont go through the oil", "intent": "well_cells", "category": "oil"}
+{"text": "i want the blocked wellbores of the water zone", "intent": "well_cells", "category": "water"}
+{"text": "hide the wells crossing the gas", "intent": "well_cells", "category": "gas"}
+{"text": "only keep the wells that cross the oil", "intent": "well_cells", "category": "oil"}
+{"text": "cells along the wells in the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "show me the cells the wellbores go thru", "intent": "well_cells"}
+{"text": "get rid of the wells that stay out of the oil", "intent": "well_cells", "category": "oil"}
+{"text": "highlight the cells where the wells hit the gas", "intent": "well_cells", "category": "gas"}
+{"text": "how many wells cross the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "hide well F-12", "intent": "hide"}
+{"text": "the blocked welbore for the sandstone", "intent": "well_cells", "category": "sandstone"}
+{"text": "i dont see the wells anymore", "intent": "complain"}
+{"text": "remove the wells that never touch the gas", "intent": "well_cells", "category": "gas"}
+{"text": "wells crossing oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "can u show the well cells where porosity is above 0.2", "intent": "well_cells", "kind": "porosity", "min": 0.2}
+{"text": "mask the wells that are not in the oil", "intent": "well_cells", "category": "oil"}
+{"text": "undo that, the wells are gone", "intent": "undo"}
+{"text": "well log view for F-12", "intent": "open_panel"}
+{"text": "i want the blocked welbores of the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "whats the mean porosity along the wells", "intent": "value", "kind": "porosity"}
+{"text": "isolate the wells crossing the oil", "intent": "well_cells", "category": "oil"}
+{"text": "do any wells go thru the limestone ?", "intent": "well_cells", "category": "limestone"}
+{"text": "hide the wells", "intent": "hide"}
+{"text": "thats not the wells i asked for", "intent": "complain"}
+{"text": "dont hide the ones crossing the oil, hide the others", "intent": "well_cells", "category": "oil"}
+{"text": "give me the oil zone", "intent": "threshold", "category": "oil"}
+{"text": "show me the oil zones", "intent": "threshold", "category": "oil"}
+{"text": "hilight the sandstone pls", "intent": "highlight", "category": "sandstone"}
+{"text": "keep only the cells with poro above 0.2", "intent": "threshold", "kind": "porosity", "min": 0.2}
+{"text": "fliter permx between 100 and 500", "intent": "threshold", "kind": "permeability", "min": 100, "max": 500}
+{"text": "water sat under 0.3", "intent": "threshold", "kind": "water saturation", "max": 0.3}
+{"text": "remove the filter", "intent": "clear_threshold"}
+{"text": "take the highlight off", "intent": "clear_highlight"}
+{"text": "which wells go thru the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "get rid of the wells that dont cross the oil", "intent": "well_cells", "category": "oil"}
+{"text": "hide the wells crossing the water zone", "intent": "well_cells", "category": "water"}
+{"text": "i still have wells that dont touch the oil zone", "intent": "well_cells", "category": "oil"}
+{"text": "slice the grid on K", "intent": "slice"}
+{"text": "hide the nans", "intent": "hide_nan"}
+{"text": "switch to jet", "intent": "colormap"}
+{"text": "color range 0 to 0.3", "intent": "color_range", "min": 0, "max": 0.3}
+{"text": "fit the colours to the data", "intent": "rescale"}
+{"text": "flat colors no shading", "intent": "flat_colors"}
+{"text": "recenter the view i cant see anything", "intent": "reset_camera"}
+{"text": "i dont see anything at all", "intent": "complain"}
+{"text": "thats not what i asked", "intent": "complain"}
+{"text": "mean of what ?", "intent": "complain"}
+{"text": "whats the average porosity", "intent": "value", "kind": "porosity"}
+{"text": "open the stats panel", "intent": "open_panel"}
+{"text": "what do i have loaded", "intent": "list"}
+{"text": "z scale x5", "intent": "z_scale"}
+{"text": "undo that", "intent": "undo"}
+{"text": "save the session", "intent": "save_session"}
+{"text": "what can you do ?", "intent": "help"}
+{"text": "the oil cells", "intent": "threshold", "category": "oil"}
+{"text": "hide the shale", "intent": "threshold", "category": "shale"}
+{"text": "hide porosity", "intent": "hide", "kind": "porosity"}
+{"text": "just show Volve_SGrid_GasZone nothing else", "intent": "isolate"}
+{"text": "new 3d view", "intent": "new_view"}
+{"text": "light up the cells with perm over 200", "intent": "highlight", "kind": "permeability", "min": 200}
+{"text": "dont show the water", "intent": "threshold", "category": "water"}

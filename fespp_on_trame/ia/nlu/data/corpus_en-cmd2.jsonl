@@ -1,0 +1,361 @@
+{"text": "close the stats", "intent": "close_panel", "panel": "stats"}
+{"text": "close the statistics panel please", "intent": "close_panel", "panel": "stats"}
+{"text": "shut the histogram", "intent": "close_panel", "panel": "stats"}
+{"text": "close the well log view", "intent": "close_panel", "panel": "welllog"}
+{"text": "close the comparison panel", "intent": "close_panel", "panel": "compare"}
+{"text": "close the cross plot", "intent": "close_panel", "panel": "crossplot"}
+{"text": "get rid of the distribution chart", "intent": "close_panel", "panel": "distribution"}
+{"text": "close the XML explorer", "intent": "close_panel", "panel": "xml"}
+{"text": "close the stratigraphic column", "intent": "close_panel", "panel": "stratigraphy"}
+{"text": "close the calculator", "intent": "close_panel", "panel": "calculator"}
+{"text": "close the data health panel", "intent": "close_panel", "panel": "health"}
+{"text": "dismiss the scatter plot", "intent": "close_panel", "panel": "crossplot"}
+{"text": "I'm done with the histogram, close it", "intent": "close_panel", "panel": "stats"}
+{"text": "could you close the log vs grid panel?", "intent": "close_panel", "panel": "reconcile"}
+{"text": "close the reconcile tab", "intent": "close_panel", "panel": "reconcile"}
+{"text": "please close the compare view", "intent": "close_panel", "panel": "compare"}
+{"text": "close the logs", "intent": "close_panel", "panel": "welllog"}
+{"text": "no need for the distribution anymore, close it", "intent": "close_panel", "panel": "distribution"}
+{"text": "kill the stats panel", "intent": "close_panel", "panel": "stats"}
+{"text": "close that crossplot window", "intent": "close_panel", "panel": "crossplot"}
+{"text": "can you shut the stratigraphy panel?", "intent": "close_panel", "panel": "stratigraphy"}
+{"text": "close the QC panel", "intent": "close_panel", "panel": "health"}
+{"text": "Would you close the calculator panel, please?", "intent": "close_panel", "panel": "calculator"}
+{"text": "close the log viewer", "intent": "close_panel", "panel": "welllog"}
+{"text": "close teh stats", "intent": "close_panel", "panel": "stats"}
+{"text": "remove the statistics tab", "intent": "close_panel", "panel": "stats"}
+{"text": "close the histogram of PHIT_final", "intent": "close_panel", "panel": "stats"}
+{"text": "done with the xml, close it", "intent": "close_panel", "panel": "xml"}
+{"text": "top view", "intent": "camera_view", "direction": "top"}
+{"text": "switch to top view please", "intent": "camera_view", "direction": "top"}
+{"text": "show the grid from above", "intent": "camera_view", "direction": "top"}
+{"text": "bird's eye view", "intent": "camera_view", "direction": "top"}
+{"text": "plan view", "intent": "camera_view", "direction": "top"}
+{"text": "map view please", "intent": "camera_view", "direction": "top"}
+{"text": "look from the north", "intent": "camera_view", "direction": "north"}
+{"text": "view from the south", "intent": "camera_view", "direction": "south"}
+{"text": "put the camera on the east side", "intent": "camera_view", "direction": "east"}
+{"text": "view it from the west", "intent": "camera_view", "direction": "west"}
+{"text": "bottom view", "intent": "camera_view", "direction": "bottom"}
+{"text": "show the reservoir from below", "intent": "camera_view", "direction": "bottom"}
+{"text": "point the camera towards the north", "intent": "camera_view", "direction": "south"}
+{"text": "look at the model from the north", "intent": "camera_view", "direction": "north"}
+{"text": "aerial view", "intent": "camera_view", "direction": "top"}
+{"text": "Could I get an overhead view of the field?", "intent": "camera_view", "direction": "top"}
+{"text": "camera west", "intent": "camera_view", "direction": "west"}
+{"text": "go to bottom view", "intent": "camera_view", "direction": "bottom"}
+{"text": "north view pls", "intent": "camera_view", "direction": "north"}
+{"text": "I'd like to see the scene from the east", "intent": "camera_view", "direction": "east"}
+{"text": "top-down view of Hugin", "intent": "camera_view", "direction": "top"}
+{"text": "back to the top view", "intent": "camera_view", "direction": "top"}
+{"text": "looking down at the grid", "intent": "camera_view", "direction": "top"}
+{"text": "view from underneath", "intent": "camera_view", "direction": "bottom"}
+{"text": "move the camera to the south", "intent": "camera_view", "direction": "south"}
+{"text": "show it from the west please", "intent": "camera_view", "direction": "west"}
+{"text": "can u give me a top view", "intent": "camera_view", "direction": "top"}
+{"text": "seen from above please", "intent": "camera_view", "direction": "top"}
+{"text": "east view", "intent": "camera_view", "direction": "east"}
+{"text": "Would you show the model from the north, please?", "intent": "camera_view", "direction": "north"}
+{"text": "turn the camera so we look from the south", "intent": "camera_view", "direction": "south"}
+{"text": "zoom in", "intent": "zoom", "direction": "in"}
+{"text": "zoom in a bit", "intent": "zoom", "direction": "in"}
+{"text": "zoom out", "intent": "zoom", "direction": "out"}
+{"text": "zoom out a little please", "intent": "zoom", "direction": "out"}
+{"text": "zoom", "intent": "zoom", "direction": "in"}
+{"text": "get closer", "intent": "zoom", "direction": "in"}
+{"text": "move the camera closer", "intent": "zoom", "direction": "in"}
+{"text": "pull back a bit", "intent": "zoom", "direction": "out"}
+{"text": "move away a little", "intent": "zoom", "direction": "out"}
+{"text": "can you zoom in?", "intent": "zoom", "direction": "in"}
+{"text": "could you zoom out a bit", "intent": "zoom", "direction": "out"}
+{"text": "zoom in some more", "intent": "zoom", "direction": "in"}
+{"text": "unzoom", "intent": "zoom", "direction": "out"}
+{"text": "I'd like to zoom in", "intent": "zoom", "direction": "in"}
+{"text": "i want to see it from further away", "intent": "zoom", "direction": "out"}
+{"text": "zoom a little", "intent": "zoom", "direction": "in"}
+{"text": "closer please", "intent": "zoom", "direction": "in"}
+{"text": "a bit further away please", "intent": "zoom", "direction": "out"}
+{"text": "zoom out pls", "intent": "zoom", "direction": "out"}
+{"text": "Would you mind zooming in slightly?", "intent": "zoom", "direction": "in"}
+{"text": "Could you zoom out one notch, please?", "intent": "zoom", "direction": "out"}
+{"text": "zoom in a bitt", "intent": "zoom", "direction": "in"}
+{"text": "magnify the view a bit", "intent": "zoom", "direction": "in"}
+{"text": "back off a little", "intent": "zoom", "direction": "out"}
+{"text": "zoom out, it's too tight", "intent": "zoom", "direction": "out"}
+{"text": "get nearer", "intent": "zoom", "direction": "in"}
+{"text": "zoom in more", "intent": "zoom", "direction": "in"}
+{"text": "go wider", "intent": "zoom", "direction": "out"}
+{"text": "zoom out a notch", "intent": "zoom", "direction": "out"}
+{"text": "pls zoom in", "intent": "zoom", "direction": "in"}
+{"text": "go to time step 5", "intent": "time_step", "step": 5}
+{"text": "next time step", "intent": "time_step", "step": "next"}
+{"text": "previous time step", "intent": "time_step", "step": "previous"}
+{"text": "go back to the first time step", "intent": "time_step", "step": "first"}
+{"text": "jump to the last time step", "intent": "time_step", "step": "last"}
+{"text": "show time step 12", "intent": "time_step", "step": 12}
+{"text": "show the year 2015", "intent": "time_step", "step": 2015}
+{"text": "go to the date 2020-06-01", "intent": "time_step", "step": "2020-06-01"}
+{"text": "step forward in time", "intent": "time_step", "step": "next"}
+{"text": "move backward in time", "intent": "time_step", "step": "previous"}
+{"text": "time step 3 please", "intent": "time_step", "step": 3}
+{"text": "skip to timestep 20", "intent": "time_step", "step": 20}
+{"text": "show the porosity at time step 4", "intent": "time_step", "kind": "porosity", "step": 4}
+{"text": "I want to see the next time step", "intent": "time_step", "step": "next"}
+{"text": "Could you move to the next time step, please?", "intent": "time_step", "step": "next"}
+{"text": "advance one time step", "intent": "time_step", "step": "next"}
+{"text": "go back to the beginning of the time series", "intent": "time_step", "step": "first"}
+{"text": "jump to the end of the series", "intent": "time_step", "step": "last"}
+{"text": "time step number 7", "intent": "time_step", "step": 7}
+{"text": "the third time step", "intent": "time_step", "step": 3}
+{"text": "go to the 2nd time step", "intent": "time_step", "step": 2}
+{"text": "show the following date", "intent": "time_step", "step": "next"}
+{"text": "back to the previous time step", "intent": "time_step", "step": "previous"}
+{"text": "rewind one time step", "intent": "time_step", "step": "previous"}
+{"text": "go back one time step", "intent": "time_step", "step": "previous"}
+{"text": "next tme step", "intent": "time_step", "step": "next"}
+{"text": "show year 2018 on the grid", "intent": "time_step", "step": 2018}
+{"text": "go to year 2010", "intent": "time_step", "step": 2010}
+{"text": "the last time step pls", "intent": "time_step", "step": "last"}
+{"text": "first time step", "intent": "time_step", "step": "first"}
+{"text": "the time step before that", "intent": "time_step", "step": "previous"}
+{"text": "let's look at time step 8", "intent": "time_step", "step": 8}
+{"text": "play the animation", "intent": "time_play", "on": true}
+{"text": "play the time steps", "intent": "time_play", "on": true}
+{"text": "stop the animation", "intent": "time_play", "on": false}
+{"text": "pause the animation", "intent": "time_play", "on": false}
+{"text": "start the animation", "intent": "time_play", "on": true}
+{"text": "stop playback", "intent": "time_play", "on": false}
+{"text": "animate the time series", "intent": "time_play", "on": true}
+{"text": "loop through the time steps", "intent": "time_play", "on": true}
+{"text": "resume the animation", "intent": "time_play", "on": true}
+{"text": "restart the animation please", "intent": "time_play", "on": true}
+{"text": "freeze the animation", "intent": "time_play", "on": false}
+{"text": "halt the playback", "intent": "time_play", "on": false}
+{"text": "Could you play the time steps, please?", "intent": "time_play", "on": true}
+{"text": "I'd like to see the evolution over time", "intent": "time_play", "on": true}
+{"text": "pause it", "intent": "time_play", "on": false}
+{"text": "stop playing", "intent": "time_play", "on": false}
+{"text": "run the movie of the time steps", "intent": "time_play", "on": true}
+{"text": "ok stop the animation now", "intent": "time_play", "on": false}
+{"text": "cycle through the dates", "intent": "time_play", "on": true}
+{"text": "play", "intent": "time_play", "on": true}
+{"text": "start playing the time steps", "intent": "time_play", "on": true}
+{"text": "pause playback pls", "intent": "time_play", "on": false}
+{"text": "show me the changes over time", "intent": "time_play", "on": true}
+{"text": "play the animation of the water saturation", "intent": "time_play", "on": true}
+{"text": "stop animating", "intent": "time_play", "on": false}
+{"text": "plya the animation", "intent": "time_play", "on": true}
+{"text": "step through the time steps", "intent": "time_play", "on": true}
+{"text": "let the animation run", "intent": "time_play", "on": true}
+{"text": "stop the movie", "intent": "time_play", "on": false}
+{"text": "resume playback", "intent": "time_play", "on": true}
+{"text": "show realization 3", "intent": "realization", "step": 3}
+{"text": "next realization", "intent": "realization", "step": "next"}
+{"text": "previous realization", "intent": "realization", "step": "previous"}
+{"text": "show realization 2 of the porosity", "intent": "realization", "kind": "porosity", "step": 2}
+{"text": "go to realization 10", "intent": "realization", "step": 10}
+{"text": "show the first realization", "intent": "realization", "step": "first"}
+{"text": "show the last realization of PHIT_final", "intent": "realization", "step": "last"}
+{"text": "realization number 5", "intent": "realization", "step": 5}
+{"text": "another realization of the permeability", "intent": "realization", "kind": "permeability", "step": "next"}
+{"text": "switch realization", "intent": "realization"}
+{"text": "load realization 7", "intent": "realization", "step": 7}
+{"text": "Could you show the next realization, please?", "intent": "realization", "step": "next"}
+{"text": "I'd like to see realization 1 of the water saturation", "intent": "realization", "kind": "water saturation", "step": 1}
+{"text": "realization 6 please", "intent": "realization", "step": 6}
+{"text": "use realization 4", "intent": "realization", "step": 4}
+{"text": "the third realization", "intent": "realization", "step": 3}
+{"text": "show the NTG realization 2", "intent": "realization", "kind": "net to gross", "step": 2}
+{"text": "display the 4th realization", "intent": "realization", "step": 4}
+{"text": "next realization of the facies", "intent": "realization", "kind": "facies", "step": "next"}
+{"text": "switch to realization 8", "intent": "realization", "step": 8}
+{"text": "realisation 2", "intent": "realization", "step": 2}
+{"text": "show another realization", "intent": "realization", "step": "next"}
+{"text": "the previous realization of the porosity", "intent": "realization", "kind": "porosity", "step": "previous"}
+{"text": "last realization", "intent": "realization", "step": "last"}
+{"text": "go to realization 9", "intent": "realization", "step": 9}
+{"text": "move to the next realization pls", "intent": "realization", "step": "next"}
+{"text": "realization 3 of Hugin", "intent": "realization", "step": 3}
+{"text": "show me realization 12", "intent": "realization", "step": 12}
+{"text": "back to the first realization", "intent": "realization", "step": "first"}
+{"text": "realizaton 5", "intent": "realization", "step": 5}
+{"text": "show as wireframe", "intent": "rep_style", "style": "Wireframe"}
+{"text": "show the edges", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "hide the edges", "intent": "rep_style", "style": "Surface"}
+{"text": "wireframe mode", "intent": "rep_style", "style": "Wireframe"}
+{"text": "display the grid as points", "intent": "rep_style", "style": "Points"}
+{"text": "just the outline", "intent": "rep_style", "style": "Outline"}
+{"text": "show the bounding box", "intent": "rep_style", "style": "Outline"}
+{"text": "back to plain surface", "intent": "rep_style", "style": "Surface"}
+{"text": "surface with edges please", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "remove the cell edges", "intent": "rep_style", "style": "Surface"}
+{"text": "I want to see the mesh lines", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "turn on the grid lines", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "render Hugin as wireframe", "intent": "rep_style", "style": "Wireframe"}
+{"text": "show the model without edges", "intent": "rep_style", "style": "Surface"}
+{"text": "points representation", "intent": "rep_style", "style": "Points"}
+{"text": "draw the grid in wireframe", "intent": "rep_style", "style": "Wireframe"}
+{"text": "surface mode", "intent": "rep_style", "style": "Surface"}
+{"text": "only the outline", "intent": "rep_style", "style": "Outline"}
+{"text": "Could you show the cell edges, please?", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "switch back to solid surface", "intent": "rep_style", "style": "Surface"}
+{"text": "turn off the edges", "intent": "rep_style", "style": "Surface"}
+{"text": "wireframe pls", "intent": "rep_style", "style": "Wireframe"}
+{"text": "set everything to points", "intent": "rep_style", "style": "Points"}
+{"text": "outline style", "intent": "rep_style", "style": "Outline"}
+{"text": "show the grid with edges", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "no edges please", "intent": "rep_style", "style": "Surface"}
+{"text": "change the representation to wireframe", "intent": "rep_style", "style": "Wireframe"}
+{"text": "display edges", "intent": "rep_style", "style": "Surface With Edges"}
+{"text": "swich to wireframe", "intent": "rep_style", "style": "Wireframe"}
+{"text": "plain surface", "intent": "rep_style", "style": "Surface"}
+{"text": "switch the permeability to log", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "logarithmic scale", "intent": "color_scale", "scale": "log"}
+{"text": "set the colour scale to log", "intent": "color_scale", "scale": "log"}
+{"text": "back to linear", "intent": "color_scale", "scale": "linear"}
+{"text": "log scale for the permeability", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "use a logarithmic scale on the permeability", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "put the colormap back to linear", "intent": "color_scale", "scale": "linear"}
+{"text": "turn off the log scale", "intent": "color_scale", "scale": "linear"}
+{"text": "linear scale please", "intent": "color_scale", "scale": "linear"}
+{"text": "show the permeability on a log scale", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "perm in log please", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "Could you make the colour scale logarithmic?", "intent": "color_scale", "scale": "log"}
+{"text": "colours in log", "intent": "color_scale", "scale": "log"}
+{"text": "log legend for the permeability", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "disable the logarithmic scale", "intent": "color_scale", "scale": "linear"}
+{"text": "I want the permeability on a log scale", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "switch the scale to linear", "intent": "color_scale", "scale": "linear"}
+{"text": "log scale on Hugin", "intent": "color_scale", "scale": "log"}
+{"text": "set the colormap to log", "intent": "color_scale", "scale": "log"}
+{"text": "logarithmic colormap", "intent": "color_scale", "scale": "log"}
+{"text": "return to a linear scale", "intent": "color_scale", "scale": "linear"}
+{"text": "put the resistivity in log scale", "intent": "color_scale", "kind": "resistivity", "scale": "log"}
+{"text": "linear colour scale", "intent": "color_scale", "scale": "linear"}
+{"text": "log the colours please", "intent": "color_scale", "scale": "log"}
+{"text": "switch to logarithmic", "intent": "color_scale", "scale": "log"}
+{"text": "permeability would look better in log", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "colour the permeability of Hugin on a log scale", "intent": "color_scale", "kind": "permeability", "scale": "log"}
+{"text": "plz use log scale", "intent": "color_scale", "scale": "log"}
+{"text": "remove the log scale from the colormap", "intent": "color_scale", "scale": "linear"}
+{"text": "make the perm linear", "intent": "color_scale", "kind": "permeability", "scale": "linear"}
+{"text": "show the legend", "intent": "color_bar", "on": true}
+{"text": "hide the legend", "intent": "color_bar", "on": false}
+{"text": "show the colour bar", "intent": "color_bar", "on": true}
+{"text": "remove the colour bar", "intent": "color_bar", "on": false}
+{"text": "hide the colorbar", "intent": "color_bar", "on": false}
+{"text": "bring back the legend", "intent": "color_bar", "on": true}
+{"text": "no legend please", "intent": "color_bar", "on": false}
+{"text": "I don't want to see the legend anymore", "intent": "color_bar", "on": false}
+{"text": "show the legend of the porosity", "intent": "color_bar", "kind": "porosity", "on": true}
+{"text": "Could you hide the colour bar, please?", "intent": "color_bar", "on": false}
+{"text": "display the color bar again", "intent": "color_bar", "on": true}
+{"text": "remove the legend from the view", "intent": "color_bar", "on": false}
+{"text": "I'd like to see the legend", "intent": "color_bar", "on": true}
+{"text": "legend off", "intent": "color_bar", "on": false}
+{"text": "get rid of the colorbar", "intent": "color_bar", "on": false}
+{"text": "turn on the legend", "intent": "color_bar", "on": true}
+{"text": "turn off the colour bar", "intent": "color_bar", "on": false}
+{"text": "without legend please", "intent": "color_bar", "on": false}
+{"text": "show me the colour legend", "intent": "color_bar", "on": true}
+{"text": "hide the colour bar of the permeability", "intent": "color_bar", "kind": "permeability", "on": false}
+{"text": "add the legend", "intent": "color_bar", "on": true}
+{"text": "drop the legend", "intent": "color_bar", "on": false}
+{"text": "the legend is in the way, hide it", "intent": "color_bar", "on": false}
+{"text": "display the colorbar pls", "intent": "color_bar", "on": true}
+{"text": "enable the scalar bar", "intent": "color_bar", "on": true}
+{"text": "disable the legend", "intent": "color_bar", "on": false}
+{"text": "show legend", "intent": "color_bar", "on": true}
+{"text": "hdie the legend", "intent": "color_bar", "on": false}
+{"text": "i want the colour bar back", "intent": "color_bar", "on": true}
+{"text": "colorbar on", "intent": "color_bar", "on": true}
+{"text": "open the thresholds card", "intent": "open_tool", "tool": "thresholds"}
+{"text": "open the data explorer", "intent": "open_tool", "tool": "tree"}
+{"text": "show the attributes", "intent": "open_tool", "tool": "attributes"}
+{"text": "open navigation", "intent": "open_tool", "tool": "navigation"}
+{"text": "open the volumetrics card", "intent": "open_tool", "tool": "volumetrics"}
+{"text": "open the thresholds", "intent": "open_tool", "tool": "thresholds"}
+{"text": "open the slicers", "intent": "open_tool", "tool": "slicers"}
+{"text": "open the slicers card", "intent": "open_tool", "tool": "slicers"}
+{"text": "open the time and realizations card", "intent": "open_tool", "tool": "timereal"}
+{"text": "open the time steps", "intent": "open_tool", "tool": "timereal"}
+{"text": "open the colour settings", "intent": "open_tool", "tool": "colormap"}
+{"text": "open the camera sync", "intent": "open_tool", "tool": "camlink"}
+{"text": "show the data tree", "intent": "open_tool", "tool": "tree"}
+{"text": "Could you open the navigation card, please?", "intent": "open_tool", "tool": "navigation"}
+{"text": "bring up the slicer", "intent": "open_tool", "tool": "slicers"}
+{"text": "show the attributes card", "intent": "open_tool", "tool": "attributes"}
+{"text": "open the colormap card", "intent": "open_tool", "tool": "colormap"}
+{"text": "expand the tree", "intent": "open_tool", "tool": "tree"}
+{"text": "I'd like the thresholds card", "intent": "open_tool", "tool": "thresholds"}
+{"text": "open the colormap", "intent": "open_tool", "tool": "colormap"}
+{"text": "volumetrics card please", "intent": "open_tool", "tool": "volumetrics"}
+{"text": "open the threshold panel", "intent": "open_tool", "tool": "thresholds"}
+{"text": "show the tree view", "intent": "open_tool", "tool": "tree"}
+{"text": "open the realizations", "intent": "open_tool", "tool": "timereal"}
+{"text": "show me the attributes of Hugin", "intent": "open_tool", "tool": "attributes"}
+{"text": "open the time card", "intent": "open_tool", "tool": "timereal"}
+{"text": "bring up the camera sync card", "intent": "open_tool", "tool": "camlink"}
+{"text": "opne the slicers", "intent": "open_tool", "tool": "slicers"}
+{"text": "open the volumetrics", "intent": "open_tool", "tool": "volumetrics"}
+{"text": "open the navigation tool", "intent": "open_tool", "tool": "navigation"}
+{"text": "hide everything", "intent": "hide_all"}
+{"text": "clear the view", "intent": "hide_all"}
+{"text": "remove everything from the view", "intent": "hide_all"}
+{"text": "empty the scene", "intent": "hide_all"}
+{"text": "hide all objects", "intent": "hide_all"}
+{"text": "turn off everything", "intent": "hide_all"}
+{"text": "I want an empty view", "intent": "hide_all"}
+{"text": "wipe the view", "intent": "hide_all"}
+{"text": "clean the screen", "intent": "hide_all"}
+{"text": "Could you hide everything, please?", "intent": "hide_all"}
+{"text": "make everything invisible", "intent": "hide_all"}
+{"text": "hide everything that is shown", "intent": "hide_all"}
+{"text": "start from an empty view", "intent": "hide_all"}
+{"text": "uncheck all the objects", "intent": "hide_all"}
+{"text": "clear the 3D view", "intent": "hide_all"}
+{"text": "hide it all", "intent": "hide_all"}
+{"text": "remove everything pls", "intent": "hide_all"}
+{"text": "switch everything off", "intent": "hide_all"}
+{"text": "blank the view", "intent": "hide_all"}
+{"text": "turn all objects off", "intent": "hide_all"}
+{"text": "empty the view", "intent": "hide_all"}
+{"text": "hide every object", "intent": "hide_all"}
+{"text": "get everything off the screen", "intent": "hide_all"}
+{"text": "can you clear the scene?", "intent": "hide_all"}
+{"text": "hide all the things in the view", "intent": "hide_all"}
+{"text": "everything hidden please", "intent": "hide_all"}
+{"text": "hdie everything", "intent": "hide_all"}
+{"text": "I'd like a clean, empty view", "intent": "hide_all"}
+{"text": "make the view empty", "intent": "hide_all"}
+{"text": "hide everythign", "intent": "hide_all"}
+{"text": "take a screenshot", "intent": "unsupported"}
+{"text": "grab a snapshot of the view", "intent": "unsupported"}
+{"text": "export the statistics to CSV", "intent": "unsupported"}
+{"text": "copy the table to Excel", "intent": "unsupported"}
+{"text": "open an EPC file", "intent": "unsupported"}
+{"text": "load the Drogon file", "intent": "unsupported"}
+{"text": "connect to the OSDU server", "intent": "unsupported"}
+{"text": "fetch the data from the ETP server", "intent": "unsupported"}
+{"text": "make the grid transparent", "intent": "unsupported"}
+{"text": "set the opacity to 50%", "intent": "unsupported"}
+{"text": "change the background to black", "intent": "unsupported"}
+{"text": "white background please", "intent": "unsupported"}
+{"text": "show the pillars of the grid", "intent": "unsupported"}
+{"text": "select the pillars along the fault", "intent": "unsupported"}
+{"text": "link the cameras of both views", "intent": "unsupported"}
+{"text": "sync the two views", "intent": "unsupported"}
+{"text": "open the globe", "intent": "unsupported"}
+{"text": "put the field on the world map", "intent": "unsupported"}
+{"text": "unload the Hugin grid", "intent": "unsupported"}
+{"text": "close the file", "intent": "unsupported"}
+{"text": "print the view", "intent": "unsupported"}
+{"text": "save the view as an image", "intent": "unsupported"}
+{"text": "import an epc from my computer", "intent": "unsupported"}
+{"text": "make the model semi-transparent", "intent": "unsupported"}
+{"text": "set the background to grey", "intent": "unsupported"}
+{"text": "show the earth in 3D", "intent": "unsupported"}
+{"text": "lock the cameras between the views", "intent": "unsupported"}
+{"text": "export the stats panel values as csv", "intent": "unsupported"}
+{"text": "give me the pillars of Fault F1", "intent": "unsupported"}
+{"text": "lower the opacity of the grid", "intent": "unsupported"}
