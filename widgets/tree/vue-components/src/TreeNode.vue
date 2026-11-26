@@ -126,6 +126,7 @@
         :visible="visible"
         :converted="converted"
         :undrawn="undrawn"
+        :replaced="replaced"
         :fixed="fixed"
         :eyeable="eyeable"
         :expanded="expanded"
@@ -159,6 +160,7 @@ export default {
     visible: { type: Set, required: true },    // visible paths
     converted: { type: Set, default: () => new Set() },  // drawn converted with the law
     undrawn: { type: Set, default: () => new Set() },    // of the other domain, not drawn: no eye
+    replaced: { type: Set, default: () => new Set() },   // an extract drawn in its place: eye closed
     fixed: { type: Set, default: () => new Set() },      // those of them the view never converts
     // Which nodes MAY carry an eye, when the checkbox is not the gate: a
     // tree whose tick means something other than loading passes the paths
@@ -253,9 +255,9 @@ export default {
     // A folder reads as "on" as soon as one of its leaves is shown.
     isVisible() {
       if (this.isFolderEye) {
-        return this.eyeLeaves.some((p) => this.visible.has(p));
+        return this.eyeLeaves.some((p) => this.visible.has(p) && !this.replaced.has(p));
       }
-      return this.visible.has(this.node.path);
+      return this.visible.has(this.node.path) && !this.replaced.has(this.node.path);
     },
     // A tree may list a property the session has not read (the Statistics
     // view's does). "Not read yet" is what the empty checkbox already says,
@@ -358,7 +360,9 @@ export default {
 <style scoped>
 .tn-row { display: flex; align-items: center; gap: 4px; padding: 2px 4px; cursor: pointer; white-space: nowrap; outline: none; }
 .tn-row:hover { background: #f0f7ff; }
-.tn-row:focus { background: #e8f1fc; box-shadow: inset 0 0 0 1px #90caf9; }
+/* the keyboard's place only: a row clicked keeps no colour of its own, the
+   active row is the one lit (two lit rows read as two active ones) */
+.tn-row:focus-visible { box-shadow: inset 0 0 0 1px #90caf9; }
 .tn-row.active { background: #e3f2fd; font-weight: 600; }
 .tn-caret { width: 12px; display: inline-block; text-align: center; color: var(--fp-ink-mute); cursor: pointer; flex: 0 0 auto; }
 .tn-check { width: 16px; cursor: pointer; color: var(--fp-accent); flex: 0 0 auto; }

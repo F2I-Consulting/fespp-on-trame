@@ -173,7 +173,7 @@ class DataExplorerTree(HtmlElement):
         super().__init__("data-explorer-tree", **kwargs)
         self._attr_names += [
             "assembly", "tabs", "selected", ("boxes_nonce", "boxesNonce"), "visible", "active",
-            "converted", "undrawn", "fixed",
+            "converted", "undrawn", "fixed", "replaced",
             "initial_selected", ("eye_paths", "eyePaths"),
             "color_editing",
             "kind_icons", "select_groups", ("bulk_select", "bulkSelect"),

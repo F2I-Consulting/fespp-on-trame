@@ -246,6 +246,8 @@ class DataTree:
             visible_paths=vis_var,
             converted=(f"converted_paths__{vid} || []",),
             undrawn=(f"undrawn_paths__{vid} || []",),
+            # a geometry an extract stands in for: its eye shown closed
+            replaced=(f"replaced_paths__{vid} || []",),
             fixed=(f"fixed_paths__{vid} || []",),
             domain_toggle=(server.controller.view_domain_object, f"[$event.path, '{vid}']"),
             eye_toggle=toggle_var,
@@ -316,6 +318,12 @@ class DataTree:
                 ev = kwargs.get(toggle_var) or {}
                 path = ev.get("path") if isinstance(ev, dict) else None
                 if not path:
+                    return
+                if not (isinstance(ev, dict) and ev.get("paths")) and path in (
+                        getattr(state, f"replaced_paths__{vid}", None) or ()):
+                    # the closed eye of a geometry an extract stands in for:
+                    # the grid shown again, the extract stepping aside
+                    server.controller.extracts_step_aside(path, vid)
                     return
                 cur = list(getattr(state, vis_var, None) or [])
                 # A FOLDER eye arrives with the leaves it drives and the state

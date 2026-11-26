@@ -252,17 +252,34 @@ def register(core, *, _derived_fanout, _derived_forget, _display_title, _extract
         e = _session_extract(vid, path)
         if e is None:
             return
-        e["visible"] = not e["visible"]
+        _extract_shown(vid, e, not e["visible"])
+        _extract_layout(vid, e["selector"], e["rep_path"])
+        _publish_session_rows(vid)
+
+    def _extract_shown(vid, e, shown):
+        """The extract `e` drawn in view `vid`, or not."""
+        e["visible"] = shown
         pvv = _pv_view_of(vid)
         try:
-            if e["visible"]:
+            if shown:
                 pvsimple.Show(e["ex"], pvv)
             else:
                 pvsimple.Hide(e["ex"], pvv)
         except Exception as exc:
             print(f"[fespp] extract eye ({vid}):", exc, flush=True)
-        _extract_layout(vid, e["selector"], e["rep_path"])
-        _publish_session_rows(vid)
+
+    @controller.set("extracts_step_aside")
+    def extracts_step_aside(rep_path, view_id):
+        """The closed eye of a geometry an extract stands in for, opened:
+        the grid drawn again, every extract shown in its place hidden (their
+        rows stay, their eyes closed)."""
+        vid = str(view_id or "")
+        mine = [e for e in _extracts.get(vid, []) if e["rep_path"] == rep_path and e["visible"]]
+        for e in mine:
+            _extract_shown(vid, e, False)
+        if mine:
+            _extract_layout(vid, mine[0]["selector"], rep_path)
+            _publish_session_rows(vid)
 
     @controller.set("session_row_rename")
     def session_row_rename(payload, view_id):

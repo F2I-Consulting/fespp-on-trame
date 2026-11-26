@@ -187,6 +187,11 @@ def register(core, *, _derived_forget, _derived_values, _live_render_vids,
                          "info": "ƒ = " + (d.get("expression") or "")
                                  + " — computed in this session, not in the file"})
         state[f"ui_session_rows__{vid}"] = rows
+        # the geometries an extract shown stands in for: their eye shown closed
+        from fespp_on_trame.app.scene.occupancy import replaced_rows
+        replaced = replaced_rows(_extracts.get(vid, []))
+        if replaced != list(getattr(state, f"replaced_paths__{vid}", None) or []):
+            state[f"replaced_paths__{vid}"] = replaced
         core.lifecycle.emit("session_rows", vid=vid)
 
     @state.change("ui_derived_props")

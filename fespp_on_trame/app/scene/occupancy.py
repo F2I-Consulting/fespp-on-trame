@@ -16,6 +16,13 @@ only caller of an isolate's ``show()`` / ``hide_all()``; an isolate asks it
 to redraw (its ``shown_by``) instead of showing itself.
 """
 
+def replaced_rows(extracts):
+    """The tree rows of the geometries a visible extract stands in for (its
+    representation's row): the eye says what is drawn, so theirs is shown
+    closed while the extract is; sorted, once each."""
+    return sorted({e.get("rep_path") for e in extracts or () if e.get("visible") and e.get("rep_path")})
+
+
 REPLACED = "replaced"     # an extract or a formula's copy draws it
 ISOLATE = "isolate"       # its isolate draws it
 HIDDEN = "hidden"         # its isolate is needed, its eye is closed

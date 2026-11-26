@@ -85,6 +85,9 @@ SUFFIXED_VARS = (
     ("undrawn_paths__", list),
     # those of them the view never converts: their tag is no button
     ("fixed_paths__", list),
+    # the geometries a visible extract stands in for: their eye shown closed
+    # (app/scene/occupancy.replaced_rows)
+    ("replaced_paths__", list),
     # "Represent By" of THIS view's composite rep. BlockScope draws every
     # block through ONE rep, so the style is per VIEW, not per rep. Asserted
     # explicitly, never inherited from ParaView's Show() guess, which can

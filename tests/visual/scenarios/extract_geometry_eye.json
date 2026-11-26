@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "toggle_tool", "args": ["frustum", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[450, 300, 550, 400, 1000, 700], "view_1", "frustum"], "settle": 6 },
+    { "op": "call", "method": "selection_extract", "args": [{"path": {"title": "Geogrid"}, "mode": "keep"}, "view_1"], "settle": 6 },
+    { "op": "dump", "vars": ["replaced_paths__view_1", "visible_paths__view_1"] },
+    { "op": "expect", "var": "replaced_paths__view_1", "size": 1 },
+    { "op": "expect", "var": "ui_session_rows__view_1", "key": [0, "visible"], "equals": true },
+    { "op": "peek", "name": "extract_shown" },
+    { "op": "call", "method": "extracts_step_aside", "args": ["/data/_gridfolder_2c6de928-7e08-4601-b979-34048bd68c02/_propsfolder_2c6de928-7e08-4601-b979-34048bd68c02/_2c6de928-7e08-4601-b979-34048bd68c02", "view_1"], "settle": 4 },
+    { "op": "expect", "var": "replaced_paths__view_1", "size": 0 },
+    { "op": "expect", "var": "ui_session_rows__view_1", "key": [0, "visible"], "equals": false },
+    { "op": "peek", "name": "grid_back_by_its_eye" },
+    { "op": "call", "method": "session_row_eye", "args": [{"path": "session://view_1/x1"}, "view_1"], "settle": 4 },
+    { "op": "dump", "vars": ["replaced_paths__view_1"] },
+    { "op": "expect", "var": "replaced_paths__view_1", "size": 1 },
+    { "op": "call", "method": "session_row_eye", "args": [{"path": "session://view_1/x1"}, "view_1"], "settle": 4 },
+    { "op": "expect", "var": "replaced_paths__view_1", "size": 0 },
+    { "op": "expect", "var": "ui_session_rows__view_1", "key": [0, "visible"], "equals": false },
+    { "op": "peek", "name": "grid_back" }
+  ]
+}

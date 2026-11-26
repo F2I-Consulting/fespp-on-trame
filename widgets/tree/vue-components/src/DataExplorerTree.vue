@@ -79,6 +79,7 @@
         :visible="visibleSet"
         :converted="convertedSet"
         :undrawn="undrawnSet"
+        :replaced="replacedSet"
         :fixed="fixedSet"
         :eyeable="eyeableSet"
         :expanded="expanded"
@@ -454,6 +455,9 @@ export default {
     // the ticked objects of the other domain the view does not draw: no
     // eye on their rows (server-owned, one-way)
     undrawn: { type: Array, default: () => [] },
+    // the geometries an extract stands in for in the view: their eye shown
+    // closed, what is drawn being the extract (server-owned, one-way)
+    replaced: { type: Array, default: () => [] },
     // those of them the view never converts (a velocity model of the data,
     // anything in a view in time): their tag is no button
     fixed: { type: Array, default: () => [] },
@@ -608,6 +612,7 @@ export default {
     visibleSet() { return new Set(this.visible || []); },
     convertedSet() { return new Set(this.converted || []); },
     undrawnSet() { return new Set(this.undrawn || []); },
+    replacedSet() { return new Set(this.replaced || []); },
     fixedSet() { return new Set(this.fixed || []); },
     eyeableSet() { return this.eyePaths ? new Set(this.eyePaths) : null; },
 
