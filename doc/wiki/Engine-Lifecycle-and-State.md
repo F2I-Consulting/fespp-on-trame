@@ -1,113 +1,53 @@
 # Engine — Lifecycle & State
 
+> **19/10/2026 — the per-representation model is gone (overhaul, decision Q2 bis).** `RepInScene`, `ViewScene`, `SceneRegistry`, the activator, the legacy visibility and active-array dispatch, the slice / clip planes and the `FESPP_BLOCKSCOPE` flag were removed: each view draws through its composite scene (`engine/blockscope`), a cut or filtered grid through its `GridIsolate`. A passage below that still names them describes removed code.
+
 ## Overview
 
-The `fespp_on_trame/app/core/engine/` package is the **server-side brain** of the app. It sits between the Vue/Trame UI (state variables, controller methods, server triggers) and the data layer (`SourceRegistry`, `SceneRegistry`, the FESPP C++ collector via `paraview.simple`). `boot.py` is the single entry point: `initialize_fespp_engine(server, *, fespp_plugin_path)` loads the FESPP ParaView plugin, constructs all long-lived objects (`Tree`, `Collector`, `ETPConnector`, `SourceRegistry`, `SceneRegistry`, `Selector`, `Activator`), seeds every Trame state variable, and registers ~50 `@state.change` / `@controller.set` / `@server.trigger` handlers. Each handler is a thin shim that captures the constructed objects in its closure and forwards to a focused **dispatch module** (`data_load`, `visibility`, `active_array`, `hierarchy`, `selection_dispatch`, `view_ops`, plus threshold/slice/clip/marker/realization/stats/distribution dispatchers documented elsewhere).
+The `fespp_on_trame/engine/` package is the **server-side brain** of the app. It sits between the Vue/Trame UI (state variables, controller methods, server triggers) and the data layer (`SourceRegistry`, `SceneRegistry`, the FESPP C++ collector via `paraview.simple`). `boot.py` is the single entry point: `initialize_fespp_engine(server, *, fespp_plugin_path)` loads the FESPP ParaView plugin, constructs all long-lived objects (`Tree`, `Collector`, `ETPConnector`, `SourceRegistry`, `SceneRegistry`, `Selector`, `Activator`), seeds every Trame state variable, and registers ~50 `@state.change` / `@controller.set` / `@server.trigger` handlers. Each handler is a thin shim that captures the constructed objects in its closure and forwards to a focused **dispatch module** (`data_load`, `visibility`, `active_array`, `hierarchy`, `selection_dispatch`, `view_ops`, plus threshold/slice/clip/marker/realization/stats/distribution dispatchers documented elsewhere).
 
 The package is mid-migration from a **legacy single-view model** (one shared `SourceRegistry`, flat state vars like `ui_active_array_by_rep` / `ui_hidden_rep_paths`) to a **per-view scene model** (`SceneRegistry` of `ViewScene`s, each owning per-`(view, rep)` `RepInScene` pipelines, with `*_by_view` maps as the source of truth). The two coexist: the flat vars are kept as live mirrors of the *active panel*'s bucket so legacy consumers keep working. Understanding this duality is the single most important thing for a forker — most "why are there two of these?" questions trace back to it. The files in this page cover lifecycle/wiring (`boot`, `state_defaults`), the load pipeline (`data_load`), input dispatch (`selection_dispatch`, `hierarchy`), output mutation (`visibility`, `active_array`), and the per-view resolution helpers (`source_resolver`, `panel_resolver`, `view_ops`).
 
 ---
 
-### `fespp_on_trame/app/core/engine/boot.py`
-
-**Responsibility.** The wiring hub. `initialize_fespp_engine` constructs every long-lived engine object once at server start, seeds state, and registers all UI-facing handlers, each delegating to a dispatch module. It also defines several non-trivial closures (the slicer/IjkGrid bridging helpers, the per-panel stats/distribution recompute machinery) that are too entangled with the captured objects to extract.
-
-**Key classes / functions.**
-- `initialize_fespp_engine(server: Server, *, fespp_plugin_path: Path) -> None` — the whole module is this one function plus its inner closures and decorated handlers. Order of work: (1) eagerly `server.enable_module(trame_plotly.module)` so the Distribution panel's lazily-created Figure widget still receives its JS bundle; (2) `pvsimple.LoadPlugin(fespp_plugin_path)` + load the bundled `ExplicitStructuredGrid` plugin (needed for IJK volume crop/slicing); (3) create the `RenderView`; (4) `setup_stderr_tee()` (after PV init, to avoid flooding the VTK-log queue with startup noise); (5) build `Tree`, `Collector`, `ETPConnector`, `SourceRegistry`, `SceneRegistry`, `Selector`, `Activator`; (6) `init_state_defaults(state)`; (7) register handlers.
-- Inner closure `_ijkgrid_by_rep_path(rep_path)` — the `Activator`'s `ijk_lookup`. Resolves an `IjkGrid` for a rep path, **preferring the drawer-target view's per-view instance** (`scene_registry.get_rep(target_panel, rep_path)._per_view_ijk`, materialised via `_ensure_per_view_ijk()`), falling back to the legacy shared `source_registry.get_ijk_grid(rep_path)`. Must return the per-view grid because the per-view rendering fix hides every legacy IjkGrid source in the panel's view, so the activator's visible-source walk would otherwise bail and leave `active_color_array_name` stale (Colors & Opacity panel stuck on SolidColor).
-- Inner closure `_active_ijkgrid()` — thin wrapper keyed on `state.active_representation_path`.
-- Inner closure `_push_active_ijk_state_to_ui()` — mirrors the active IjkGrid's `to_ui_state()` snapshot into the flat `ui_slices_*` / `ui_range_*` vars. Called on active-grid change, after grid creation in the load handler, AND on panel switch (Phase 3b: each view owns its slicer state).
-- Inner closures `_refresh_threshold_ui_for_active_grid()`, `_refresh_descriptive_stats()`, `_open_stats_if_closed()` — stats/threshold UI republishers.
-- Inner closures `_refresh_distribution(panel_id)`, `_refresh_compare_stats(array_path)`, `_refresh_compare_dist(array_path)`, `_spawn_distribution_panel(*, kind, context)`, `_csv_data_url(csv_text)`, `_distribution_option_vars(panel_id)` — the per-panel Distribution / Compare-stats machinery. `_spawn_distribution_panel` registers a runtime `state.change(*option_vars)(callback)` watcher per spawned panel and stores the row context in `state.ui_distribution_contexts[panel_id]`. Note the documented ordering constraint: `mv.add_view(kind="distribution")` runs the template build synchronously, which is when `controller.update_distribution_figure_<id>` is set — so it exists by the time the helper returns.
-- Inner closures `_follow_mode_target_from_active()` / `_sync_pvsimple_active_to_target()` — drawer-target resolution. The latter forces `pvsimple.SetActiveView(scene.pv_view)` so legacy panels (`SolidColorPanel`, `RepresentationTypePanel`) edit the pinned target rather than the focused panel.
-
-**Registered handlers (the wiring map).** State-change handlers:
-
-| Trigger | Handler | Delegates to |
-|---|---|---|
-| `@state.change("trame__busy")` | `_on_trame_busy` | (inline busy-timer logging) |
-| `@state.change("fespp_data_selectors")` | `on_change_fespp_data_selectors` | `data_load.run(...)` |
-| `@state.change("ui_scale_z")` | `ui_scale_z_update` | `slicer_dispatch.apply_z_scale` |
-| `@state.change("marker_orientation")` | `marker_orientation_update` | `marker_dispatch.apply_marker_options` (via `_apply_marker_options`) |
-| `@state.change("ui_loaded_array_paths")` | `_refresh_diff_choices` | `diff.refresh_diff_choices` |
-| `@state.change("ui_loaded_rep_paths")` | `_sync_scene_registry_reps` | `scene_registry.sync_loaded_reps` + re-apply `slicer_dispatch.apply_z_scale` |
-| `@state.change("diff_array_a_path","diff_array_choices")` | `_refresh_diff_b_choices` | `diff.refresh_diff_b_choices` |
-| `@state.change("ui_active_array_by_rep")` | `_on_active_array_change` | `active_array.on_active_array_change` |
-| `@state.change("ui_active_array_by_rep_by_view")` | `_on_active_array_by_view_change` | `active_array.on_active_array_by_view_change` (+ `_refresh_panel_mr_specs`) |
-| `@state.change("ui_slices_i/j/k_list")` | `update_slice` | `slicer_dispatch.update_slice_positions` |
-| `@state.change("ui_volumes_list", "ui_volumes_visible_list")` | `update_volumes` | `slicer_dispatch.update_volumes` |
-| `@state.change("ui_slices_range_mode")` | `update_mode_slicer` | `slicer_dispatch.update_slice_mode` |
-| `@state.change("ui_slices_i/j/k_visible_list")` | `update_slices_visibility` | `slicer_dispatch.update_slice_visibility` |
-| `@state.change("active_representation_path","ui_active_node_reservoir_type_rep")` | `on_active_grid_change` | threshold UI + `_push_active_ijk_state_to_ui` + `slice_dispatch.publish_slice_state` + `clip_dispatch.publish_clip_state` + stats |
-| `@state.change("ui_stats_pinned_paths", …, ui_slices_*)` (big union) | `_on_stats_inputs_change` | `_refresh_descriptive_stats` |
-| `@state.change("fespp_active_panel_id")` | `_on_active_panel_change` | slice/clip publishers, threshold, IJK push, stats, drawer-target follow, `_sync_pvsimple_active_to_target` |
-| `@state.change("drawer_target_view_pinned")` | `_on_drawer_target_pinned_change` | re-anchor follow target |
-| `@state.change("drawer_target_view_id")` | `_on_drawer_target_view_change` | `_sync_pvsimple_active_to_target` + slice/clip/threshold/IJK republish |
-| `@state.change("fespp_render_panels")` | `_on_render_panels_change` | auto-depin + follow re-anchor |
-| `@state.change("ui_threshold_pending_action")` | `_on_threshold_pending_action` | `threshold_dispatch.on_threshold_pending_action` |
-| `@state.change("representation_active")` | `_apply_representation_type` (stores in `ui_rep_type_by_rep`, guarded) | `slicer_dispatch.apply_representation_type` (per-rep) |
-| `@state.change("active_representation_path")` | `_sync_representation_type_from_rep` | re-seeds `representation_active` from `ui_rep_type_by_rep` (guard blocks re-apply) |
-| `@state.change("time_index")` | `changeTimeLabel` | `time_realization.change_time_label` + stats |
-| `@state.change("ui_select_node_surface/well/reservoir")` | per-tab handlers | `selection_dispatch.on_change_ui_select_node_*` |
-| `@state.change("load_mode")` | `on_load_mode_change` | `selection_dispatch.on_load_mode_change` |
-| `@state.change("tree_hierarchy_mode")` | `on_tree_hierarchy_mode_change` | `hierarchy.on_tree_hierarchy_mode_change` |
-| `@state.change("view_reset_camera")` | `view_reset_camera` | `view_ops.on_view_reset_camera` |
-| `@state.change("view_update")` | `view_update` | `view_ops.on_view_update` |
-| runtime `state.change(...)` (not decorator) | `_refresh_panel_mr_specs` / `_refresh_mr_derived` / `_refresh_global_selected` | `realization_dispatch.recompute_*` / `resolve_global_selected` |
-
-Controller methods (`@controller.set` unless noted): `view_update_for(panel_id)`, `load_epc_file`, `connect_to_etp`, `select_etp_dataspace`, `force_etp_refresh`, `update_data_information`, `set_slider_value`, `get_rep_source`, `compute_diff`, `get_rep_chain_proxies`, `toggle_rep_visibility`, `toggle_dataarray_color`, `toggle_marker_visibility`, `apply_panel_coloring`, `toggle_stats_display`, `open_stats_panel`, `threshold_add`, `threshold_delete`, `threshold_set_range`, `threshold_set_visible`, `slice_set`, `clip_set`, `plane_edit_mode_set`, `copy_threshold_chain_from`, `copy_slice_from`, `copy_clip_from`, `copy_ijk_slicers_from`, `apply_pending_selection`, `register_per_view_time_label`. Plus `@controller.add("on_server_ready")` (upload-session id + upload route), `@controller.add("on_data_change") → view_ops.broadcast_view_update`, and `controller.apply_marker_options` set as a plain attribute.
-
-Server triggers (`@server.trigger`, the path Vue templates resolve — controller-set methods are Python-only): `stats_set_original_real_idx`, `stats_set_original_ts_idx`, `stats_pin_original`, `stats_unpin_original`, `stats_compare_toggle`, `stats_compare_clear`, `open_compare_stats`, `open_row_histogram`, `open_compare_distributions`, `toggle_stats_display` (separate from the controller-set one — see gotcha), `set_view_realization`, `set_global_realization`.
-
-**State.** Reads/writes a very large set. Notable direct writes in `boot`: `file_loaded` (`load_epc_file`), `view_update` / `view_reset_camera` / `has_data_loaded_once` (via load + handlers), `ui_scale_z` / `marker_orientation` / `marker_size` (seeded with `setdefault`), `fespp_stats_panel_id` consumers, `ui_distribution_contexts`, `ui_stats_compare_panel`, `ui_stats_compare_dist_panel`, and all the dynamic per-panel `ui_distribution_*_<panel_id>` / `ui_stats_compare_*_<panel_id>` vars. `drawer_target_view_id` / `drawer_target_view_pinned` are read and written across the panel-follow handlers.
-
-**Collaborators.** Imports nearly every dispatch module (`threshold_dispatch`, `slicer_dispatch`, `marker_dispatch`, `slice_dispatch`, `clip_dispatch`, `time_realization`, `realization_dispatch`, `data_load`, `etp`, `visibility`, `active_array`, `diff`, `hierarchy`, `selection_dispatch`, `view_ops`, `stats_dispatch`, `distribution_dispatch`, `compare_matrix`, `panel_resolver`, `source_resolver`), plus `Tree`, `Collector`, `ETPConnector`, `SourceRegistry`, `SceneRegistry`, `Selector`, `Activator`, session/upload IO hooks, `vtk_log`. Both registries are published on `server.context.source_registry` / `server.context.scene_registry`. Called by the app bootstrap (whoever calls `initialize_fespp_engine`); the `multi_view` it talks to lives on `server.context.multi_view`.
-
-**Gotchas.**
-- **Circular-import dance:** `_tree` is mirrored onto the `engine` package object (`import ... as _engine_pkg; _engine_pkg._tree = _tree`) *inside* the function so `app/ui/app_layout.py` and the `source_resolver` helpers can reach the tree without a module-load-time circular import.
-- **`ExplicitSelection` mode** is force-set on the collector proxy so selecting a grid does NOT auto-load its properties (pairs with `select_strategy="independent"` in the VTreeview).
-- **No-op statement bug-smell:** `controller.view_replace` on its own line in `data_load.run`'s caller path — actually `data_load` has `controller.view_replace` as a bare expression (line 240), it does nothing. (Mentioned here because boot wires the controller; see `data_load` gotchas.)
-- **Two `toggle_stats_display` callables** by design: the `@controller.set` one (tree chart icon path) and the `@server.trigger` one (panel × buttons) — the trigger body just calls the controller method so both share the auto-open-stats side effect; kept separate to avoid silent-override gotchas of re-decorating.
-- **The legacy slicer lockstep mirror is deliberately REMOVED** (see the long comment ~lines 461-475): under per-view scenes, re-publishing stale legacy slicer state onto every per-view would clobber per-view divergence. `SceneRegistry.mirror_legacy_ijk_state` survives only for one-shot snapshot/apply.
-- **`_on_active_panel_change` restores `pvsimple` active view in pinned mode** because `multi_view._on_view_activated` calls `SetActiveView(active_panel.pv_view)`, which clobbers the drawer target.
-- **`marker_size` slider applies on RELEASE only** (`@end` → `controller.apply_marker_options`); only `marker_orientation` (a toggle) applies on change. Each apply re-runs the collector over the whole selection, so per-step would be laggy.
-- The file is ~1690 lines; most logic lives in the inner closures rather than the handlers.
+### `fespp_on_trame/engine/boot.py`
+**GONE (2026-09-16).** The former wiring hub (`initialize_fespp_engine`, 1743 lines) had not been executed since the per-view architecture: the application boots through `app/boot.py` (`boot_engine`), which constructs the engine objects, seeds `state_defaults` and registers every handler. The one helper still in use, the ExplicitStructuredGrid plugin locator, lives in `engine/plugins.py` (`resolve_esg_plugin`). Deleted with it, for the same reason: `engine/clip_dispatch.py`, `engine/slice_dispatch.py`, `engine/selection_dispatch.py`, `engine/slicer_dispatch.py` (their live counterparts are the per-view `sources/slice_plane.py`, `sources/clip_plane.py`, the selection invariant of `app/boot.py` and `sources/ijkgrid.py` driven by the Slicers card), `app/ui/tree_views.py` (its one live function, the selection cascade, is now `app/ui/selection_deps.py`), the never-instantiated `widgets/stats`, and twenty state defaults nothing read any more (`animation_delay`, `load_mode`, `ui_slicers_tab`, `fespp_stats_panel_id`, `ui_stats_panel_minimized/maximized`, `ui_slice_enabled`, `ui_clip_enabled`, `ui_slices_*_active`, `ui_threshold_local_ranges`, `vtk_log_visible`…). `tests/unit/test_engine_package_imports.py` now walks every module of the package.
 
 ---
 
-### `fespp_on_trame/app/core/engine/state_defaults.py`
+### `fespp_on_trame/engine/state_defaults.py`
 
 **Responsibility.** Seed (via `state.setdefault`) every Trame state variable the engine and UI assume to exist, in one declarative place so `boot.py` stays focused on lifecycle. Grouped roughly by data-flow stage (selection → loaded → visible → coloured → threshold → diff → stats).
 
 **Key classes / functions.**
 - `init_state_defaults(state) -> None` — called once near the start of `initialize_fespp_engine`. Pure sequence of `state.setdefault(name, default)` calls. It is the **authoritative catalogue of state-var shapes** — the inline comments document the exact dict/list structure of every non-trivial var (read this file to learn the data model). Key buckets and their documented shapes:
   - Selection: `ui_select_node_reservoir/surface/well` (lists), `fespp_data_selectors` (list).
-  - Per-tab active-property sets: `ui_active_node_<tab>_{array_name, rep_path, property_kind, array_path, rep_has_props}` for the three tabs, plus `ui_active_node_reservoir_pending` (selected-but-not-loaded gate) and the threshold-guard dialog vars (`thr_unselect_dialog`, `thr_unselect_dialog_visible`). The legacy shared vars (`active_color_array_name`, `active_property_kind`, `active_representation_path`, `active_color_array_path`, `active_representation_has_properties`) are **projections of the visible tab's set** — see `activator.project_shared_from_tab`.
+  - Per-tab active-property sets: `ui_active_node_<tab>_{array_name, rep_path, property_kind, array_path, rep_has_props}` for the three tabs, plus `ui_active_node_reservoir_pending` (selected-but-not-loaded gate); a refused uncheck (trajectory veto, threshold guard, a trajectory a blocked wellbore pulls back) speaks through the amber snackbar (`empty_color_snackbar_text` / `_visible`) and keeps no state of its own. The legacy shared vars (`active_color_array_name`, `active_property_kind`, `active_representation_path`, `active_color_array_path`, `active_representation_has_properties`) are **projections of the visible tab's set** — see `activator.project_shared_from_tab`.
   - Visibility: `ui_loaded_rep_paths`, `ui_hidden_rep_paths`, `ui_hidden_rep_paths_by_view` (`{panel_id: [rep_path,...]}`).
   - Coloring: `ui_loaded_array_paths`, `ui_active_array_by_rep` (`{rep_path: array_path}`, mirror of active panel), `ui_active_array_by_rep_by_view` (`{panel_id: {rep_path: array_path}}`, source of truth), `ui_loaded_marker_paths`, `ui_visible_marker_paths_by_view`, `panel_has_ts_by_id`.
   - Realizations: `ui_active_realization_by_array_by_view` (`{panel_id: {array_path: idx}}`), `ui_panel_active_mr_specs_by_id`, `panel_has_mr_by_id`, `ui_global_mr_specs`, `ui_global_mr_selected_path`, `ui_global_mr_selected_spec`.
   - Diff / ETP / view-status / VTK-log / upload-progress blocks.
   - Slice plane (`ui_slice_enabled/axis/offset/bounds` + server-resolved `ui_slice_offset_min/max/step`), Clip plane (parallel `ui_clip_*` incl. `ui_clip_inside_out`), `ui_plane_edit_mode` (`"slice"|"clip"|None`).
   - IJK slicer (`ui_range_i/j/k`, `ui_slices_*_list`, `ui_volumes_list`, `ui_volumes_visible_list`, `ui_slices_*_visible_list`, `ui_threshold_chain`, etc.).
-  - Descriptive stats (Brique B): `ui_stats_pinned_paths`, `ui_stats_panel_state`, `ui_stats_tables`, `ui_stats_publish_version`, `ui_per_view_time_pulse`, `ui_stats_compare`, `ui_stats_compare_panel`, `ui_stats_compare_dist_panel`, `ui_stats_compare_items`.
+  - The Statistics view: `ui_compare_parts` (the parts of a grid whose eye is open), `ui_compare_session_rows` (the extracts' rows of its tree), `ui_per_view_time_pulse`. (Its `ui_compare_*` payload is seeded by boot, not here.)
+  - The heavy recomputes. The matrix of the Statistics view reads every cell of a grid, so `app/features/heavy._defer` runs the bar of their views (`ui_view_busy__<id>`, `view_wait`), flushes, yields the event loop one turn (the flag reaches the browser) and computes on the next turn; requests made in the same turn coalesce into one compute. The view keeps its content meanwhile. `controller.heavy_pending()` says whether one is still running — the headless runner waits on it after each step.
   - Drawer target: `drawer_target_view_id` (`""`), `drawer_target_view_pinned` (`False`).
-  - Panel ids / overlay flags: `fespp_stats_panel_id`, `ui_stats_panel_minimized`, `ui_stats_panel_maximized`, `ui_distribution_contexts`, `ui_slicers_tab` (`"ijk"`).
-  - Misc: `ui_scale_z` (`1.0`), `load_mode` (`"auto"`).
+  - Panel ids / overlay flags: `ui_distribution_contexts` (per panel, what it reads: `{array_path, row_kind, row_id, real, ts, item}`, `item` the uid of the Statistics row it follows), `ui_slicers_tab` (`"ijk"`).
+  - Misc: `load_mode` (`"auto"`).
 
 **State.** Writes (defaults-only) every var listed above. Reads none.
 
 **Collaborators.** No imports. Called exactly once by `boot.initialize_fespp_engine`. Every other engine module assumes these defaults are present.
 
 **Gotchas.**
-- Uses `state.setdefault` not `state[...] = ` — re-running it (or a later `setdefault` in boot, e.g. `state.setdefault("ui_scale_z", 1.0)` which appears redundantly in boot) won't clobber a value already set.
+- Uses `state.setdefault` not `state[...] = ` — re-running it (or a later `setdefault` in boot) won't clobber a value already set.
 - The flat vars (`ui_active_array_by_rep`, `ui_hidden_rep_paths`) are documented here as **mirrors of the active panel's per-view bucket**, not independent state — do not write them as if they're authoritative.
-- `ui_descriptive_stats` (`[]`) is legacy Brique-A and kept only so the revert path compiles; Brique B uses `ui_stats_tables`.
-- `ui_stats_publish_version` and `ui_per_view_time_pulse` are **monotonic counters used as Vue `:key` tie-breakers / change pulses**, not real data — they exist to force re-renders (stats table) and to funnel dynamic `time_value_<panel_id>` changes into the static `@state.change` declaration.
-- `ui_stats_compare_visible_metrics_<panel_id>` (seeded in boot, not here) inverts the old `hidden_metrics` semantics — see boot's `_open_compare_stats`.
+- `ui_per_view_time_pulse` is a **monotonic counter used as a change pulse**, not real data — it funnels dynamic `time_value_<panel_id>` changes into the static `@state.change` declaration.
+- `ui_compare_visible_metrics` (seeded in boot, not here) is a **whitelist**, filtered through `compare_matrix._METRIC_KEYS` on every write, so the metrics the Statistics view shows are always canonical keys in canonical order.
 
 ---
 
-### `fespp_on_trame/app/core/engine/data_load.py`
+### `fespp_on_trame/engine/data_load.py`
 
 **Responsibility.** The load-time pipeline driver. `run(...)` fires on every `fespp_data_selectors` change and performs the full sequence: push selectors to the active source, hide the parent multiblock, reserve chip colors, sync the registries, bump pipeline info, notify the activator, maintain all visibility/array/marker/active-array tracking state, refresh threshold + IJK UI, and do a single final Render. The order of operations is load-bearing and heavily commented.
 
@@ -132,90 +72,14 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
 
 ---
 
-### `fespp_on_trame/app/core/engine/selection_dispatch.py`
-
-**Responsibility.** Translate the treeview's per-tab checkbox arrays into pipeline loads, honoring the `auto` vs `manual` load mode.
-
-**Key classes / functions.**
-- `on_change_ui_select_node_surface(state, selector)` / `on_change_ui_select_node_well(state, selector)` / `on_change_ui_select_node_reservoir(state, selector)` — per-tab change handlers; in `auto` mode each immediately calls the corresponding `selector.select_node_*()`. No-op in `manual` mode (toggles only stage state).
-- `apply_pending_selection(selector, activator)` — toolbar Load button entry point (manual mode). Pushes all three tabs (`select_node_reservoir/surface/well`) then calls `activator.refresh_active()`. The refresh is needed because in manual mode the active-node change happened at checkbox time (before the rep existed, so the activator short-circuited); calling state vars directly would be coalesced into a no-op by Trame's flush batching.
-- `on_load_mode_change(selector, activator, load_mode)` — when switching back to `auto`, flush any staged manual selection via `apply_pending_selection`.
-
-**State.** Reads `state.load_mode` (and indirectly the per-tab arrays through the `selector`). Writes none directly.
-
-**Collaborators.** No imports. Operates entirely through the passed `Selector` and `Activator`. Called by boot's per-tab `@state.change` handlers, `@controller.set("apply_pending_selection")`, and `@state.change("load_mode")`.
-
-**Gotchas.**
-- The `selector is not None` guards exist because boot constructs the `Selector` before the tree is fully populated in some paths; defensive.
-- `manual` mode is the only path where `apply_pending_selection` matters — in `auto`, the per-tab handlers already pushed on every toggle, so the Load button is redundant.
+### `fespp_on_trame/engine/selection_dispatch.py`
+**GONE (2026-09-16)** — see `engine/boot.py` above. The per-tab checkbox arrays reach the reader through the selection invariant of `app/boot.py` (`_on_selectors`, `selection_deps._expand_selection_with_deps`); there is no manual load mode any more.
 
 ---
 
-### `fespp_on_trame/app/core/engine/hierarchy.py`
-
-**Responsibility.** Push the FESPP collector's tree-hierarchy mode (flat / by_interpretation / by_feature_and_interpretation) to the C++ side, which triggers a live assembly rebuild, and reset all engine tracking state because the rebuild invalidates every node id / path.
-
-**Key classes / functions.**
-- Module constant `_MODE_NAME_TO_INT = {"flat": 0, "by_interpretation": 1, "by_feature_and_interpretation": 2}`.
-- `push_tree_hierarchy_mode(collector, mode_name) -> bool` — sets the collector proxy's `TreeHierarchyMode` property via `vtkSMPropertyHelper` + `UpdateVTKObjects()` (which triggers `repository.rebuildAssembly()` C++-side). Returns False if the property is absent or on exception. Also called once at boot to seed the initial mode.
-- `on_tree_hierarchy_mode_change(state, controller, collector, tree_hierarchy_mode)` — pushes the new mode, then (if push succeeded) clears every selection / visibility / coloring / marker state var, sets `tree_hierarchy_snackbar_visible` if there was a prior selection, and — when `state.file_loaded` — calls `collector.get_source().UpdatePipeline()` (re-deep-copies the rebuilt assembly into the output) followed by `controller.update_data_information()` to re-parse the Python `Tree`.
-
-**State.** Reads `ui_select_node_reservoir/surface/well`, `fespp_data_selectors`, `file_loaded`. Writes (clears): `ui_select_node_reservoir/surface/well`, `ui_active_node_reservoir/surface/well`, `fespp_data_selectors`, `ui_loaded_rep_paths`, `ui_hidden_rep_paths`, `ui_hidden_rep_paths_by_view`, `ui_loaded_array_paths`, `ui_active_array_by_rep`, `ui_active_array_by_rep_by_view`, `ui_loaded_marker_paths`, `ui_visible_marker_paths_by_view`, and conditionally `tree_hierarchy_snackbar_visible`.
-
-**Collaborators.** Imports `vtkSMPropertyHelper`. `push_tree_hierarchy_mode` is called both at boot (initial seed) and from `on_tree_hierarchy_mode_change`. The latter is wired to `@state.change("tree_hierarchy_mode")` and calls `controller.update_data_information` (which is itself a boot-registered controller method routing through `etp.update_data_information`).
-
-**Gotchas.**
-- ParaView is **not** in auto-apply mode here, so the proxy output keeps the previous assembly's deep copy until `RequestData` runs again — hence the explicit `UpdatePipeline()` before refreshing the tree. Omitting it leaves the Python tree parser reading the stale layout.
-- It clears `ui_active_node_reservoir/surface/well` even though those aren't seeded in `state_defaults.py` — they're created by the active-node machinery elsewhere; the clear is unconditional.
-- A mode switch is a hard reset: all loaded reps disappear and the user must re-select. The snackbar warns them when they had a selection.
-
 ---
 
-### `fespp_on_trame/app/core/engine/visibility.py`
-
-**Responsibility.** Handle tree eye-icon clicks on a representation node and on a wellbore-marker leaf. Both are plain show/hide: **this module never touches colouring** (that is `active_array.toggle_dataarray_color`'s job).
-
-**Key classes / functions.**
-- `toggle_rep_visibility(state, controller, server, source_registry, rep_path, panel_id=None, tree=None)` — the rep eye handler. Resolves `(view, html_view)` and `bucket_key` (panel_id, else active panel, else `"_active"`), flips the rep in `ui_hidden_rep_paths_by_view[bucket_key]`, mirrors to the legacy global `ui_hidden_rep_paths` iff active panel, resolves sources via `source_resolver.sources_for_rep_path`, and Shows/Hides them. On show: for an IjkGrid it calls show(view=view) on ONLY the pipeline that renders in this view — the per-view IjkGrid when the scene has one, else the legacy shared instance (re-showing both painted the legacy full-grid rep_data, whose mode/coloring never track the per-view state, over the per-view crops); for an ExtractBlock rep it re-asserts `Representation` (`state.representation_active`) and `_apply_default_tint(d, grid_color)` on each source's display because non-original panels start with PV defaults. Colour-bar invariant on every flip: show → `reassert_active_scalar_bars` (the hide-side sweep dropped the bar and nothing outside a load batch would re-show it — hide/show of a coloured rep used to lose its legend for good); hide → `hide_unused_scalar_bars` + `layout_visible_scalar_bars`. Finally renders + pushes the html_view (or `controller.view_update()`).
-- `toggle_marker_visibility(state, controller, server, source_registry, tree, marker_path, panel_id=None)` — wellbore-marker eye. Markers display multiple at a time; each renders via its OWN per-`(rep, view)` `EnergisticsExtractor`. Resolves the rep path from the marker leaf, flips `marker_path` in `ui_visible_marker_paths_by_view[bucket_key]`, and calls `rep_in_scene.set_marker_visible(marker_path, new_visible)` on the `RepInScene` (`source_resolver._scene_rep_for_view`). Visibility-only — markers carry no color array.
-
-**State.** Reads/writes `ui_hidden_rep_paths_by_view`, `ui_hidden_rep_paths`, `ui_visible_marker_paths_by_view`. Reads `representation_active`, `solid_color_by_rep`. It no longer touches `ui_active_array_by_rep_by_view` at all.
-
-**Collaborators.** Imports `panel_resolver`, `source_resolver`, and `_apply_default_tint` from `sources.representation`. Calls `IjkGrid.show`, `RepInScene.set_marker_visible`, `pvsimple.Show/Hide/GetDisplayProperties`. Wired to `@controller.set("toggle_rep_visibility")` and `@controller.set("toggle_marker_visibility")`.
-
-**Gotchas.**
-- **Visibility and colouring are ORTHOGONAL — keep them that way.** This eye was once a 3-state chip: its first click "gave up the colouring" (→ SolidColor) via a `_clear_active_array` helper, and only hid on the second, with an `is_frame` exemption so wellbore frames (no own geometry) could escape the intermediate. Hiding a rep therefore always DESTROYED its active array, which made "hide the grid, keep its blocked wellbores coloured by PORO" unexpressible. Both the helper and the frame special case are gone — once the general rule is correct, the exception has no reason to exist. **Symmetrically**, `active_array.toggle_dataarray_color` must never implicitly un-hide/Show a rep: it used to, and it replayed the show on the LEGACY `eb.source` while this hide path targets `sources_for_rep_path` — the two disagreed, so a rep re-shown from there escaped the next hide and lingered on screen in SolidColor.
-- The legacy global `ui_hidden_rep_paths` is only updated when `bucket_key` equals the active panel — it is a mirror, not authoritative.
-- Hide path flips Visibility on EVERY source of the rep (slicers, volume crop, rep_data extractor) so the panel goes dark regardless of which one was rendering; show path delegates IjkGrid mode-selection to `ijk.show()`.
-- When no `html_view` (legacy single-view / unknown panel), it falls back to `controller.view_update()`.
-
----
-
-### `fespp_on_trame/app/core/engine/active_array.py`
-
-**Responsibility.** Drive ColorBy from the per-rep / per-view active-array maps, handle the tree data-array eye toggle, derive the per-panel TimeSeries flag, and (re)apply panel coloring after a view is replicated. This is where scalar coloring actually gets applied to PV displays.
-
-**Key classes / functions.**
-- `on_active_array_change(state, controller, source_registry, tree, ui_active_array_by_rep, server=None)` — fires on global-map mutation. For each loaded rep, reads its active array, looks up the MR realization from the active panel's `ui_active_realization_by_array_by_view` bucket (only when `server` is provided), shows wellbore channels exclusively via `_show_channel_active_view`, applies `source_resolver.apply_color_array`, re-hides displays of reps in `ui_hidden_rep_paths`, and re-asserts slice/clip via each scene's `rep_in_scene.refresh_planes_after_property_change()`.
-- `on_active_array_by_view_change(state, tree, ui_active_array_by_rep_by_view)` — derives `panel_has_ts_by_id` (a panel has TS iff any active array resolves to a `TimeSeries` / `MultiRealizationTimeSeries` node or a descendant of one). Idempotent.
-- `toggle_dataarray_color(state, controller, server, source_registry, tree, array_path, panel_id=None)` — the data-array eye click. Resolves the rep path; toggles `array_path` in `ui_active_array_by_rep_by_view[bucket_key][r_path]` (clicking the active array deactivates → SolidColor; clicking another activates it, evicting the previous). Mirrors to the global map iff active panel. Handles MR realization bookkeeping (clear the dropped MR's slot, seed the new MR's default index). Never touches the rep's visibility (the old implicit "show + color" un-hide is gone — visibility and colouring are orthogonal, and colouring a hidden rep is a legal, useful state). For wellbore channels, re-points the frame's per-view extractor via `rep_in_scene.set_channel_visible(...)` BEFORE coloring, and publishes the viewed channel into the COE state vars (`active_color_array_name/path`, `active_property_kind`, `active_representation_path`) + `controller.update_color_editor`. Applies ColorBy via `apply_color_array(..., clear_on_empty=True)`; on a resolve-to-nothing result it raises the prominent `empty_color_snackbar_*` warning AND rolls the activation back (pops the rep from both active-array maps, releases any MR slot, resets channel COE vars) so the eye returns to SolidColor instead of staying lit on an empty property; on deactivation sweeps stale bars.
-- `apply_panel_coloring(state, source_registry, tree, panel_id, view)` — re-applies ColorBy on every rep coloured in `ui_active_array_by_rep_by_view[panel_id]` for a freshly-replicated view, and explicitly turns on one scalar bar per array (per-view scoped LUT, so each realization keeps its own bar).
-- `_is_channel_rep(element_type_obj) -> bool` — true when the rep's visibility policy is `ONE_AT_A_TIME` (single source of truth via `element_type`, replacing `kind == 'Frame'`).
-- `_show_channel_active_view(tree, rep_path, array_path, view)` — exclusively shows a channel in `view` via its `RepInScene` (no-op otherwise).
-
-**State.** Reads `ui_loaded_rep_paths`, `ui_hidden_rep_paths`, `ui_active_realization_by_array_by_view`, `ui_active_array_by_rep_by_view`, `ui_active_array_by_rep`, `ui_hidden_rep_paths_by_view`. Writes `ui_active_array_by_rep_by_view`, `ui_active_array_by_rep`, `ui_hidden_rep_paths_by_view`, `ui_hidden_rep_paths`, `panel_has_ts_by_id`, and the COE/snackbar vars (`active_color_array_name`, `active_color_array_path`, `active_property_kind`, `active_representation_path`, `empty_color_snackbar_text`, `empty_color_snackbar_visible`). Realization writes go through `realization_dispatch`.
-
-**Collaborators.** Imports `panel_resolver`, `source_resolver`, `realization_dispatch`, `element_type`. Reads `server.context.scene_registry` (lazily via `get_server()`). Calls `apply_color_array`, `resolve_array_for_path`, `hide_unused_scalar_bars`, `RepInScene.set_channel_visible/refresh_planes_after_property_change`, `IjkGrid.show`, `ExtractBlock`. Wired to `@state.change("ui_active_array_by_rep")`, `@state.change("ui_active_array_by_rep_by_view")`, `@controller.set("toggle_dataarray_color")`, `@controller.set("apply_panel_coloring")`.
-
-**Gotchas.**
-- **`apply_panel_coloring` deliberately does NOT raw-write `bar.Visibility = 1`** — it relies on `apply_color_array`'s `display.SetScalarBarVisibility(view, True)` (via `vtkSMTransferFunctionManager`). Raw writes desync per-view LUT bookkeeping and surface duplicate bars on other views (bug seen when Stats/Distribution panels triggered `apply_panel_coloring`).
-- **Channel ordering trap:** for a wellbore frame, the channel `set_channel_visible(...)` SHOW must happen before `apply_color_array` because `resolve_array_for_path` reads the channel's own extractor arrays; coloring first would miss them.
-- The MR realization bucket interactions are subtle — `toggle_dataarray_color` clears the previous MR slot and seeds the new one's default index so the resolver can find a suffixed `<title>_real_<idx>` array.
-- `on_active_array_change` skips the MR realization lookup entirely when `server is None` (falls back to the legacy unsuffixed array name).
-
----
-
-### `fespp_on_trame/app/core/engine/source_resolver.py`
+### `fespp_on_trame/engine/source_resolver.py`
 
 **Responsibility.** Free-function helpers (extracted from boot closures) that resolve a rep path to its rendered/colorable PV sources, displays, and VTK array names, and that apply ColorBy / SolidColor with the PV6 workarounds and per-view scoped LUTs. Each takes its dependencies explicitly — no module-level state.
 
@@ -228,7 +92,7 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
 - `blocked_wellbore_rep_paths_for(tree, rep_path) -> [path]` — the BlockedWellbore rep paths grouped under the same GridContainer as a grid geometry rep (empty for non-grids).
 - `_mirror_color_to_blocked_wellbores(source_registry, tree, rep_path, assoc, name, view)` — FESPP mirrors a grid's CELL arrays onto its blocked wellbores (same names, restricted to the crossed cells); this mirrors the **ColorBy** too, so the wells follow the grid's active property — including while the grid is hidden. Hooked into `apply_color_array` on all three outcomes (apply / deselect-clear / empty-clear), BEFORE the orphan-bar sweep: the wellbore displays reference the same scoped LUT, which is what keeps the shared colour bar alive when the grid itself is hidden. Skips unchecked wellbores (no displays → no load).
 - `hide_unused_scalar_bars(view=None)` — `vtkSMTransferFunctionManager.UpdateScalarBars(view.SMProxy, 1)` sweep.
-- `layout_visible_scalar_bars(view=None)` — spreads the visible colour bars over a fixed 4-corner rotation (lower-right, upper-right, upper-center, lower-center — left column reserved for the orientation axes and in-view toolbar), in stable representation-list order. Bars past the 4th re-stack on the last spot: accepted V1 limitation (`PlaceInView` delegation was tried and had no visible effect in this remote-render setup); a real layout manager is V2 work. Called at the end of `apply_color_array` (after the sweep) and of `reassert_active_scalar_bars`.
+- `layout_visible_scalar_bars(view=None)` — spreads the visible colour bars over a fixed 4-corner rotation (lower-right, upper-right, upper-center, lower-center — left column reserved for the orientation axes and in-view toolbar), in stable representation-list order. Bars past the 4th re-stack on the last spot: accepted limitation (`PlaceInView` delegation was tried and had no visible effect in this remote-render setup); a real layout manager is future work. Called at the end of `apply_color_array` (after the sweep) and of `reassert_active_scalar_bars`.
 - `reassert_active_scalar_bars(state, source_registry, view=None)` — end-of-load-batch invariant "the active array's bar is visible": for every `(rep → array)` in `ui_active_array_by_rep`, re-shows the bar of the first visible bound display. Exists because an unidentified writer raw-hides freshly shown bars mid-batch (bypasses every helper here; two probe rounds could not name it). Ends with `layout_visible_scalar_bars`.
 - `swap_to_scene_tfs(displays, target_view, array_name) -> (scene_lut, scene_pwf)` — rebinds each display's `LookupTable`/`ScalarOpacityFunction` to the per-`(scene, array)` proxies so a COE edit doesn't bleed across views. Returns `(None, None)` for legacy/pre-scene views.
 - `resolve_target_scoped_lut(array_name) -> (base, scene_lut)` — for COE-style edit panels: resolves the UI title into the per-(drawer-target scene, MR-suffixed base) LUT.
@@ -255,13 +119,13 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
 
 ---
 
-### `fespp_on_trame/app/core/engine/panel_resolver.py`
+### `fespp_on_trame/engine/panel_resolver.py`
 
 **Responsibility.** Tiny per-panel resolution helpers shared by `visibility` and `active_array` dispatch: translate a panel id into the right PV view / HTML view, with a legacy active-view fallback.
 
 **Key classes / functions.**
 - `resolve_view_and_html_view(server, panel_id) -> (pv_view, html_view)` — asks `server.context.multi_view.get_pv_view(panel_id)` / `get_html_view(panel_id)`. Returns `(pvsimple.GetActiveView(), None)` when `panel_id` is empty/unknown or no multi_view is mounted; if only the pv_view lookup misses, falls back to the active view but keeps any html_view.
-- `active_panel_id(server) -> str | None` — `multi_view._active_panel_id` coerced through `view_routing.resolve_active_render_panel`: the focused dockview panel can be a stats/distribution tab, and every caller here writes a colour or visibility bucket keyed by view — a non-render id would strand the write in a bucket no tree annotation or render path ever reads. None when no multi-view is mounted yet.
+- `active_panel_id(server) -> str | None` — `multi_view._active_panel_id` coerced through `view_routing.resolve_active_render_panel`: the focused dockview panel can be a statistics or distribution tab, and every caller here writes a colour or visibility bucket keyed by view — a non-render id would strand the write in a bucket no tree annotation or render path ever reads. None when no multi-view is mounted yet.
 
 **State.** None.
 
@@ -273,20 +137,23 @@ Server triggers (`@server.trigger`, the path Vue templates resolve — controlle
 
 ---
 
-### `fespp_on_trame/app/core/engine/view_ops.py`
+---
 
-**Responsibility.** Re-arm the `view_reset_camera` / `view_update` sentinel state vars after firing, and broadcast a refresh to every panel on data change.
+## The selection invariant (`app/boot.py`, 2026-09-13)
 
-**Key classes / functions.**
-- `on_view_reset_camera(state, controller, source_registry, value)` — no-op unless `value is True`; refreshes per-block visibility on every loaded IjkGrid (`ijk.update_block_visibility()`), calls `controller.view_reset_camera()` + `controller.view_update()`, then resets `state.view_reset_camera = False` and `state.flush()`.
-- `on_view_update(state, controller, value)` — no-op unless `value is True`; calls `controller.view_update()`, resets `state.view_update = False`, `state.flush()`.
-- `broadcast_view_update(server)` — the `@controller.add('on_data_change')` callback; calls `controller.view_update_all()` (refresh every panel) when present, else falls back to `controller.view_update()`.
+`selected_paths` is the ONE channel that loads: the data tree writes it, `_on_selected` watches it, `_apply_selection` expands it (cascades, the property → representation pull, the blocked-well trajectory pull, the vetoes) and hands the effective set to `fespp_data_selectors`. The expansion is a **delta machine**: it compares what it is given against `_prev_selected["paths"]`, its own baseline, and reads what left the set as an untick to cascade. The invariant that makes that safe is
 
-**State.** Reads/writes `view_reset_camera` and `view_update` (re-arms them to `False`).
+> after every call, `state.selected_paths == _prev_selected["paths"]`.
 
-**Collaborators.** No imports. Calls `controller.view_reset_camera/view_update/view_update_all`, `source_registry.ijk_grids() → ijk.update_block_visibility()`. Wired to `@state.change("view_reset_camera")`, `@state.change("view_update")`, `@controller.add("on_data_change")`.
+A tick made in a **panel's** tree does not come through that variable — it calls `_apply_selection` directly, through `_panel_tick_read` — so it passes **`push=True`**, and the write at the end of `_apply_selection` is then unconditional (`state.selected_paths = eff_paths`, plus `state.dirty`, since trame drops a write equal to the value it holds). Without it the write was skipped whenever the expansion added nothing to what the caller already listed — the common case, since the property's representation was already selected — and the baseline advanced alone: the session's selection stayed one property behind, and the NEXT tick in the data tree (whose widget sends its own list, which never held that property) read it as newly unticked and unloaded it, taking the figures of its row in the Statistics view with it.
 
-**Gotchas.**
-- The sentinel re-arm pattern (`= False` + `state.flush()`) exists because Trame collapses identical writes into no-ops; without re-arming, a second `view_update = True` request after a previous one would never fire.
-- Camera reset specifically also refreshes IjkGrid per-block visibility because block visibility is a slicer-side concept the PV camera reset alone wouldn't account for.
-- `on_*` use the explicit `value != True` / `value is True` comparison (not just truthiness) — a stray truthy non-`True` value won't trigger the handler.
+Two per-view baselines sit beside it, for the same reason in the opposite direction — a two-way tree's ticks are rewritten by the server, and that rewrite fires the tree's own watcher straight back:
+
+- `_compare_published[vid]` — the paths last published to `compare_tree_selected__<vid>`. `compare_tree_paths` returns early on an incoming set equal to it. Without that, a folder tick re-synced the tree to its 27 leaves, re-entered, and posed a SECOND question over the first: the single `_tick_ask` slot then held the second gesture's callbacks, so `Cancel` restored the 27 already taken in and left the reader with 27 ticked boxes and 27 empty rows blaming the file.
+- `_welllog_published[vid]` — the tick set last published to `welllog_tree_selected__<vid>` (the wells AND what the panel draws under them, `_welllog_ticks`). `welllog_tree_wells` reads an untick against **that**, never against `selected_paths`: a node the tree never showed ticked was never the reader's to untick. The tree seeds itself through `controller.welllog_tree_ticks(vid)` for the same reason — seeded with the wellbores alone, the very first watcher call on a panel opened over a full log read as "the reader has just unticked all 176 read nodes", `welllog_dropped__<vid>` swallowed the trajectory, every frame and every channel, and the panel drew nothing under an empty state saying no curve had been read.
+
+`_ask_tick` refuses a second question while one stands: the standing box keeps its answers and the newcomer steps back at once through its own `on_no`, which is what a cancel does anyway. Both baselines are pruned to the open panels by the `_sync_*_trees` that write them, so a closed view leaves nothing behind.
+
+`_apply_selection` also takes **`on_go`**, the third hook: what puts the ticked object in the panel, run only when the read goes ahead. Filling the panel first — taking the well into the log — showed the reader a panel already holding what the box behind it was still asking about, each row saying its dataset could not be read. With `on_go` the refusal has nothing to undo: `on_no` puts the tree's checkboxes back and that is all.
+
+The log's `on_go` (`_hold`) re-syncs its own tree ONLY when the wells did not move. When they did, `_on_welllog_inputs` — which watches `ui_welllog_wells` and `selected_paths` — does it after the read; writing the boxes in the same flush as the read instead sent a stale echo (the wells alone) back through the tree's watcher, against a baseline the read had already advanced to the full tick set, and the log dropped all 176 nodes the tick had just brought in. `welllog_tree_wells` returns early on a tick set equal to what the server last published, for the same reason.

@@ -1,10 +1,14 @@
 # Core — Element Types (strategy hierarchy)
 
+> **19/10/2026 — the per-representation model is gone (overhaul, decision Q2 bis).** `RepInScene`, `ViewScene`, `SceneRegistry`, the activator, the legacy visibility and active-array dispatch, the slice / clip planes and the `FESPP_BLOCKSCOPE` flag were removed: each view draws through its composite scene (`engine/blockscope`), a cut or filtered grid through its `GridIsolate`. A passage below that still names them describes removed code.
+
+> **Read this first (2026-09-16).** The package is `fespp_on_trame/engine/element_type/` today. On the BlockScope path the hierarchy still decides the visibility policies (one channel at a time for a log frame, many markers at once) read by `boot._apply_eye_change`; the per-(rep, view) source building it describes (`ensure_extractor`, `rendered_sources`, …) is the legacy path (`FESPP_BLOCKSCOPE` unset).
+
 ## Overview
 
 The `element_type` package is the **single source of truth for "how does a RESQML element of this runtime `kind` behave"**. Before this refactor (called *the ElementType refactor* / *Step 3* in the docstrings), the answer was scattered across the tree, tracking, eye, visibility, colour and source layers as `if kind == "IjkGrid"` / `if kind == "Frame"` style branches. The package replaces every one of those branches with a **stateless polymorphic singleton** per kind, selected once via an O(1) dict lookup and then asked questions (`is_grouping()`, `eye_descriptor()`, `tracking_bucket()`, `visibility_policy()`, …) or told to act (`set_child_visible(...)`, `ensure_extractor(...)`, `refresh_primary_visibility(...)`).
 
-The design has two pillars. **(1) A three-level class hierarchy — general → family → unit** — so behaviour is written at the *highest* level where it is correct and never higher: the base `ElementType` holds the neutral contract; `Grouping` / `Representation` / `Leaf` are the families; concrete units (`IjkGridRep`, `ChannelFrameRep`, `MarkerLeaf`, …) override only what deviates. **(2) "Option A" statelessness** — the singletons hold *no* per-(rep, view) state. The state lives on a `RepInScene` object (`ris`) in the source layer (`fespp_on_trame/app/core/sources/rep_in_scene.py`). `RepInScene` resolves its `ElementType` once (cached on `self._element_type_cache`, via `element_type.for_path`) and then delegates every per-kind method to it, **passing itself as the first argument `ris`** so the stateless singleton can read and write the per-(rep, view) state (`ris._extractor`, `ris._per_view_ijk`, `ris._channel_extractors`, `ris._marker_extractors`, `ris.scene`, …). The single most important behavioural fork in the whole package is `FrameRep.set_child_visible`: channels are **EXCLUSIVE** (one log shown at a time) while markers are **MULTI** (N markers at once) — and the secondary fork is `FrameRep._apply_child_z`: channel children **scale** Z (log tubes follow the well) while markers **translate** Z (a sphere must stay a sphere, not stretch into an olive).
+The design has two pillars. **(1) A three-level class hierarchy — general → family → unit** — so behaviour is written at the *highest* level where it is correct and never higher: the base `ElementType` holds the neutral contract; `Grouping` / `Representation` / `Leaf` are the families; concrete units (`IjkGridRep`, `ChannelFrameRep`, `MarkerLeaf`, …) override only what deviates. **(2) "Option A" statelessness** — the singletons hold *no* per-(rep, view) state. The state lives on a `RepInScene` object (`ris`) in the source layer (`fespp_on_trame/engine/sources/rep_in_scene.py`). `RepInScene` resolves its `ElementType` once (cached on `self._element_type_cache`, via `element_type.for_path`) and then delegates every per-kind method to it, **passing itself as the first argument `ris`** so the stateless singleton can read and write the per-(rep, view) state (`ris._extractor`, `ris._per_view_ijk`, `ris._channel_extractors`, `ris._marker_extractors`, `ris.scene`, …). The single most important behavioural fork in the whole package is `FrameRep.set_child_visible`: channels are **EXCLUSIVE** (one log shown at a time) while markers are **MULTI** (N markers at once) — and the secondary fork is `FrameRep._apply_child_z`: channel children **scale** Z (log tubes follow the well) while markers **translate** Z (a sphere must stay a sphere, not stretch into an olive).
 
 > The `KINDS` strings throughout are the **runtime** kinds (the output of the C++ `SimplifyXmlTag`: `'Frame'`, `'MarkerFrame'`, `'Marker'`, `'Sub'`, …), **not** the C++ enum names. The package is import-safe without a ParaView runtime: every `paraview` / `trame` / `sources.*` import is *local to the method*, so the package stays a leaf with no import cycle into the source layer, and the unit tests can import it bare.
 
@@ -45,7 +49,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/__init__.py`
+### `fespp_on_trame/engine/element_type/__init__.py`
 
 **Responsibility.** Package entry point: documents the three-level hierarchy and re-exports the entire public API so that legacy `from fespp_on_trame.app.core import element_type` callers keep working unchanged after the module split (`element_type.for_kind`, `element_type.IjkGridRep`, `element_type.BUCKET_ARRAY`, `element_type.VisibilityPolicy`, …).
 
@@ -59,7 +63,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/enums.py`
+### `fespp_on_trame/engine/element_type/enums.py`
 
 **Responsibility.** The contract *value types*: the policy enums, the eye descriptor class, the tracking-bucket string tokens, and the three **singleton** eye descriptors returned by reference so building a large tree allocates nothing per node.
 
@@ -80,7 +84,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/base.py`
+### `fespp_on_trame/engine/element_type/base.py`
 
 **Responsibility.** Defines `ElementType` — the base contract plus *neutral default* behaviour (a plain standard representation). The base is only ever *directly* instantiated as the unknown-kind fallback; every concrete family overrides its own defaults.
 
@@ -108,7 +112,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/grouping.py`
+### `fespp_on_trame/engine/element_type/grouping.py`
 
 **Responsibility.** The pure organisational folders (no VTK source of their own; C++ `MapperType::Folder` / `isGroupingType`).
 
@@ -124,7 +128,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/representation.py`
+### `fespp_on_trame/engine/element_type/representation.py`
 
 **Responsibility.** The eye-bearing renderables: geometry + an eye + a per-view source. Holds the family defaults (REP eye, rep tracking bucket, STANDARD show/hide, COLORABLE) and the actual ParaView source-construction / visibility logic for standard reps, plus the modal `IjkGridRep` override.
 
@@ -164,7 +168,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/frames.py`
+### `fespp_on_trame/engine/element_type/frames.py`
 
 **Responsibility.** The wellbore-frame types and their *dual nature*: a **FOLDER** in the tree (tri-state, no own eye, checking selects all children) but a **Representation** in the source layer (owns the clone + render anchor; children render via their own per-(child, view) extractors, so the frame's primary extractor stays hidden — C++ `MapperType::MapperSet`). These classes also own the per-type *child* behaviour (the strategy pattern, Option A).
 
@@ -202,7 +206,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/leaf.py`
+### `fespp_on_trame/engine/element_type/leaf.py`
 
 **Responsibility.** Leaf element types — sub-elements of a representation, not reps themselves and with no source of their own. A property *colours* its parent rep; a marker toggles ONE marker's visibility.
 
@@ -219,7 +223,7 @@ registry.py
 
 ---
 
-### `fespp_on_trame/app/core/element_type/registry.py`
+### `fespp_on_trame/engine/element_type/registry.py`
 
 **Responsibility.** Build the kind→singleton registry once at import and expose the resolvers: `for_kind` (O(1) dict lookup) and `for_path` (resolve via a tree node's live runtime kind), with a generic standard `Representation` as the unknown/None fallback.
 

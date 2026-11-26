@@ -1,5 +1,7 @@
 # Core (root), IO & Utils
 
+> **Read this first (2026-09-16).** The modules are under `fespp_on_trame/engine/` today (`engine/tree.py`, `engine/selector.py`, `engine/activator.py`, `engine/io/`, `engine/utils/`); the three tree tabs are drawn by the `widgets/tree` widget from `assembly_xml`, and a tick goes through `selected_paths` → `boot._apply_selection` ([[Architecture]] §3a). `numfmt.py` and `csv_export.py` (`engine/utils`) are the server-side twins of `widgets/_shared/numfmt.js` and `csvexport.js`.
+
 ## Overview
 
 This page covers the "glue" layer of the Trame app: the small root-level core classes that translate UI tree interactions into ParaView/FESPP actions (`selector.py`, `activator.py`, `tree.py`, plus the per-node companion objects `timeseries.py` and `wellhead.py`), the IO subsystem that gets EPC/H5 files into the process (`http_download.py`, `upload_endpoint.py`, `temp_dir.py`, `session_hooks.py`), the stateless string/color/tree utilities (`naming.py`, `color_palette.py`, `search_node.py`), the global constants module, and the process entry point (`__main__.py`).
@@ -8,13 +10,13 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/core/selector.py`
+### `fespp_on_trame/engine/selector.py`
 **Responsibility.** Translates the per-tab `ui_select_node_*` checkbox ID lists into assembly paths and writes the concatenated result into `state.fespp_data_selectors`. Also creates/destroys the per-kind companion objects (`Wellhead`, `TimeSeries`) tied to specific node kinds in the current selection.
 
 **Key classes / functions.**
 - `class Selector` — Holds three private per-tab path lists (`_selection_path_reservoir`, `_selection_path_surface`, `_selection_path_well`), a list of live `Wellhead`s (`_wellheads`), and a per-tab dict of live `TimeSeries` companions (`_timeseries = {tab: TimeSeries}`). `state.fespp_data_selectors` is always rebuilt as `reservoir + surface + well` so order is stable.
   - `__init__(self, tree: Tree)` — stores the `Tree`, initializes the empty path/companion lists, and `state.setdefault("first_selection", True)`.
-  - `apply_z_scale(self, zscale)` — forwards the global Z exaggeration to every live `Wellhead` (the `Selector` owns them). Wellheads are Text reps with no `Scale` and absolute anchors, so the z-scale fan-out skips them and they need this explicit re-anchor — see `Wellhead.apply_z_scale`. Called from the `@state.change("ui_scale_z")` handler in `boot.py`, which covers BOTH z-scale entry points (the `TransformationEditor` persists its value into `ui_scale_z` before applying).
+  - `apply_z_scale(self, zscale, view_id=None)` — forwards a view's Z exaggeration to its live `Wellhead`s, every one when None (the `Selector` owns them). Wellheads are Text reps with no `Scale` and absolute anchors, so the z-scale fan-out skips them and they need this explicit re-anchor — see `Wellhead.apply_z_scale`. Called by `_apply_zscale` (app/features/thresholds), the one path of the view's slider, its field and a session restore.
   - `optimize_tree_selection(self, selected_items)` — **Identity function now** (returns `list(selected_items)` or `[]`). It used to collapse "all children selected" groups to their parent path; that behavior is disabled under `ExplicitSelection=1`. The UI-side dependency expansion (auto-checking a Trajectory when a Channel/Marker is checked, auto-checking grouping descendants) happens in `tree_views.py` *before* this runs, so the input is already complete.
   - `select_node_surface(self)` — calls `_reset_timeseries("surface", ...)` (re-creates THIS tab's `TimeSeries` companion from its selection; other tabs keep theirs, and the time label deleted alongside it is restored from any surviving companion), resolves each ID to a path via `tree.find_path`, stores into `_selection_path_surface`, rebuilds `fespp_data_selectors`, flips `first_selection` False, sets `view_update = True`.
   - `select_node_well(self)` — same shape; additionally deletes and re-creates `Wellhead` companions for every checked `Trajectory` node (rebuilds `_wellheads` from scratch each call), and resets the WELL tab's `TimeSeries` slot via `_reset_timeseries`.
@@ -32,7 +34,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/core/timeseries.py`
+### `fespp_on_trame/engine/timeseries.py`
 **Responsibility.** Companion object for a `TimeSeries` tree node. Locks the property's color LUT range to the series' `(minvalue, maxvalue)` so the colormap is comparable across timesteps, and refreshes `state.ui_time_label` from the current ParaView TimeKeeper value.
 
 **Key classes / functions.**
@@ -53,16 +55,16 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/core/wellhead.py`
+### `fespp_on_trame/engine/wellhead.py`
 **Responsibility.** Renders a flagpole text label at the MD datum of a `WellboreTrajectory`, colored from the wellbore's `colorRGB` when available.
 
 **Key classes / functions.**
 - `class Wellhead`
   - `__init__(self, tree: Tree, node_id)` — reads the node's `title` and `mdDatumPosition` attributes. When `mdDatumPosition` exists, creates a `pvsimple.Text(registrationName=title + "_mdDatum")` proxy with `Text = 'A'`, shows it in the active view, sets `display.TextPropMode = 'Flagpole Actor'`, parses the comma-separated `mdDatumPosition` into `BasePosition`/`TopPosition` (raising the top Z by `0.01`), sets `FlagSize = 1.5`, and — if `tree.find_parent_attribute_value(node_id, "colorRGB")` returns a value — converts the `r,g,b` 0–255 triple to 0–1 floats and sets `display.Color`. Calls `pvsimple.Show(...)` a second time at the end.
-  - `apply_z_scale(self, zscale)` — re-anchors the flagpole (`BasePosition` / `TopPosition`) and the billboard (`BillboardPosition`) at `z * zscale`, always re-derived from the UNSCALED `mdDatumPosition` baseline kept in `_position`. Called by `Selector.apply_z_scale` (driven by the `ui_scale_z` handler in `boot.py`) and once at the end of `__init__`, so a wellhead created while an exaggeration is already active lands on the scaled trajectory instead of the raw datum.
+  - `apply_z_scale(self, zscale)` — re-anchors the flagpole (`BasePosition` / `TopPosition`) and the billboard (`BillboardPosition`) at `z * zscale`, always re-derived from the UNSCALED `mdDatumPosition` baseline kept in `_position`. Called by `Selector.apply_z_scale` (driven by `_apply_zscale`, app/features/thresholds) and once at the end of `__init__`, so a wellhead created while an exaggeration is already active lands on the scaled trajectory instead of the raw datum.
   - `delete(self)` — `pvsimple.Delete(self._source)` if a source was created; also drops the `_head` / `_label` rep handles (they point at proxies just deleted).
 
-**State.** Reads `state.ui_scale_z` (at construction, to land on the current exaggeration). Otherwise operates on ParaView proxies, not Trame state.
+**State.** Reads `ui_scale_z__<view>` (at construction, to land on the view's exaggeration). Otherwise operates on ParaView proxies, not Trame state.
 
 **Collaborators.** `pvsimple.Text`, `pvsimple.Show`, `pvsimple.GetActiveView`, `pvsimple.Delete`. `Tree.find_title`, `Tree.find_attribute_value`, `Tree.find_parent_attribute_value`. Constructed/deleted by `Selector.select_node_well`.
 
@@ -76,7 +78,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/core/activator.py`
+### `fespp_on_trame/engine/activator.py`
 **Responsibility.** Reacts to active-node changes in the three trees (`ui_active_node_reservoir/surface/well`), updates the Attributes panel + LUT/PWF/scalar-bar for the active node, and re-applies ColorBy when the per-rep "eye" is open. It deliberately does NOT own ColorBy itself — that is owned by `state.ui_active_array_by_rep` (the eye state); this class only refreshes panel state and re-applies coloring as a side effect.
 
 **Per-tab scoping & projection.** Each tab's activation path writes ONLY its own `ui_active_node_<tab>_*` scoped set; the legacy shared vars every colour consumer reads (`active_color_array_name` / `active_property_kind` / `active_representation_path` / `active_color_array_path` / `active_representation_has_properties`) are re-computed from the VISIBLE tab's set by the module-level `project_shared_from_tab()` (also fired by a `@state.change("tab")` watcher, re-firing `update_color_editor` when the projected array changes so COE/categorical panels repopulate on tab return). Another tab's activity can therefore never clobber what the displayed tab's panels show; explicit `update_color_editor` calls in the activation paths are guarded on `state.tab == tab` for the same reason. Additional reservoir-side rules: a **BlockedWellbore** activation remaps the reservoir rep to its supporting grid (thresholds/slicers panels stay bound to the grid, read-only); `ui_active_node_reservoir_pending` publishes "selected but not loaded yet" (recomputed by `refresh_active()` after every load); the reservoir array name is best-effort seeded from the sanitized node title at activation, then upgraded to the array actually found on the data by the editor refresh.
@@ -87,7 +89,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
   - `_nan_opacity_from_state()` — parses `state.nan_color` (`#RRGGBBAA`) and returns the alpha as a 0–1 NaN opacity (default `0.0` = transparent).
   - `_all_displays_for_rep(rep_block_path, rep_type, view, target_source=None, target_display=None, source_registry=None, ijk_lookup=None)` — enumerates every display proxy rendering a rep so ColorBy can fan out to chain/slicer proxies. UG path pulls chain proxies from `source_registry.all_chain_proxies`; IJK path enumerates `ijk.all_render_sources()` per-grid; both then add the `rep<sanitized_path>` ExtractBlock filter. Dedupes by `id()`.
   - `_drill_to_inner(vtk_out)` — if the output is a `vtkPartitionedDataSetCollection`, returns its first inner partition; otherwise returns the object unchanged.
-  - `_GROUPING_KINDS` — tuple of grouping kinds duplicated from `tree_views.py`/C++ `enum.h` to avoid a circular import; includes `Frame`/`MarkerFrame` (folders-for-selection that activate via a checked child).
+  - `_GROUPING_KINDS` — the `node_kinds.GROUPING_KINDS` list (C++ `enum.h`), shared with `app/ui/selection_deps.py`; includes `Frame`/`MarkerFrame` (folders-for-selection that activate via a checked child).
 - `class Activator`
   - `__init__(self, tree: Tree, source_registry=None, ijk_lookup=None)` — stores the tree, the source registry, and `ijk_lookup` (a callable `rep_path → IjkGrid | None`). Initializes `_current_array_by_rep` (per-rep "which array is colored" map, used for scalar-bar reaping). `setdefault`s many `ui_active_node_*` / `active_*` state vars and registers three `@state.change` handlers.
   - `_is_node_active_able(self, node_id, select_list)` → bool — the authorization gate: a **property leaf** (`*Property*` / `TimeSeries` / `MultiRealization*`) is activatable ONLY when its own id is checked; a **rep/grouping/intermediate** node is activatable when checked, under a checked grouping/rep, or has a checked descendant. Prevents unchecked sibling properties from activating (a fixed bug).
@@ -111,13 +113,13 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 - Two long inline `NOTE:` comments warn against raw-writing `scalar_bar.Visibility` (lines ~598 and ~626): raw writes bypass `vtkSMTransferFunctionManager` bookkeeping and leave stale/duplicate bars on *other* views under per-view LUT scope. Bar visibility must go through `SetScalarBarVisibility` / the manager.
 - The LUT range MUST be rescaled last and directly from the VTK array — the proxy info cache is stale for arrays added in-place by the C++ pipeline, so any earlier `RescaleTransferFunctionToDataRange` silently yields `[0,1]` (renders like Solid mode).
 - `on_data_loaded()` is only called for time-series properties because it does expensive Vue work (~50–100 ms) only useful for resetting the time slider.
-- `_GROUPING_KINDS` is duplicated here on purpose to avoid a circular import with `tree_views.py`; keep the two lists in sync.
+- `_GROUPING_KINDS` comes from `engine/node_kinds.py`, the one list `app/ui/selection_deps.py` reads too.
 - IJK source resolution deliberately never globs `pvsimple.GetSources()` — it goes through `ijk_lookup` per grid to avoid latching onto a sibling grid's slicer.
 - Rejecting a node sets `ui_active_node_* = []`, which re-fires the handler on the next Trame flush through the "cleared" branch (two handler passes per rejection).
 
 ---
 
-### `fespp_on_trame/app/core/tree.py`
+### `fespp_on_trame/engine/tree.py`
 **Responsibility.** Wraps the C++-built `vtkDataAssembly` and exposes Python lookup helpers. `set_tree()` re-parses the live assembly into the three Trame state lists (`ui_subtree_reservoir/surface/well`); everything else is read-only navigation.
 
 **Key classes / functions.**
@@ -129,7 +131,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
   - `add_subtreeview_data(self, parent_id, child_index, treeview_type, disabled=False)` — recursive walker building one child's nested treeview dict (`{"treeview": {...}, "treeview_type": str}`); reads `label`/`title`/`kind`/`propKind`/path, marks partials, routes unknown tab type from `kind` (or `supporttype` for partials), computes `rep_path`, `is_grouping`, `eye`, primary icon, `is_ts`/`is_mr` badges, `descendant_ids` (groupings only), and `disabled`. Sorts children with `_sibling_sort_key`. Skips internals of `MultiRealization`/`MultiRealizationTimeSeries` (they are leaves).
   - `_resolve_dispatch_kind(self, node_id)` — recurses into `Feature`/`Interpretation` grouping subtrees to find the first non-grouping descendant kind, used to route an alternate-hierarchy-mode top-level grouping to the right tab.
   - `set_tree(self, data_assembly)` — rebuilds the three `_data_hierarchy_*` lists from the assembly root, dispatching each top-level node to reservoir/surface/well (via `dispatch_kind`, resolving Feature/Interpretation through `_resolve_dispatch_kind`), then sorts and writes `state.ui_subtree_reservoir/well/surface`. Top-level items carry the SAME `is_grouping` / `descendant_ids` fields as `add_subtreeview_data`'s — `set_tree` used to omit them, so every top-level envelope (Wellbore folders, the GridContainer) rendered a plain binary checkbox while its nested folders showed the tri-state.
-  - Navigation helpers (all read-only, return `None`/default for `node_id == 0` or null assembly): `find_ijkgrid(node_id)` (label of nearest IjkGrid ancestor), `find_parent_node_id_with_type(node_id, type)`, `find_first_child_of_type(node_id, type)`, `find_all_descendant_ids(node_id)`, `find_all_selectable_descendant_ids(node_id)` (excludes partials), `find_ijkgrid_property_name(node_label, list_selected)`, `find_path(node_id)`, `find_type(node_id)` (returns `kind`), `find_title(node_id)`, `find_label(node_id)`, `find_node_id(path)`, `find_representation_node(node_id)` (walk up to a `_representation_type_in` kind), `find_representation_type(node_id)`, `has_property_descendant(node_id)` (bool), `find_attribute_value(node_id, attr)`, `find_parent_attribute_value(node_id, attr)` (walk up).
+  - Navigation helpers (all read-only, return `None`/default for `node_id == 0` or null assembly): `find_ijkgrid(node_id)` (label of nearest IjkGrid ancestor), `find_parent_node_id_with_type(node_id, type)`, `find_first_child_of_type(node_id, type)`, `find_all_descendant_ids(node_id)`, `find_all_selectable_descendant_ids(node_id)` (excludes partials), `find_ijkgrid_property_name(node_label, list_selected)`, `find_path(node_id)`, `find_type(node_id)` (returns `kind`), `find_title(node_id)`, `find_rep_title(rep_id)` (the name a user knows a representation by: a grid's rep node is its geometry LEAF, literally titled `SolidColor` in the grid-folder layout, so the enclosing `GridContainer`'s title is returned instead — a row of the Statistics view, the Volumetrics grid title / CSV name and the health rows all read it), `find_label(node_id)`, `find_node_id(path)`, `find_representation_node(node_id)` (walk up to a `_representation_type_in` kind), `find_representation_type(node_id)`, `has_property_descendant(node_id)` (bool), `find_attribute_value(node_id, attr)`, `find_parent_attribute_value(node_id, attr)` (walk up).
 
 **State.** `setdefault`s and writes `state.ui_subtree_reservoir`, `state.ui_subtree_surface`, `state.ui_subtree_well`.
 
@@ -162,7 +164,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/io/session_hooks.py`
+### `fespp_on_trame/engine/io/session_hooks.py`
 **Responsibility.** Trame client-session lifecycle accounting: counts connected clients and drops the shared upload temp directory when the last one disconnects.
 
 **Key classes / functions.**
@@ -180,49 +182,62 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/io/temp_dir.py`
+### `fespp_on_trame/engine/io/temp_dir.py`
 **Responsibility.** Process-level boot side effects for file uploads: create the shared temp directory, register cleanup on shutdown signals/atexit, and tune the process for multi-GB EPC uploads.
 
 **Key classes / functions.**
 - Module global `temp_dir = mkdtemp()` — **created at import time**; shared by the upload endpoint (writer) and the engine's `load_epc_file` (reader).
 - `cleanup_temp_dir()` — `shutil.rmtree(temp_dir, ignore_errors=True)` if it still exists, with logging.
 - `_signal_handler(sig, frame)` — calls `cleanup_temp_dir()` then `sys.exit(0)`.
-- `_setup_for_large_files()` — sets `PYTHONUNBUFFERED=1`, raises `RLIMIT_AS` soft limit to 8 GiB (only if hard is infinite or larger), and loosens GC via `gc.set_threshold(50, 5, 5)` + `gc.enable()`.
+- `_setup_for_large_files()` — raises the `RLIMIT_AS` soft limit up to the hard limit when it is lower, never lowers it (POSIX only; the garbage collector stays at Python's defaults).
 - Import-time side effects (bottom of file): `atexit.register(cleanup_temp_dir)`, `signal.signal(SIGTERM/SIGINT, _signal_handler)`, `_setup_for_large_files()`.
 
 **State.** None.
 
-**Collaborators.** `tempfile.mkdtemp`, `shutil`, `atexit`, `signal`, `resource` (POSIX-only, guarded by try/except), `gc`. `temp_dir` is imported by `upload_endpoint.register_upload_route`; `cleanup_temp_dir` is imported by `session_hooks`.
+**Collaborators.** `tempfile.mkdtemp`, `shutil`, `atexit`, `signal`, `resource` (POSIX-only, its absence skips the limit). `temp_dir` is imported by `upload_endpoint.register_upload_route`; `cleanup_temp_dir` is imported by `session_hooks`.
 
 **Gotchas.**
 - Merely importing this module creates a temp directory and installs SIGTERM/SIGINT handlers — non-obvious for a module named `temp_dir`. Forking code that imports it inherits these handlers.
-- `resource` is Linux/macOS-only; on Windows the import fails and is swallowed by `except Exception` (prints an error but continues). The whole module is geared toward the Linux/Trame-container deployment.
-- `RLIMIT_AS` is *lowered* to 8 GiB if the existing hard limit is higher/infinite — read this as a cap, not just a lift; multi-GB workloads near that ceiling could OOM.
+- `resource` is Linux/macOS-only; on Windows the import fails and the limit is left alone. The whole module is geared toward the Linux/Trame-container deployment.
+- The hard `RLIMIT_AS` stays the ceiling: whoever starts the process sets it (`ulimit -v`, `docker run --ulimit`); a memory bound per container belongs to `docker run --memory`.
 
 ---
 
-### `fespp_on_trame/app/io/upload_endpoint.py`
-**Responsibility.** Registers an aiohttp HTTP multipart endpoint (`/upload` and `/paraview/upload`) for uploading large EPC+H5 files into the shared temp dir, with live progress reporting and automatic EPC loading; also resolves the per-session upload URL prefix.
+### `fespp_on_trame/engine/io/upload_endpoint.py`
+**Responsibility.** Registers an aiohttp HTTP multipart endpoint (`/upload` and `/paraview/upload`) for uploading large EPC+H5 files into the shared temp dir and loading each EPC under the loading veil, saying what the import did NOT do; also resolves the per-session upload URL prefix. Transfer progress is the widget's own (`xhr.upload.onprogress`), not server state.
 
 **Key classes / functions.**
 - `register_upload_route(server) -> bool` — installs the endpoint via two patching strategies and a middleware. Internals:
-  - `handle_upload(request)` (async) — sets `state.upload_uploading = True` / `upload_progress = 0`, streams each multipart field in 512 KiB chunks to `Path(temp_dir)/filename` (skipping existing files), updates `state.upload_progress` (capped at 99 during transfer) with `state.flush()`, collects `.epc` paths, sets progress to 100, then calls `controller.load_epc_file(path)` for each EPC. Returns JSON `{status, epc_paths}` or a 500 with the error message.
+  - `handle_upload(request)` (async) — streams each multipart field in 512 KiB chunks to `Path(temp_dir)/filename`, collects the EPC paths, then for each one raises the loading veil (`ui_loading` + `view_loading_message = "Reading <name>…"`, flushed and yielded once so it ships BEFORE the blocking C++ parse) and calls `controller.load_epc_file(path)`, which returns a read report `{name, failure, note}` (see `read_report`). A name already handed to the reader (`_loaded_names(server)` — `server.context.upload_loaded_names`, the basenames actually passed to `load_epc_file`) is `skipped`: the reader never re-reads a path it was given once (`vtkEPCCollector` keeps every path it tried, failed or not, in `FileNamesLoaded`), so a changed copy needs a page reload and a different file another name — the note says both; an `.h5` already on disk is skipped too (the reader may hold it open), while a file on disk that never reached the reader is overwritten and read. A parse that leaves the assembly with no more nodes than before (`_assembly_node_count`) is reported as having added nothing to the tree. `_say` composes the amber snackbar (`empty_color_snackbar_*`): the skipped files with their next step, the nothing-new files, an `.h5` arriving AFTER its `.epc` (`epc_beside`: "x.h5 now sits beside x.epc — tick a property to read its values…", since fesapi opens the `.h5` lazily from the same directory) else an `.h5` imported on its own, and the reader's notes (objects skipped in a file it did read). A file-level failure is on `load_error` already (written by `load_epc_file`). Returns JSON `{status, epc_paths, skipped}`; a failure of the handler itself answers a 500 whose `message` carries the reason — the widget puts it on the red snackbar (ONE writer: the server no longer writes `load_error` there, since the widget's generic "Upload failed: 500" replaced it).
   - `upload_middleware(request, handler)` (aiohttp middleware) — routes `POST /upload` and `POST /paraview/upload` to `handle_upload`, else passes through. Logs each request with the app `id`.
   - **Patch 1** — monkey-patches `aiohttp_web.Application.__init__` so every future `Application` gets `upload_middleware` inserted as its first middleware (guarded against double-patching via `_fespp_orig_init`).
   - **Patch 2** — monkey-patches `aiohttp.web_runner.AppRunner.setup` to inject the middleware into the *effective serving app* (via the private `app._middlewares` tuple, since the public list is frozen) AND register the routes directly on the router (temporarily unfreezing `router._frozen`), as belt-and-suspenders. Guarded via `_fespp_orig_setup`.
   - Module global `_registered_handler` — holds the current `handle_upload` so Patch 2's route registration can reuse it.
 - `resolve_upload_session_id(server) -> None` — reads `/opt/trame/proxy-mapping.txt`, finds the line whose second column ends with `:{port}` (port from `server._running_port` or `server.port`), and sets `state.upload_session_id` to that session id (empty if not found / file missing). The client uses this to build `/api/{sid}/upload`, falling back to `/upload`.
 
-**State.** Writes `state.upload_uploading`, `state.upload_progress`, `state.upload_session_id`. Reads `server.state` / `server.controller` (specifically `controller.load_epc_file`).
+**State.** Writes `state.ui_loading`, `state.view_loading_message`, `state.load_error`, `state.empty_color_snackbar_text` / `_visible`, `state.upload_session_id`; reads `state.assembly_xml`. Reads `server.state` / `server.controller` (specifically `controller.load_epc_file`).
 
 **Collaborators.** `aiohttp.web` (`Application`, `AppRunner`, middleware/router internals), `temp_dir.temp_dir`, `controller.load_epc_file`. `register_upload_route` and `resolve_upload_session_id` are called from `engine.py`/server startup.
 
 **Gotchas.**
 - Heavy monkey-patching of aiohttp internals (`Application.__init__`, `AppRunner.setup`, `app._middlewares` tuple, `router._frozen`). The module docstring explains *why*: Trame creates several `aiohttp.Application` instances during startup and only the one `AppRunner.setup` wires up actually serves requests, so both a "patch all future apps" and a "patch the effective serving app" strategy are needed. This is brittle across aiohttp versions — a likely first break point on a dependency bump.
-- Re-uploading a file that already exists in `temp_dir` is silently skipped (logged, but not re-saved or refreshed).
+- Re-uploading a file the reader already got is skipped and SAID (the amber note names the file and the way out: reload the page, or rename). A skip is the only honest answer: the C++ collector will not re-read the path.
 - Progress is intentionally capped at 99% during transfer and only set to 100 after all fields are read; the client must not treat 99 as complete.
 - `state.flush()` is called inside the async upload loop to push progress mid-request — required because the normal Trame flush cycle wouldn't run during a long blocking upload.
 - The session-id lookup is container-specific (`/opt/trame/proxy-mapping.txt`); outside the container it silently leaves `upload_session_id` empty.
+
+---
+
+### `fespp_on_trame/engine/io/read_report.py`
+**Responsibility.** What the reader said about a read, in the user's words. FESPP logs through vtkLogger and never raises, and it logs at ONE level two different things: the whole file refused (`FESAPI error loading '…'`, `Unknown error loading`, `Error loading EPC`, `Unknown fatal error loading EPC` — `ResqmlDataRepositoryToVtkPartitionedDataSetCollection::addFile` / `vtkEPCCollector::GetAllFiles`) and one object it could not map, skipped so the rest still loads (`Skipping representation / wellbore trajectory / blocked wellbore uuid=…`, `[BW DIAG] …`). Before this module the first error logged during `add_file` went red as "Failed to read 'x.epc': Skipping representation uuid=…" on a file that WAS read, with the server's temp path in it. Pure functions over the entries `capture_vtk_messages` yields; no ParaView.
+
+**Key functions.**
+- `file_failure(messages, name, temp_dir="")` — the red sentence for a refused file, `""` when it was read: the reader's known phrases mapped to words the user can act on (`Cannot unzip` → "junk.epc is not an EPC archive — export the model to .epc again or pick another file."; `does not exist` → "… is not on the server any more — import it again."), else `Failed to read <name>: <the reader's reason, paths stripped, 300 chars>`.
+- `skipped_objects(messages)` → `(skipped, other)` — object-level errors of a read that did not fail as a whole; `read_note(name, skipped, other)` → the amber sentence ("Read x.epc with 2 objects skipped by the reader and 1 reader error — see Data health."), `""` when nothing was left out.
+- `unreadable_properties(messages, title_for_uuid, temp_dir="")` — one sentence per property the reader could not read when it was TICKED (`Error when initialize uuid: <uuid>` / `Error when load Time Series property uuid: <uuid>`, each uuid once), the uuid named through the tree: "poro could not be read: vector_props.h5 is missing — import it too, then untick and tick the property again." for the missing-`.h5` case, else the reader's detail; `property_note(sentences)` → the first, "+N more — see Data health". Read by `boot._on_selectors` after `data_load.run` (an unreadable RENDER is `vtk_log._flag_invalid_nodes`'s, reported once).
+- `strip_paths(text, temp_dir="")` — the temp directory (either separator) and any `/tmp/tmpXXXX/`-shaped path taken out: a file is named by its name alone.
+
+**Collaborators.** `boot.load_epc_file` (returns `{name, failure, note}` to the upload endpoint; `failure` goes to `load_error`, `note` to the endpoint's amber snackbar), `boot._on_selectors`, `upload_endpoint._say`. Unit: `tests/unit/test_read_report.py`. The routing of the same lines into `state.vtk_log_messages` (what Data health lists) is untouched.
 
 ---
 
@@ -248,11 +263,29 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/utils/color_palette.py`
+### `fespp_on_trame/engine/utils/numfmt.py` — the one number rule (2026-09-11)
+**Responsibility.** How a number is written ON SCREEN, everywhere: four significant digits (ties away from zero on the exact binary value, `Decimal` + `ROUND_HALF_UP`), scientific notation when the ROUNDED value leaves [1e-3, 1e6] (`1.2e-14`, `3.4e+12`, no zero-padded exponent), a thin space (U+2009) between thousands (`1 235`, `1 000 000`), a point as the decimal separator, an en dash for a missing value (`None`, NaN, an empty string), `∞` / `-∞`. `fmt(v)` = a measured quantity; `fmt_int(v)` = a count (every digit, grouped, never scientific); `fmt_pct(fraction)` = `12.35 %` (NBSP before the sign); `fmt_fixed(v, decimals)` = coordinates, depths, contacts (fixed decimals, grouped, never scientific); `unit_power(uom, power, ascii=False)` = the unit a statistic is in (`m3/m3`, `(m3/m3)²`, ASCII `(m3/m3)^2` for a CSV header); the power each descriptive statistic carries (a variance is in unit², M3 in unit³, counts / skewness / kurtosis none) is `STAT_UNIT_POWER` in `widgets/_shared/numfmt.js`, read where the matrix is written. A string that is not a number is a label and comes back unchanged. Pure, no ParaView. The SAME rule lives in `widgets/_shared/numfmt.js` (`fmt`, `fmtInt`, `fmtPct`, `fmtFixed`, `fmtPlain` — no grouping, for an editable input — `parseNum`, `unitPower`), imported by relative path from every widget; the eight worked examples of the contract are pinned in both `tests/unit/test_numfmt.py` and the browser spec `11-numbers`. Excluded, with reason: file sizes (`UploadFile.vue`), Plotly tick labels (charts, not tables), the harness logs (`tests/visual/runner/scenario.py`), the well-log zoom factor (`×1.5`, a magnification). The 3D colour bar is drawn by ParaView from a printf format: `SCALAR_BAR_RANGE_FORMAT = "%.4g"` (set on every `GetScalarBar` site — `pdc_scene._sync_scalar_bar`, `source_resolver`, `active_array`, `ijkgrid`) gives its two range labels the same four significant digits as the Colormap card beside it (`0.28`, not `2.8e-01`), without the thousands grouping and with printf's own switch to an exponent. At the extremes both rules agree: the JS writes the largest doubles as they are (`1.798e+308`, where `toPrecision` overflows) and `fmtFixed` keeps every digit from 1e21 (where `toFixed` would switch to an exponent). Depths are positions, not measured quantities: the zones table, the marker and stratigraphic-band tooltips and the Log ↔ Grid zone tooltip write them with `fmtFixed(v, 2)` (`1 600.57`, not `1 601`). **A category code is an identifier, not a quantity**: it prints as `str(int(code))`, ungrouped. CSV exports never go through here — they carry the raw values (`csv_export`).
+
+**Consumers.** The pick readout and cursor coordinates in boot, `health_dispatch` (bounds in the range messages, `utm_sanity`), `distribution_dispatch` (the NaN badge's `meta.text`), `crossplot_dispatch` (the lasso count), `categories.label_of`.
+
+---
+
+### `fespp_on_trame/engine/utils/csv_export.py` — exports carry their provenance (2026-09-11)
+**Responsibility.** Every CSV that leaves the app: RAW values (`cell(v)` = the shortest round-trip decimal, `repr`, exponent without a leading zero; an int's full digits; `true` / `false`; `n/a` for `None` or NaN = could not be evaluated; an empty cell = does not apply; text `escape`d when it holds a comma, a quote or a newline), the unit named ONCE in the column header (`column(name, uom, power)` → `min (m3/m3)`, `variance ((m3/m3)^2)`, `cells`), and a comment block first (`header_lines(kind, fields)` → `# fespp-on-trame <version> - <kind>`, `# date: YYYY-MM-DD HH:MM`, one `# key: value` per field, `# n/a = not available` last). `render(header, columns, rows)` = the whole file; `slug` / `file_name(kind, *parts)` = a dated name (`statistics_Total_Porosity_2026-09-11.csv`); `payload(kind, fields, *name_parts)` = the `{name, header}` pair a WIDGET reads, `EMPTY_PAYLOAD` = `{"name": "", "header": []}` (never null: a widget reads `.header.length` off it). The server-rendered panels get the whole text (`distribution_dispatch.csv_for` → `{name, text}` for `utils.download`); the table widgets get the name and the header and write the rows themselves from their raw props through `widgets/_shared/csvexport.js` (`csvCell`, `rawCell`, `csvColumn`, `buildCsv`, `csvMeta` — a plain name plus a header line saying the provenance is missing when the server sent none, so nothing is silent — and the one `handOver`: the clipboard when the browser offers one, else a Blob download, the button reading `Copied` / `Downloaded` / `Export failed — select the table and copy it`). The panel's unit choice, sorting and rounding are display only: Volumetrics exports cubic metres whatever the select says, the Statistics view exports every metric raw. The XML copy of the XML viewer stays verbatim (an XML file must remain the object's bytes; its provenance is inside it). Unit: `tests/unit/test_csv_export.py`; browser: `09-exports`, `13-zones-export`, `14-compare-export`.
+
+---
+
+### `fespp_on_trame/engine/utils/categories.py` — category labels (2026-09-11)
+**Responsibility.** The NAMES behind a categorical property's codes, for every output that used to print the code: `labels_for(tree, array_path, vtk_name=None, reader=None) -> {code: name}` — `{}` at once for a derived path, an unknown node or a node whose value type is not `CategoricalProperty` (a `DiscreteProperty` has no names: drogon's `Facies` legitimately shows `0 | 1 | 2 | 5`); else the StringTableLookup read through the fesapi channel FIRST (`lookup_labels`: `repo_query.object_xml` of the property → its `Lookup` uuid → the lookup's `Value` elements with `Key` / `Value` children; any failure or a `ChannelMissing` → `{}`) — the file's lookup is the authority, because the ParaView table is keyed by the bare array name and shared by the session, so two properties of one name (two grids, a second EPC) leave it holding whichever loaded last — then the LUT annotations FESPP wrote on the array (`lut_labels(vtk_name)`, formerly the Thresholds card's own reader in `extract_block` — it creates the array's LUT proxy, the existing Thresholds behaviour). A realization set or a time series node carries no property uuid in its name (`_multireal_<title>`, `_<tsUuid><title>`): the lookup then matches the file's `CategoricalProperty` of that title (`object_uuids` + one `object_xml` round trip), and the LUT fallback tries the realization arrays actually loaded (`<name>_real_<idx>`). `labels_note(tree, array_path, labels)` = `NO_NAMES_NOTE` (`category names not readable for this property: its codes are shown`) for a categorical property whose names could not be read, `""` otherwise — a discrete property has no names to miss; the histogram appends it to its axis title and its CSV header (`# categories:`), the cross-plot to its badge (`colour: …`), Volumetrics to its note (`Region: …`). `label_of(labels, v)` = the name, else the code as an identifier (`"3"`, ungrouped); `array_path_for_vtk_name(tree, rep_path, vtk_name)` = the property node of a rep (widened to the enclosing `GridContainer` in the SolidColor layout) whose VTK name matches. Keys are `int` when the value is integral. **Consumers.** `extract_block.resolve_chain_kind` (the Thresholds card, `reader` = the collector's source from `rep_in_scene`), the cross-plot legend (`name` = the label, `legendgroup` = the code, a stable key), the histogram's discrete axis (`tickvals` / `ticktext`, `meta.categories = [{value, label}]`, always present on a discrete property), the Volumetrics `region` column (the label; `region_code` beside it for the tooltip and the CSV). No arithmetic touched. Unit: `tests/unit/test_categories.py` (the file's lookup wins over the LUT; the LUT when the lookup has nothing; a realization set by title, then by its loaded array; discrete → `{}` even with a lookup; the note). The browser spec `12-categories` runs only with `FESPP_SMOKE_CATEGORY` set (no local file shows a categorical legend) and skips out loud otherwise.
+
+---
+
+### `fespp_on_trame/engine/utils/color_palette.py`
 **Responsibility.** Generate visually distinct solid colors for per-representation coloring, keyed by an integer index.
 
 **Key classes / functions.**
 - `color_for_index(i: int) -> str` — returns a `#RRGGBBAA` hex (alpha always `ff`). Hue is `(i * _GOLDEN_ANGLE) % 1.0` (golden-angle 137.508°/360 so successive multiples never align), saturation cycles through `_S_LEVELS = (0.85, 0.70, 0.95)` by `i % 3`, value through `_V_LEVELS = (0.85, 0.95, 0.75)` by `(i // 3) % 3`. Converts via `colorsys.hsv_to_rgb`.
+- `DIVERGING_PRESET = "Cool to Warm"`, `DIVERGING_NEG` (`#3b4cc0`), `DIVERGING_POS` (`#b40426`), `DIVERGING_ZERO` (`#9e9e9e`) — the colours of a DIFFERENCE (2026-09-11): the Colormap card's `Diverging` shortcut (the preset on a range symmetric around 0) and the per-bar colours of a difference histogram (`distribution_dispatch.diverging_colors`: a bin below 0 cool, above 0 warm, straddling grey).
 
 **State.** None.
 
@@ -264,7 +297,7 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 ---
 
-### `fespp_on_trame/app/utils/naming.py`
+### `fespp_on_trame/engine/utils/naming.py`
 **Responsibility.** Centralized name-sanitization for two *opposite* purposes — finding C++-produced VTK array names vs generating readable ParaView SM proxy registration names.
 
 **Key classes / functions.**
@@ -312,10 +345,10 @@ The central data structure is a C++-built `vtkDataAssembly` exposed through `Tre
 
 **State.** Writes `state.trame__title` (via `App.__init__`).
 
-**Collaborators.** `paraview.web.venv` (import-only, enables ParaView-in-a-venv), `initialize_fespp_engine`, `download_file_from_url`, `ui` (app layout), `TRAME_APP_TITLE`, `trame.app.get_server`, `trame_server.Server`, `trame.decorators.TrameApp`.
+**Collaborators.** `paraview.web.venv` (import-only, enables ParaView-in-a-venv), `app.boot.boot_engine` (the engine bootstrap since the per-view architecture; `engine/boot.py` is gone), `download_file_from_url`, `ui` (app layout), `TRAME_APP_TITLE`, `trame.app.get_server`, `trame_server.Server`, `trame.decorators.TrameApp`.
 
 **Gotchas.**
-- `App.__init__` calls `initialize_fespp_engine(server, ...)` passing the **parameter `server`** (which is `None` when invoked from the `__main__` block, since `App(app_server, ...)` is passed positionally as `server`) — wait: `app = App(app_server, ...)` passes `app_server` as the `server` positional arg, so `server` is non-None here. But note `initialize_fespp_engine` receives the raw `server` arg, NOT `self.server` (the `get_server(server, client_type="vue3")` result). If the engine relies on the vue3-configured server object, passing the raw arg is a latent inconsistency worth verifying against `engine.py`.
+- (historical, `initialize_fespp_engine` is gone) `App.__init__` called `initialize_fespp_engine(server, ...)` passing the **parameter `server`** (which is `None` when invoked from the `__main__` block, since `App(app_server, ...)` is passed positionally as `server`) — wait: `app = App(app_server, ...)` passes `app_server` as the `server` positional arg, so `server` is non-None here. But note `initialize_fespp_engine` receives the raw `server` arg, NOT `self.server` (the `get_server(server, client_type="vue3")` result). If the engine relies on the vue3-configured server object, passing the raw arg is a latent inconsistency worth verifying against `engine.py`.
 - The remote-file branch calls `download_file_from_url(url, epc_file_handle)` passing an **open file handle** where the function expects a directory string (`tmp_dir`). As written this raises — see `http_download.py`. Remote mode is effectively non-functional without a fix.
 - The local-file load is commented out (`# app_server.controller.load_epc_file(...)`); local files are evidently loaded another way (e.g. via the upload endpoint) rather than at boot.
 - The CLI treats the literal sentinels `${remote_h5_file_location}` / `${remote_epc_file_location}` (un-substituted template placeholders) as "not provided" (`None`) — a deployment-template artifact.

@@ -15,7 +15,7 @@
 - [[Engine — Dispatchers|Engine-Dispatchers]]
 - [[Core, IO & Utils|Core-IO-and-Utils]]
 - [[UI — Content|UI-Content]]
-- [[UI — Drawer & Toolbar|UI-Drawer-Toolbar-Shared]]
+- [[UI — Shell, Widgets & Charter|UI-Drawer-Toolbar-Shared]]
 
 **For the fork**
 - [[Refactoring Notes|Refactoring-Notes]]

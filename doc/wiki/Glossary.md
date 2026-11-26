@@ -46,15 +46,34 @@ Vocabulary used throughout the code and this wiki. Grouped by domain.
 
 ## Project-specific terms
 
+### The BlockScope scene (production, `FESPP_BLOCKSCOPE=1`)
+
+- **BlockScope** — the scene model since 2026-07: ONE collector for the session, ONE composite representation of it per 3D view, driven by a desired-state table. See [[Architecture]] §2.
+- **PdcScene** — one 3D view's composite representation (`main_rep`) plus its `block_state` table `{selector → BlockEntry}` and `reconcile()`, which regenerates every `Block*` list from the table (`engine/blockscope/pdc_scene.py`).
+- **BlockEntry** — one row of that table: visible, colour array, association, display label, LUT key, opacity, solid colour, the categories of a property painted by code.
+- **selector** — the assembly selector the composite understands, derived from a rep_path by the **AssemblyIndex** (`engine/blockscope/assembly_index.py`); a rep IS its selector, never a proxy.
+- **isolate (GridIsolate)** — a per-(view, grid) `IjkGrid` pipeline chained on the collector while the Slicers or Thresholds card cut that grid in that view; the composite swaps the block out meanwhile (`PdcScene.set_isolated`), and `full` mode hands it back.
+- **GlobeScene** — a `PdcScene` whose source re-projects the collector onto the Earth (`engine/geo.py`, the projected CRS / EPSG code), with the textured globe, the marks and the framings.
+- **RenderScheduler** — `mark_dirty(view_id)` while a handler mutates, one `flush()` at its tail: one render and one frame push per dirty view per handler (`engine/wire/render_scheduler.py`).
+- **widget** — a panel, card, tree or door of the UI: one Vue component under `widgets/<name>`, one pip package `trame_fespp_<name>`, mounted by a few lines of Python. See [[UI — Shell, Widgets & Charter|UI-Drawer-Toolbar-Shared]].
+- **charter (R1–R18)** — the UI rules of `doc/private/regles-ui-2026-09-13.md`, held by the shared components of `widgets/_shared/components` (`fp-panel`, `fp-btn`, `fp-select`, `fp-seg`, `fp-num`, `fp-chip`, `fp-note`, `fp-empty`, `fp-export`) and the eslint gate.
+- **Statistics view** — the one view of the statistics of properties: a selection read per PWLS kind, as a matrix, overlaid distributions and a cross-plot. In the code it is the kind `compare` (`ui_compare_*`, `compare_*`, `fcp-*`), as the velocity model is `Cube`: only what the reader reads says Statistics. See [[Engine — Dispatchers|Engine-Dispatchers]].
+- **item / following row** — an *item* is an entry of that selection (`ui_compare_items`: `{path, real, ts, uid, pinned}`). A *following row* hangs under an item and reads the same property elsewhere, on a part of its grid or on what a 3D view draws of it (`engine/compare_rows`): sorted, compared and exported like any row, but no picker, no pin, never the baseline.
+- **part (of a grid)** — a sub-representation, a blocked wellbore or a selection extract of the grid a property belongs to (`engine/stats_supports`, `ui_compare_parts`).
+- **suffixed var / bucket** — per-view state: a var named `<prefix>__<view_id>` (`active_path__view_3`), or a dict keyed by view id (`ui_open_tools_by_view`); both inventoried in `app/views/per_view_state.py`.
+- **strict mode** — `FESPP_STRICT=1`: `engine/strict.py` reports every exception a silent `except` swallows; both test harnesses arm it and fail on a report.
+
+### The legacy per-rep model (`FESPP_BLOCKSCOPE` unset)
+
 - **ViewScene** — one render panel's pipeline root: owns a `vtkEPCCollectorClone` + the panel's `RepInScene` dict + per-`(scene, array)` LUT/PWF. See [[Core — Sources|Core-Sources]].
 - **RepInScene (`ris`)** — one `(rep, view)` pair's state holder (extractor, threshold chain, slice/clip, per-view IjkGrid, channel/marker extractors). Delegates per-kind behaviour to its `ElementType`.
 - **ElementType** — a stateless strategy *singleton* per RESQML `kind`, encoding behaviour (tree role, eye, visibility policy, how to build sources, how children render). Resolved by `registry.for_kind` / `for_path`. See [[Core — Element Types|Core-Element-Types]].
 - **clone** — a `vtkEPCCollectorClone` proxy: a per-view, zero-copy passthrough of the `EPCCollector`, used as the structural anchor each view's extractors chain on. Never rendered itself.
 - **EnergisticsExtractor** — the FESPP filter that extracts a single subtree (`ExtractPath = rep_path` or a child leaf) from the clone, so only that object's geometry/array surfaces.
 - **SourceRegistry (legacy)** — per-`rep_path` registry (`ExtractBlockRepresentation` / shared `IjkGrid`), view-agnostic. The **Phase-2 fallback** path.
-- **SceneRegistry (per-view)** — the live model: one `ViewScene` per panel. Owns per-view extractor creation, coloring replication, IjkGrid sync, marker visibility, view replication.
+- **SceneRegistry (per-view)** — the legacy per-view model: one `ViewScene` per panel. Owns per-view extractor creation, coloring replication, IjkGrid sync, marker visibility, view replication.
 - **Phase 1/2/3a/3b/4/5** — the staged migration from the legacy per-rep model to the per-view scene model, referenced in docstrings. Current state: non-IJK reps fully per-view (3a); IJK per-view mirrors an authoritative legacy `IjkGrid` (3b); legacy slice/clip/threshold are deprecated fallbacks (4); full legacy removal is the pending Phase 5.
 - **Registration-name prefixes** — proxy registration names encode role: `rep_<path>_v<view>` (primary extractor), `chn_<path>_v<view>` (channel), `mrk_<path>_v<view>` (marker). Used e.g. by `is_marker_proxy` to classify a raw display.
-- **`ui_scale_z`** — the single global vertical-exaggeration state var (source of truth). Written by the Transformation editor; read by every source-creation hook and the on-load re-apply. Real geometry scales; markers translate. See [[Architecture]].
+- **`ui_scale_z__<vid>`** — a 3D view's vertical exaggeration (source of truth), read through `state_defaults.z_scale_of`. Written by `set_zscale`; read by every source-creation hook and the on-load re-apply. Real geometry scales; markers translate. See [[Architecture]].
 - **bucket (per-view)** — a `state.*_by_view` dict tracking per-panel sets: loaded reps, hidden reps, coloring, visible markers, active arrays.
 - **olive** — the failure mode where a marker sphere stretches into an ellipsoid because its display was *scaled* in Z instead of *translated*. Avoided by `apply_marker_z`.
