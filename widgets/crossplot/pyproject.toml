@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-crossplot"
+version = "0.1.0"
+description = "Decoupled Trame widget: a crossplot panel"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_crossplot/**/*.py",
+    "/trame_fespp_crossplot/**/*.js",
+    "/trame_fespp_crossplot/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_crossplot"]
+artifacts = [
+    "trame_fespp_crossplot/module/serve/*.js",
+    "trame_fespp_crossplot/module/serve/*.css",
+]

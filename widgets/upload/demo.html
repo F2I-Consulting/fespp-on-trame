@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>upload — demo</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="./trame_fespp_upload/module/serve/style.css" />
+  <script src="./trame_fespp_upload/module/serve/trame_fespp_upload.umd.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #2b3a47;
+      height: 100vh; display: flex; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // The shell (button + dialog + tabs), the file picking / .h5 warning and
+    // the OSDU form all work standalone. Real actions need the running app:
+    // upload POSTs to /upload, the etp-* events are server-side — here they
+    // just log. Fake dataspaces show the OSDU connected view.
+    const app = Vue.createApp({
+      data: () => ({ connected: false }),
+      template: `<UploadData accept=".epc,.h5"
+        :etp-connected="connected"
+        :etp-dataspaces="connected ? ['eml:///dataspace(\\'demo\\')', 'eml:///'] : []"
+        etp-status="demo mode — no server"
+        @uploaded="(names) => console.log('uploaded', names)"
+        @error="(m) => console.log('error', m)"
+        @etp-connect="(p) => { console.log('etp-connect', p); connected = true; }"
+        @etp-select="(p) => console.log('etp-select', p)"
+        @etp-disconnect="() => { console.log('etp-disconnect'); connected = false; }" />`,
+    });
+    app.use(window.trame_fespp_upload);
+    app.mount("#app");
+  </script>
+</body>
+</html>

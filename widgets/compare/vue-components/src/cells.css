@@ -1,0 +1,7 @@
+/* What a cell of the matrix says, its colour: drawn in the matrix and in its legend */
+.fcp-cell-base { background: #fff59d; }
+.fcp-cell-pos { background: #e8f5e9; color: #1b5e20; }
+.fcp-cell-neg { background: #ffebee; color: #b71c1c; }
+.fcp-cell-eq { background: #f5f5f5; color: var(--fp-ink-soft); }
+.fcp-cell-min { background: #e3f2fd; color: #0d47a1; }
+.fcp-cell-max { background: #fff3e0; color: #e65100; }

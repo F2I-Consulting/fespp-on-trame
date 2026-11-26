@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-xmlviewer"
+version = "0.1.0"
+description = "Decoupled Trame widget: a RESQML XML viewer (tree + highlighted raw), shared by the Attributes card and the XML explorer"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_xmlviewer/**/*.py",
+    "/trame_fespp_xmlviewer/**/*.js",
+    "/trame_fespp_xmlviewer/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_xmlviewer"]
+artifacts = [
+    "trame_fespp_xmlviewer/module/serve/*.js",
+    "trame_fespp_xmlviewer/module/serve/*.css",
+]

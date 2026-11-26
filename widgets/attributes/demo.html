@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>attributes-panel — demo</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="./trame_fespp_attributes/module/serve/style.css" />
+  <script src="./trame_fespp_attributes/module/serve/trame_fespp_attributes.umd.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #app { width: 300px; border-right: 1px solid #ccc; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const XML = '<?xml version="1.0" encoding="UTF-8"?>\n<resqml2:IjkGridRepresentation uuid="2c6de928-7e08-4601-b979-34048bd68c02">\n  <eml:Citation>\n    <eml:Title>Simulation Grid</eml:Title>\n  </eml:Citation>\n  <resqml2:Ni>46</resqml2:Ni>\n</resqml2:IjkGridRepresentation>';
+
+    const app = Vue.createApp({
+      data() {
+        return { activeNode: "IjkGrid", array: "PORO", XML };
+      },
+      template: `<AttributesPanel :active-node="activeNode" :active-array="array"
+        :node-xml="XML" view-id="view-1" />`,
+    });
+    app.use(window.trame_fespp_attributes);
+    app.mount("#app");
+  </script>
+</body>
+</html>

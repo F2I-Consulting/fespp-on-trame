@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-attributes"
+version = "0.1.0"
+description = "Decoupled Trame widget: the fespp-on-trame per-view attributes panel (custom Vue)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_attributes/**/*.py",
+    "/trame_fespp_attributes/**/*.js",
+    "/trame_fespp_attributes/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_attributes"]
+artifacts = [
+    "trame_fespp_attributes/module/serve/*.js",
+    "trame_fespp_attributes/module/serve/*.css",
+]

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trame-fespp-compare"
+version = "0.1.0"
+description = "Decoupled Trame widget: the Statistics view (one selection of properties, side by side)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "trame-client>=3.10",
+]
+
+[tool.hatch.build]
+include = [
+    "/trame_fespp_compare/**/*.py",
+    "/trame_fespp_compare/**/*.js",
+    "/trame_fespp_compare/**/*.css",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trame_fespp_compare"]
+artifacts = [
+    "trame_fespp_compare/module/serve/*.js",
+    "trame_fespp_compare/module/serve/*.css",
+]
