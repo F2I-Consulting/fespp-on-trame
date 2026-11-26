@@ -58,7 +58,9 @@ MENU_ORDER = ("center", "center-3d", "zoom", "zoom-3d", "pivot",
 def ordered(entries):
     """The menu entries {key, ...} in `MENU_ORDER`."""
     rank = {k: i for i, k in enumerate(MENU_ORDER)}
-    return sorted(entries, key=lambda e: rank.get(e["key"], len(MENU_ORDER)))
+    # "show-in-tree:<n>", one per object under the pointer, ranks as "show-in-tree"
+    return sorted(entries, key=lambda e: rank.get(e["key"].split(":", 1)[0] if e["key"].startswith("show-in-tree")
+                                                  else e["key"], len(MENU_ORDER)))
 
 
 def icon_of(key):
@@ -68,6 +70,8 @@ def icon_of(key):
         return "fespp-globe"
     if key.startswith("globe:"):
         return ZOOM
+    if key.startswith("show-in-tree:"):
+        return ACTION_ICONS["show-in-tree"]
     return ACTION_ICONS.get(key, "")
 
 

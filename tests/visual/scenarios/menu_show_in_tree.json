@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "view_context_menu", "args": [[400, 300, 800, 600], "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["ui_ctx_menu__view_1"], "keys": [["title"], ["items"], ["shows"]] },
+    { "op": "expect", "var": "ui_ctx_menu__view_1", "key": ["shows"], "size": 2 },
+    { "op": "call", "method": "view_context_action", "args": ["show-in-tree:0", "view_1"], "settle": 3 },
+    { "op": "dump", "vars": ["active_path__view_1"] },
+    { "op": "expect", "var": "active_path__view_1", "contains": "_propsfolder_" }
+  ]
+}

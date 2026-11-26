@@ -8,6 +8,18 @@ widget's `active`)."""
 from fespp_on_trame.engine import tree_families
 
 
+def targets(prop, path, others=()):
+    """The nodes a right-click on the 3D view offers to show in the tree,
+    one menu entry each, by name: the property colouring the object under
+    the pointer, the object, then any other object under the same pixel;
+    once each, in that order."""
+    out = []
+    for p in [prop, path, *(others or ())]:
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
 def show_in_tree(activation, cards, state, vid, path):
     """`path` made the active node of `vid`, its family's tree card open and
     in front. Returns that card's key, "" when there is nothing to show."""

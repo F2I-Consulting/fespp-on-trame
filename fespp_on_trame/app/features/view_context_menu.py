@@ -3,7 +3,7 @@ context menu, but on what the pointer is over — plus the two camera
 moves that only make sense against a picked point.
 
 (Split out of app/features/navigation, overhaul slice 10.)"""
-from fespp_on_trame.app.scene.tree_reveal import show_in_tree
+from fespp_on_trame.app.scene.tree_reveal import show_in_tree, targets as tree_targets
 from fespp_on_trame.app.ui import action_icons
 
 
@@ -29,10 +29,10 @@ def register(core, *, _cmap_array_path, _display_title, _globe_scene,
     _CTX_ALWAYS = (("pivot", "Set rotation center here"),
                    ("center", "Center view here"),
                    ("zoom", "Zoom here"))
-    # "Show in tree": the object's row made active in its tree card, as a
-    # click on it (app/scene/tree_reveal)
-    _CTX_ON_REP = (("show-in-tree", "Show in tree"),
-                   ("xml", "Info"),
+    # "Show <name> in tree" (one entry per object under the pointer, the
+    # property colouring it first) is made per menu: the object's row made
+    # active in its tree card, as a click on it (app/scene/tree_reveal)
+    _CTX_ON_REP = (("xml", "Info"),
                    # this object's slicer cards, in this view (28/10)
                    ("geometry-slicer", "Geometry slicer"),
                    ("property-slicer", "Property slicer"))
@@ -188,6 +188,16 @@ def register(core, *, _cmap_array_path, _display_title, _globe_scene,
                 prop = ap
             if prop:
                 items += [action_icons.entry(k, lab) for k, lab in _CTX_ON_PROP]
+            # each object under the pointer, by its name: its row in its tree
+            others = []
+            for f in by_flat:
+                p2 = _path_for_flat_index(f)
+                if p2:
+                    others.append(_rep_path_of(p2) or p2)
+            shows = tree_targets(prop, path, others)
+            for i, p2 in enumerate(shows):
+                name = title if p2 == path else (tree.find_title(tree.find_node_id(p2)) or _display_title(p2) or "")
+                items.append(action_icons.entry(f"show-in-tree:{i}", f"Show {name} in tree"))
             # a well-log track only means something on a wellbore
             nid = tree.find_node_id(path)
             wid = (tree.find_parent_node_id_with_type(nid, "Wellbore")
@@ -205,6 +215,7 @@ def register(core, *, _cmap_array_path, _display_title, _globe_scene,
             "title": title or ("nothing under the pointer" if not path
                                else "object"),
             "path": path, "prop": prop, "items": action_icons.ordered(items),
+            "shows": shows if path else [],
         }
 
     @controller.set("view_context_action")
@@ -229,8 +240,10 @@ def register(core, *, _cmap_array_path, _display_title, _globe_scene,
             controller.nav_center_on_pick(vid, True, at=_clicked.get(vid))
         elif not path:
             return
-        elif action == "show-in-tree":
-            show_in_tree(core.activation, core.cards, state, vid, path)
+        elif action.startswith("show-in-tree"):
+            shows = menu.get("shows") or [path]
+            i = int(action.split(":", 1)[1]) if ":" in action else 0
+            show_in_tree(core.activation, core.cards, state, vid, shows[i] if 0 <= i < len(shows) else path)
         elif action == "xml":
             _xml_open_from_path(path)
         elif action in ("geometry-slicer", "property-slicer"):

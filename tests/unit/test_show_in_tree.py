@@ -78,3 +78,19 @@ def test_the_entry_has_the_tree_icon_and_follows_the_camera_moves():
             ("xml", "geometry-slicer", "add-to-welllog", "show-in-tree", "pivot", "zoom", "center")]
     assert [e["key"] for e in action_icons.ordered(menu)] == [
         "center", "zoom", "pivot", "show-in-tree", "add-to-welllog", "geometry-slicer", "xml"]
+
+
+def test_each_object_under_the_pointer_has_its_own_entry_property_first():
+    from fespp_on_trame.app.scene.tree_reveal import targets
+    assert targets("/root/Grid/props/GasBulkVolume", "/root/Grid/geo") == [
+        "/root/Grid/props/GasBulkVolume", "/root/Grid/geo"]
+    # another object under the same pixel comes after, the object never twice
+    assert targets("", "/root/Grid/geo", ["/root/Grid/geo", "/root/Fault"]) == ["/root/Grid/geo", "/root/Fault"]
+    assert targets("", "") == []
+
+
+def test_the_named_entries_keep_the_tree_icon_and_their_place():
+    menu = [action_icons.entry(k, k) for k in ("xml", "show-in-tree:1", "show-in-tree:0", "zoom")]
+    assert all(e["icon"] == "fespp-data-tree" for e in menu if e["key"].startswith("show-in-tree"))
+    # beside each other after the camera moves, in the order they were offered
+    assert [e["key"] for e in action_icons.ordered(menu)] == ["zoom", "show-in-tree:1", "show-in-tree:0", "xml"]
