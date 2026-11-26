@@ -30,6 +30,8 @@ class ValuesPanel:
                 highlight=(ctrl.node_highlight, f"[$event, {_IN_USE}]"),
                 # a log's sample under the pointer: lit in blue in the 3D views and the log view
                 hover=(ctrl.values_hover, f"[$event, {_IN_USE}]"),
+                # Clear: the rows highlighted and the cells selected in 3D let go
+                clear=(ctrl.selection_clear, f"[{_IN_USE}]"),
                 extract=(ctrl.values_extract, f"[$event, {_IN_USE}]"),
                 read_node=(ctrl.values_read, f"[$event, {_IN_USE}]"),
                 # the Map: a K layer of an IJK grid, coloured (app/features/values_map)

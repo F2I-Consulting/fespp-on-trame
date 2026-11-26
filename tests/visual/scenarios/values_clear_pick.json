@@ -1,0 +1,19 @@
+{
+  "steps": [
+    { "op": "load", "path": "/tmp/testdata/drogon.epc", "settle": 8 },
+    { "op": "check", "title": "Facies", "settle": 12 },
+    { "op": "reset_camera", "settle": 2 },
+    { "op": "call", "method": "toggle_tool", "args": ["frustum", "view_1"], "settle": 2 },
+    { "op": "call", "method": "view_pick", "args": [[300, 200, 700, 500, 1000, 700], "view_1", "frustum"], "settle": 6 },
+    { "op": "activate", "title": "Facies", "settle": 2 },
+    { "op": "call", "method": "node_values", "args": [{"offset": 0}, "view_1"], "settle": 2 },
+    { "op": "dump", "vars": ["ui_node_values_by_view"], "keys": [["view_1", "picked"]] },
+    { "op": "expect", "var": "ui_nav_has_pick__view_1", "equals": true },
+    { "op": "selection_probe", "shown_in": "view_1" },
+    { "op": "call", "method": "selection_clear", "args": ["view_1"], "settle": 4 },
+    { "op": "dump", "vars": ["ui_node_values_by_view"], "keys": [["view_1", "picked"]] },
+    { "op": "expect", "var": "ui_nav_has_pick__view_1", "equals": false },
+    { "op": "expect", "var": "ui_frustum_mode__view_1", "equals": true },
+    { "op": "selection_probe", "none": true }
+  ]
+}

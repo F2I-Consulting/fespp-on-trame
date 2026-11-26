@@ -134,6 +134,11 @@ def register(core, *, _publish_sel_counts):
         if getattr(state, f"ui_pick_mode__{vid}", False) or getattr(
                 state, f"ui_frustum_mode__{vid}", False):
             return
+        _let_go(vid, "")
+
+    def _let_go(vid, info):
+        """The selection of view `vid` let go, in 3D and in the cards; `info`
+        what its pick line says then."""
         try:
             _clear_selection_of(vid)
         except Exception as exc:
@@ -142,9 +147,17 @@ def register(core, *, _publish_sel_counts):
         _drop_sel_inputs(vid)
         _clear_extract_highlights(vid)
         state[f"ui_nav_has_pick__{vid}"] = False
-        state[f"ui_pick_info__{vid}"] = ""
+        state[f"ui_pick_info__{vid}"] = info
         _publish_sel_counts(vid)
         _refresh_values(vid)
         scheduler.mark_all_dirty()
         scheduler.flush()
+
+    @controller.set("selection_clear")
+    def selection_clear(view_id):
+        """The Values view's Clear: the rows highlighted there AND the cells
+        the 3D selection holds let go; the selection tool stays on."""
+        vid = str(view_id or "")
+        controller.node_highlight([], vid)
+        _let_go(vid, "(no cell selected)")
     return (_clear_extract_highlights, _clear_selection_of, _display_xy, _leaf_dataset, _own_selection, _path_for_flat_index, _pick_region, _refresh_values, _selection_ids, _selection_off)

@@ -47,7 +47,7 @@
                     @click="extract('remove')" />
             <fp-btn tiny class="fap-hl" :label="lit + ' ● Clear'"
                     :title="'Clear the ' + lit + ' highlighted ' + itemWord + ' in the view'"
-                    @click="clearSelection" />
+                    @click="clearAll" />
           </template>
           <span v-if="values && values.count != null" class="fap-muted">{{ fmtInt(values.count) }} {{ rowWord }}</span>
           <fp-export v-if="values && values.columns" :filename="csvName" :build="csvText"
@@ -316,7 +316,7 @@ export default {
     // the Map's layer: {array, k, nk, ni, nj, rows, colors, editable} | {error}
     layerMap: { type: Object, default: () => ({}) },
   },
-  emits: ["load-values", "export-values", "highlight", "hover", "extract", "load-map", "map-cell", "read-node"],
+  emits: ["load-values", "export-values", "highlight", "hover", "clear", "extract", "load-map", "map-cell", "read-node"],
   data() {
     // the filter bounds are Numbers or null: <fp-num> reads a typed comma as
     // the decimal point, and the host converts what it receives to float
@@ -666,6 +666,11 @@ export default {
     clearSelection() {
       this.selected = new Set();
       this.$emit("highlight", []);
+    },
+    // Clear: the rows highlighted here and the cells the 3D selection holds
+    clearAll() {
+      this.selected = new Set();
+      this.$emit("clear");
     },
     // the highlight stays after a Keep or a Remove: Clear lets go of it
     extract(mode) {

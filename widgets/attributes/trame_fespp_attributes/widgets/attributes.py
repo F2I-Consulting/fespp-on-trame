@@ -78,5 +78,5 @@ class AttributesPanel(HtmlElement):
         super().__init__("attributes-panel", **kwargs)
         self._attr_names += ["active_node", ("active_key", "activeKey"), "values", "values_csv",
                              ("layer_map", "layerMap")]
-        self._event_names += ["load_values", "export_values", "highlight", "hover", "extract", ("read_node", "read-node"),
+        self._event_names += ["load_values", "export_values", "highlight", "hover", "clear", "extract", ("read_node", "read-node"),
                               ("load_map", "load-map"), ("map_cell", "map-cell")]
